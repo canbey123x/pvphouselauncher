@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PvPHouse: quick-access tiles (2x2). IDs are the upstream ones so MainMenuFragment keeps working. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="@dimen/_4sdp">
+
+    <TextView
+        style="@style/PvPHouseSectionLabel"
+        android:text="@string/pvphouse_quick_access" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <Button
+            android:id="@+id/custom_control_button"
+            style="@style/PvPHouseTile"
+            android:drawableTop="@drawable/ic_menu_custom_controls"
+            android:text="@string/pvphouse_tile_controls" />
+        <Button
+            android:id="@+id/install_jar_button"
+            style="@style/PvPHouseTile"
+            android:drawableTop="@drawable/ic_menu_install_jar"
+            android:text="@string/pvphouse_tile_install" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <Button
+            android:id="@+id/open_files_button"
+            style="@style/PvPHouseTile"
+            android:drawableTop="@drawable/ic_folder"
+            android:text="@string/pvphouse_tile_files" />
+        <Button
+            android:id="@+id/share_logs_button"
+            style="@style/PvPHouseTile"
+            android:drawableTop="@android:drawable/ic_menu_share"
+            android:text="@string/pvphouse_tile_logs" />
+    </LinearLayout>
+
+    <!-- Upstream links (Amethyst wiki / Discord): hidden, kept so the fragment code still finds them -->
+    <Button android:id="@+id/news_button" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+    <Button android:id="@+id/discord_button" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
+</LinearLayout>

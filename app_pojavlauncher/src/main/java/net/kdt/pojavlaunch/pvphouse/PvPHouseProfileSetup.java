@@ -65,6 +65,7 @@ public final class PvPHouseProfileSetup {
         PojavApplication.sExecutorService.execute(() -> {
             boolean showedProgress = false;
             try {
+                migrateUpstreamDefaultProfile();
                 if (isProfileReady()) {
                     post(() -> listener.onProfileReady(PvPHouseConfig.PROFILE_KEY, false));
                     return;
@@ -125,6 +126,26 @@ public final class PvPHouseProfileSetup {
                     .apply();
         }
         ProgressKeeper.submitProgress(ProgressLayout.INSTALL_MODPACK, 100, R.string.pvphouse_profile_setup_progress);
+    }
+
+    /**
+     * Upstream creates an untouched "Default" profile on 1.7.10 when the profile list is empty.
+     * Installs made before PvPHouse changed that default get it moved to the server version once.
+     * Profiles the user renamed or pointed at another version are left alone.
+     */
+    private static void migrateUpstreamDefaultProfile() {
+        LauncherProfiles.load();
+        boolean changed = false;
+        for (MinecraftProfile profile : LauncherProfiles.mainProfileJson.profiles.values()) {
+            if (profile != null && "Default".equals(profile.name) && "1.7.10".equals(profile.lastVersionId)
+                    && profile.gameDir == null && profile.icon == null) {
+                MinecraftProfile fresh = MinecraftProfile.getDefaultProfile();
+                profile.name = fresh.name;
+                profile.lastVersionId = fresh.lastVersionId;
+                changed = true;
+            }
+        }
+        if (changed) LauncherProfiles.write();
     }
 
     /** Newest loader flagged stable by Fabric meta (the API lists newest first). */

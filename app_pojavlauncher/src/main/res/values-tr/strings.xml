@@ -449,4 +449,10 @@
     <string name="pvphouse_status_players">%1$d/%2$d oyuncu</string>
     <string name="pvphouse_status_ping">%1$d ms</string>
     <string name="pvphouse_profile_not_ready">PvPHouse profili hâlâ hazırlanıyor. Lütfen birazdan tekrar deneyin.</string>
+    <string name="pvphouse_server_subtitle">Minecraft %1$s · %2$s</string>
+    <string name="pvphouse_quick_access">Hızlı erişim</string>
+    <string name="pvphouse_tile_controls">Kontroller</string>
+    <string name="pvphouse_tile_install">Mod / .jar yükle</string>
+    <string name="pvphouse_tile_files">Oyun dosyaları</string>
+    <string name="pvphouse_tile_logs">Log paylaş</string>
 </resources>

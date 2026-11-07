@@ -546,4 +546,10 @@
     <string name="pvphouse_status_players">%1$d/%2$d players</string>
     <string name="pvphouse_status_ping">%1$d ms</string>
     <string name="pvphouse_profile_not_ready">The PvPHouse profile is still being set up. Please try again in a moment.</string>
+    <string name="pvphouse_server_subtitle">Minecraft %1$s · %2$s</string>
+    <string name="pvphouse_quick_access">Quick access</string>
+    <string name="pvphouse_tile_controls">Controls</string>
+    <string name="pvphouse_tile_install">Install mod / .jar</string>
+    <string name="pvphouse_tile_files">Game files</string>
+    <string name="pvphouse_tile_logs">Share logs</string>
 </resources>

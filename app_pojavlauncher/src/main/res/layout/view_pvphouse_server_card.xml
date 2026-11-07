@@ -15,6 +15,44 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
+        <ImageView
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:contentDescription="@null"
+            android:src="@drawable/splash_logo" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/noto_sans_bold"
+                android:text="@string/pvphouse_server_title"
+                android:textColor="@color/primary_text"
+                android:textSize="@dimen/_18ssp" />
+
+            <TextView
+                android:id="@+id/pvphouse_server_address"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/secondary_text"
+                android:textSize="@dimen/_10ssp"
+                tools:text="Minecraft 1.21.11 · mc.pvphouse.net" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/_8sdp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
         <View
             android:id="@+id/pvphouse_status_dot"
             android:layout_width="10dp"
@@ -22,32 +60,15 @@
             android:background="@drawable/pvp_status_dot_unknown" />
 
         <TextView
+            android:id="@+id/pvphouse_status_text"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/_6sdp"
             android:layout_weight="1"
-            android:fontFamily="@font/noto_sans_bold"
-            android:text="@string/pvphouse_server_title"
-            android:textColor="@color/primary_text"
-            android:textSize="@dimen/_14ssp" />
-
-        <TextView
-            android:id="@+id/pvphouse_server_address"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:text="@string/pvphouse_status_checking"
             android:textColor="@color/secondary_text"
-            android:textSize="@dimen/_10ssp"
-            tools:text="mc.pvphouse.net" />
+            android:textSize="@dimen/_11ssp" />
     </LinearLayout>
-
-    <TextView
-        android:id="@+id/pvphouse_status_text"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="@dimen/_4sdp"
-        android:text="@string/pvphouse_status_checking"
-        android:textColor="@color/secondary_text"
-        android:textSize="@dimen/_11ssp" />
 
     <TextView
         android:id="@+id/pvphouse_motd"
@@ -65,7 +86,7 @@
     <com.kdt.mcgui.MineButton
         android:id="@+id/pvphouse_join_button"
         android:layout_width="match_parent"
-        android:layout_height="@dimen/_48sdp"
+        android:layout_height="@dimen/_52sdp"
         android:layout_marginTop="@dimen/_8sdp"
         android:text="@string/pvphouse_join_button"
         android:textAllCaps="true"

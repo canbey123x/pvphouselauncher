@@ -96,7 +96,8 @@ public class MainMenuFragment extends Fragment {
         });
 
 
-        mNewsButton.setOnLongClickListener((v)->{
+        // PvPHouse: the wiki button is hidden, so the gamepad mapper shortcut lives on the controls tile
+        mCustomControlButton.setOnLongClickListener((v)->{
             Tools.swapFragment(requireActivity(), GamepadMapperFragment.class, GamepadMapperFragment.TAG, null);
             return true;
         });
@@ -138,7 +139,7 @@ public class MainMenuFragment extends Fragment {
         mStatusText = root.findViewById(R.id.pvphouse_status_text);
         mMotdText = root.findViewById(R.id.pvphouse_motd);
         TextView address = root.findViewById(R.id.pvphouse_server_address);
-        address.setText(PvPHouseConfig.SERVER_HOST);
+        address.setText(getString(R.string.pvphouse_server_subtitle, PvPHouseConfig.GAME_VERSION, PvPHouseConfig.SERVER_HOST));
 
         Button joinButton = root.findViewById(R.id.pvphouse_join_button);
         // MineButton forces its own background in its constructor, so set ours afterwards
