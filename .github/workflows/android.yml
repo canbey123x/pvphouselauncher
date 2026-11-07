@@ -94,7 +94,23 @@ jobs:
           test -n "$JAR"
           mkdir -p ../app_pojavlauncher/src/main/assets/pvphouse
           cp "$JAR" ../app_pojavlauncher/src/main/assets/pvphouse/pvphouse-autologin.jar
-          unzip -l ../app_pojavlauncher/src/main/assets/pvphouse/pvphouse-autologin.jar | grep -E 'fabric.mod.json|PvPHouseAutoLogin|refmap'
+          unzip -l ../app_pojavlauncher/src/main/assets/pvphouse/pvphouse-autologin.jar
+          # Guard: in the production jar the mixin must target the intermediary name (method_XXXX),
+          # either directly in the annotation or through a refmap. Otherwise auto-login would be
+          # silently skipped at runtime, so fail the build instead.
+          CHECK=$(mktemp -d)
+          unzip -q -o ../app_pojavlauncher/src/main/assets/pvphouse/pvphouse-autologin.jar -d "$CHECK"
+          MIXIN_CLASS=$(find "$CHECK" -name 'ClientPacketListenerMixin.class' | head -n1)
+          test -n "$MIXIN_CLASS"
+          "$JAVA_HOME/bin/javap" -v "$MIXIN_CLASS" | grep -E 'handleLogin|method_|class_' || true
+          REFMAP=$(find "$CHECK" -maxdepth 1 -name '*refmap*.json' | head -n1)
+          if [ -n "$REFMAP" ]; then cat "$REFMAP"; fi
+          if "$JAVA_HOME/bin/javap" -v "$MIXIN_CLASS" | grep -q 'method_' \
+             || { [ -n "$REFMAP" ] && grep -q 'method_' "$REFMAP"; }; then
+            echo "Mixin target is remapped to intermediary: OK"
+          else
+            echo "::error::Auto-login mixin target was not remapped to intermediary names"; exit 1
+          fi
 
       - uses: gradle/actions/setup-gradle@v4
         with:
