@@ -148,6 +148,26 @@ public final class PvPHouseProfileSetup {
         if (changed) LauncherProfiles.write();
     }
 
+    private static final String PREF_RENDERER_DEFAULT_APPLIED = "pvphouse_renderer_default_v1";
+
+    /**
+     * Once per install: if the PvPHouse profile is still on the automatic renderer and the device
+     * has Vulkan hardware, switch it to Zink (needed for the server resource pack's text shader).
+     * Never touches a renderer the player picked; runs only once so a later change back sticks.
+     */
+    public static void applyDefaultRenderer(android.content.Context context) {
+        if (LauncherPreferences.DEFAULT_PREF.getBoolean(PREF_RENDERER_DEFAULT_APPLIED, false)) return;
+        LauncherProfiles.load();
+        MinecraftProfile profile = LauncherProfiles.mainProfileJson.profiles.get(PvPHouseConfig.PROFILE_KEY);
+        if (profile == null) return; // try again once the profile exists
+        if (profile.pojavRendererName == null && Tools.checkVulkanSupport(context.getPackageManager())) {
+            profile.pojavRendererName = PvPHouseConfig.VULKAN_RENDERER;
+            LauncherProfiles.write();
+            Log.i(TAG, "PvPHouse profile renderer set to " + PvPHouseConfig.VULKAN_RENDERER);
+        }
+        LauncherPreferences.DEFAULT_PREF.edit().putBoolean(PREF_RENDERER_DEFAULT_APPLIED, true).apply();
+    }
+
     /** Newest loader flagged stable by Fabric meta (the API lists newest first). */
     private static String findLatestStableLoader() throws IOException, NoStableLoaderException {
         FabricVersion[] versions = FabriclikeUtils.FABRIC_UTILS.downloadLoaderVersions(PvPHouseConfig.GAME_VERSION);

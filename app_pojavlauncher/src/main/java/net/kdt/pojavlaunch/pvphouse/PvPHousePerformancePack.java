@@ -160,7 +160,7 @@ public final class PvPHousePerformancePack {
         boolean sodiumInstalled = sodium != null && wanted.containsKey(sodium.projectId);
         writeManifest(modsDir, installedFiles);
         updateSodiumOverride(sodiumInstalled);
-        if (sodiumInstalled) ensureSodiumCompatibleRenderer();
+
         LauncherPreferences.DEFAULT_PREF.edit().putLong(PREF_LAST_CHECK, System.currentTimeMillis()).apply();
 
         if (listener != null) {
@@ -286,18 +286,6 @@ public final class PvPHousePerformancePack {
 
     // ---------------------------------------------------------------- helpers
 
-    /** Sodium only works with MobileGlues or LTW here; "automatic" (null) resolves to MobileGlues. */
-    private static void ensureSodiumCompatibleRenderer() {
-        net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.load();
-        net.kdt.pojavlaunch.value.launcherprofiles.MinecraftProfile profile =
-                net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.mainProfileJson.profiles.get(PvPHouseConfig.PROFILE_KEY);
-        if (profile == null || profile.pojavRendererName == null) return;
-        String renderer = profile.pojavRendererName;
-        if (renderer.equals("opengles_mobileglues") || renderer.contains("ltw")) return;
-        Log.i(TAG, "Renderer " + renderer + " does not support Sodium, switching the PvPHouse profile to automatic");
-        profile.pojavRendererName = null;
-        net.kdt.pojavlaunch.value.launcherprofiles.LauncherProfiles.write();
-    }
 
     private static File modsDir() {
         return new File(Tools.DIR_GAME_HOME, PvPHouseConfig.PROFILE_GAME_DIR + "/mods");

@@ -23,8 +23,6 @@ import java.util.Locale;
 public final class PvPHouseAutoLogin implements ClientModInitializer {
 	private static final Logger LOGGER = LoggerFactory.getLogger("PvPHouseAutoLogin");
 	private static final String FILE_PROPERTY = "pvphouse.autologin.file";
-	/** Give the server (AuthMe) a moment after the join before sending the command. */
-	private static final long SEND_DELAY_MS = 1500L;
 
 	private static volatile String sHost;
 	private static volatile int sPort = 25565;
@@ -57,34 +55,86 @@ public final class PvPHouseAutoLogin implements ClientModInitializer {
 		}
 	}
 
-	/** Called on the client thread after the game "login" packet was handled. */
+	// ---- per-join state (client thread only) ----
+	private static final long FALLBACK_DELAY_MS = 4000L;
+	private static final long MIN_RESEND_INTERVAL_MS = 4000L;
+	private static final int MAX_ATTEMPTS_PER_JOIN = 3;
+	private static int sJoinId = 0;
+	private static int sAttempts = 0;
+	private static long sLastSentAt = 0;
+	private static boolean sRegisterSentThisJoin = false;
+
+	/**
+	 * Called on the client thread after the game "login" packet was handled.
+	 * We mainly react to AuthMe's own prompts (see {@link #onSystemMessage}); this only schedules a
+	 * single fallback in case no prompt arrives (e.g. custom AuthMe messages without the command).
+	 */
 	public static void onJoinedServer(ClientPacketListener connection) {
-		if (sPassword == null || sHost == null) return;
+		if (!isPvPHouseHost(connection.getServerData())) return;
+		if (sPassword == null || sHost == null) {
+			LOGGER.info("Joined PvPHouse but auto-login is inactive (no saved credentials for this account)");
+			return;
+		}
 		if (!isPvPHouse(connection.getServerData())) return;
+		final int joinId = ++sJoinId;
+		sAttempts = 0;
+		sLastSentAt = 0;
+		sRegisterSentThisJoin = false;
 
-		final String command = sRegister
-				? "register " + sPassword + " " + sPassword
-				: "login " + sPassword;
-		final boolean wasRegister = sRegister;
-
-		Thread sender = new Thread(() -> {
+		Thread fallback = new Thread(() -> {
 			try {
-				Thread.sleep(SEND_DELAY_MS);
+				Thread.sleep(FALLBACK_DELAY_MS);
 			} catch (InterruptedException e) {
 				return;
 			}
 			Minecraft minecraft = Minecraft.getInstance();
 			minecraft.execute(() -> {
-				ClientPacketListener current = minecraft.getConnection();
-				// Re-check: the player may have left or switched servers during the delay
-				if (current == null || !isPvPHouse(current.getServerData())) return;
-				current.sendCommand(command);
-				LOGGER.info("Sent /{} to PvPHouse", wasRegister ? "register" : "login");
-				if (wasRegister) sRegister = false; // later joins in this session use /login
+				if (joinId != sJoinId || sAttempts > 0) return; // a prompt already handled it
+				send(minecraft.getConnection(), sRegister);
 			});
 		}, "PvPHouse-AutoLogin");
-		sender.setDaemon(true);
-		sender.start();
+		fallback.setDaemon(true);
+		fallback.start();
+	}
+
+	/**
+	 * Called on the client thread for every server system message. AuthMe's prompts always contain
+	 * the command itself ("/login <password>", "/register <password> <ConfirmPassword>"), whatever
+	 * language its messages are in, so we answer exactly what the server asks for.
+	 */
+	public static void onSystemMessage(ClientPacketListener connection, String message) {
+		if (sPassword == null || sHost == null || message == null) return;
+		if (!isPvPHouse(connection.getServerData())) return;
+		String lower = message.toLowerCase(Locale.ROOT);
+		boolean asksRegister = lower.contains("/register");
+		boolean asksLogin = lower.contains("/login");
+		if (!asksRegister && !asksLogin) return;
+		if (asksRegister && !sRegisterSentThisJoin) {
+			send(connection, true);
+		} else if (asksLogin) {
+			send(connection, false);
+		}
+	}
+
+	private static void send(ClientPacketListener connection, boolean register) {
+		if (connection == null || !isPvPHouse(connection.getServerData())) return;
+		long now = System.currentTimeMillis();
+		if (sAttempts >= MAX_ATTEMPTS_PER_JOIN || now - sLastSentAt < MIN_RESEND_INTERVAL_MS) return;
+		sAttempts++;
+		sLastSentAt = now;
+		if (register) {
+			sRegisterSentThisJoin = true;
+			sRegister = false; // after registering, later joins log in
+			connection.sendCommand("register " + sPassword + " " + sPassword);
+		} else {
+			connection.sendCommand("login " + sPassword);
+		}
+		LOGGER.info("Sent /{} to PvPHouse (attempt {})", register ? "register" : "login", sAttempts);
+	}
+
+	/** Host check that also works when no credentials were handed over (diagnostics only). */
+	private static boolean isPvPHouseHost(ServerData server) {
+		return server != null && server.ip != null && server.ip.toLowerCase(Locale.ROOT).contains("pvphouse");
 	}
 
 	private static boolean isPvPHouse(ServerData server) {

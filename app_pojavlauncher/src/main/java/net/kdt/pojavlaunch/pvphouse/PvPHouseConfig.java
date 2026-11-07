@@ -42,6 +42,14 @@ public final class PvPHouseConfig {
     public static final String PERF_PACK_SODIUM = "sodium";
     public static final String PERF_PACK_SODIUM_COMPANION = "podium";
 
+        /**
+     * Default renderer of the PvPHouse profile on devices with Vulkan hardware. The PvPHouse
+     * resource pack (ItemsAdder) ships a custom core text shader that MobileGlues cannot translate
+     * ("reload failed"); Zink compiles desktop GLSL natively. Devices without Vulkan keep the
+     * upstream automatic choice (MobileGlues).
+     */
+    public static final String VULKAN_RENDERER = "opengles3_desktopgl_zink_kopper";
+
         /** Default RAM: ~40% of device RAM, clamped to [1 GB, 4 GB] on 64-bit devices. */
     public static final float RAM_FRACTION = 0.40f;
     public static final int RAM_MIN_MB = 1024;

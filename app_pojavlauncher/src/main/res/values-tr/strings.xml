@@ -481,7 +481,7 @@
     <string name="pvphouse_perf_downloading">%1$s indiriliyor…</string>
     <string name="pvphouse_perf_installed">Kuruldu:\n%1$s</string>
     <string name="pvphouse_perf_unavailable">Şunlar için Minecraft %1$s ile uyumlu sürüm bulunamadı, atlandı:\n%2$s</string>
-    <string name="pvphouse_perf_sodium_note">Sodium, MobileGlues (varsayılan) veya LTW renderer\'ı gerektirir. Oyunda grafik hataları görürsen paketi kapat.</string>
+    <string name="pvphouse_perf_sodium_note">Sodium, MobileGlues veya LTW renderer için tasarlanmıştır. PvPHouse profili sunucunun doku paketi için Vulkan (Zink) kullanıyor olabilir; grafik hatası veya çökme görürsen paketi kapat.</string>
     <string name="pvphouse_perf_removed">Performans paketi kaldırıldı. Kendi eklediğin modlara dokunulmadı.</string>
     <string name="pvphouse_perf_failed">Performans paketi kurulamadı: %1$s</string>
 </resources>
