@@ -16,9 +16,11 @@
         android:orientation="horizontal">
 
         <ImageView
-            android:layout_width="@dimen/_40sdp"
-            android:layout_height="@dimen/_40sdp"
-            android:contentDescription="@null"
+            android:layout_width="@dimen/_64sdp"
+            android:layout_height="@dimen/_48sdp"
+            android:adjustViewBounds="true"
+            android:contentDescription="@string/pvphouse_server_title"
+            android:scaleType="fitCenter"
             android:src="@drawable/splash_logo" />
 
         <LinearLayout
