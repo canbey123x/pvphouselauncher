@@ -85,11 +85,16 @@ android {
             keyAlias "androiddebugkey"
             keyPassword "android"
         }
+        // PvPHouse: release key comes ONLY from the environment (GitHub Secrets in CI).
+        // Never commit a keystore. See README "Signing".
         customRelease {
-            storeFile file("aamc_upload.jks")
-            storePassword System.getenv("GPLAY_KEYSTORE_PASSWORD")
-            keyAlias "android_github_release"
-            keyPassword System.getenv("GPLAY_KEYSTORE_PASSWORD")
+            def ksPath = System.getenv("PVPHOUSE_KEYSTORE_FILE")
+            if (ksPath != null && !ksPath.isBlank()) {
+                storeFile file(ksPath)
+                storePassword System.getenv("PVPHOUSE_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("PVPHOUSE_KEY_ALIAS")
+                keyPassword System.getenv("PVPHOUSE_KEY_PASSWORD")
+            }
         }
         googlePlayBuild {
             storeFile file("upload.jks")
@@ -142,7 +147,11 @@ android {
             // Don't set to true or java.awt will be a.a or something similar.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.customRelease
+            // Signed with the release key when PVPHOUSE_KEYSTORE_FILE is set, otherwise falls back
+            // to the debug key so local/untagged release builds still install.
+            def hasReleaseKey = System.getenv("PVPHOUSE_KEYSTORE_FILE") != null && !System.getenv("PVPHOUSE_KEYSTORE_FILE").isBlank()
+            if (!hasReleaseKey) logger.warn('BUILD: PVPHOUSE_KEYSTORE_FILE not set, release APK will be signed with the DEBUG key')
+            signingConfig hasReleaseKey ? signingConfigs.customRelease : signingConfigs.customDebug
             // defaultConfig already set
             // multiDexEnabled = true
             // debuggable = true
