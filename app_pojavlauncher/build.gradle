@@ -14,7 +14,8 @@ def getVersionName = {
 
     try {
         TAG = providers.exec {
-            commandLine 'git', 'describe', '--tags'
+            // PvPHouse: ignore the rolling "latest-debug" release tag
+            commandLine 'git', 'describe', '--tags', '--exclude', 'latest-*'
             ignoreExitValue = true
         }.getStandardOutput().asText.get()
     } catch (Exception e) {
@@ -25,7 +26,7 @@ def getVersionName = {
     if (TAG.toString().trim().isEmpty()) {
         try {
             TAG_PART_COMMIT = providers.exec {
-                commandLine 'git', 'describe', '--always', '--tags'
+                commandLine 'git', 'describe', '--always', '--tags', '--exclude', 'latest-*'
                 ignoreExitValue = true
             }.getStandardOutput().asText.get()
         } catch (Exception ignored) {
