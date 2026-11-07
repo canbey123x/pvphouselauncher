@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    PLACEHOLDER launcher icon foreground (PvPHouse shield + sword).
+    Replace this file (or point mipmap-anydpi-v26/ic_launcher*.xml elsewhere)
+    with the final artwork. Keep important content inside the 66dp safe zone.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M54,28 L76,36 L76,54 C76,67 66,76 54,81 C42,76 32,67 32,54 L32,36 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54" android:startY="28"
+                android:endX="54" android:endY="81"
+                android:startColor="@color/pvp_orange"
+                android:endColor="@color/pvp_red_dark" />
+        </aapt:attr>
+    </path>
+    <group android:pivotX="54" android:pivotY="54" android:rotation="-38">
+        <path android:fillColor="#FFFFFF" android:pathData="M54,33 L56.6,37 L56.6,60 L51.4,60 L51.4,37 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M46,60 L62,60 L62,63 L46,63 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M52.7,63 L55.3,63 L55.3,69 L52.7,69 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M54,70.5 m-2.3,0 a2.3,2.3 0 1,0 4.6,0 a2.3,2.3 0 1,0 -4.6,0" />
+    </group>
+    <group android:pivotX="54" android:pivotY="54" android:rotation="38">
+        <path android:fillColor="#FFFFFF" android:pathData="M54,33 L56.6,37 L56.6,60 L51.4,60 L51.4,37 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M46,60 L62,60 L62,63 L46,63 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M52.7,63 L55.3,63 L55.3,69 L52.7,69 Z" />
+        <path android:fillColor="#FFFFFF" android:pathData="M54,70.5 m-2.3,0 a2.3,2.3 0 1,0 4.6,0 a2.3,2.3 0 1,0 -4.6,0" />
+    </group>
+</vector>

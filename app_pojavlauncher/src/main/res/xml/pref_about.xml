@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PvPHouse Launcher: About screen (attribution required by LGPL-3.0 fork) -->
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <net.kdt.pojavlaunch.prefs.BackButtonPreference/>
+    <PreferenceCategory android:title="@string/about_category_app">
+        <Preference
+            android:key="about_version"
+            android:title="@string/about_version_title"
+            android:selectable="false"
+            app:iconSpaceReserved="false" />
+        <Preference
+            android:key="about_based_on"
+            android:title="@string/about_based_on_title"
+            android:summary="@string/about_based_on_summary"
+            app:iconSpaceReserved="false">
+            <intent android:action="android.intent.action.VIEW"
+                android:data="@string/pvphouse_upstream_amethyst_url" />
+        </Preference>
+        <Preference
+            android:key="about_pojav"
+            android:title="@string/about_pojav_title"
+            android:summary="@string/pvphouse_upstream_pojav_url"
+            app:iconSpaceReserved="false">
+            <intent android:action="android.intent.action.VIEW"
+                android:data="@string/pvphouse_upstream_pojav_url" />
+        </Preference>
+        <Preference
+            android:key="about_source"
+            android:title="@string/about_source_title"
+            android:summary="@string/about_source_summary"
+            app:iconSpaceReserved="false">
+            <intent android:action="android.intent.action.VIEW"
+                android:data="@string/pvphouse_source_url" />
+        </Preference>
+        <Preference
+            android:key="about_license"
+            android:title="@string/about_license_title"
+            android:summary="@string/about_license_summary"
+            app:iconSpaceReserved="false">
+            <intent android:action="android.intent.action.VIEW"
+                android:data="@string/pvphouse_license_url" />
+        </Preference>
+        <Preference
+            android:key="about_disclaimer"
+            android:summary="@string/about_disclaimer"
+            android:selectable="false"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+</PreferenceScreen>

@@ -41,7 +41,7 @@ def getVersionName = {
             return ("LOCAL-" + "${getDate()}")
         }else {
             // Used by github actions
-            TAG_STRING =  'amethyst-legacy-' + "${getDate()}" + "-" + TAG_PART_COMMIT.toString().trim()
+            TAG_STRING =  'pvphouse-' + "${getDate()}" + "-" + TAG_PART_COMMIT.toString().trim()
         }
 
     }
@@ -100,7 +100,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "org.angelauramc.amethyst"
+        applicationId "net.pvphouse.launcher"
         minSdkVersion 21
         targetSdkVersion 34
         versionCode 10000000
@@ -122,11 +122,11 @@ android {
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.customDebug
-            resValue "string", "app_name", "Amethyst (Debug)"
-            resValue "string", "app_short_name", "Amethyst (Debug)"
-            resValue 'string', 'application_package', 'org.angelauramc.amethyst.debug'
-            resValue 'string', 'storageProviderAuthorities', 'org.angelauramc.amethyst.scoped.gamefolder.debug'
-            resValue 'string', 'shareProviderAuthority', 'org.angelauramc.amethyst.scoped.controlfolder.debug'
+            resValue "string", "app_name", "PvPHouse Launcher (Debug)"
+            resValue "string", "app_short_name", "PvPHouse (Debug)"
+            resValue 'string', 'application_package', 'net.pvphouse.launcher.debug'
+            resValue 'string', 'storageProviderAuthorities', 'net.pvphouse.launcher.scoped.gamefolder.debug'
+            resValue 'string', 'shareProviderAuthority', 'net.pvphouse.launcher.scoped.controlfolder.debug'
         }
         proguard {
             initWith debug
@@ -146,10 +146,10 @@ android {
             // defaultConfig already set
             // multiDexEnabled = true
             // debuggable = true
-            resValue "string", "app_name", "Amethyst"
-            resValue "string", "app_short_name", "Amethyst"
-            resValue 'string', 'storageProviderAuthorities', 'org.angelauramc.amethyst.scoped.gamefolder'
-            resValue 'string', 'application_package', 'org.angelauramc.amethyst'
+            resValue "string", "app_name", "PvPHouse Launcher"
+            resValue "string", "app_short_name", "PvPHouse"
+            resValue 'string', 'storageProviderAuthorities', 'net.pvphouse.launcher.scoped.gamefolder'
+            resValue 'string', 'application_package', 'net.pvphouse.launcher'
         }
         gplay {
             initWith release

@@ -424,4 +424,17 @@
     <string name="preference_touchcontroller_vibrate_length_description">DokunmatikKontrolcü kullanılır iken oluşan titreşim uzunluğunu ayarla.</string>
     <string name="error_vanilla_json_corrupt">Vanila json dosyaları görünüşe göre bozulmuş veya deforme halde. Lütfen Github veya discord\'a bir Hata raporu yollayınız.</string>
     <string name="preference_ask_for_microphone_title">Mikrofona izin ver</string>
+    <!-- ===== PvPHouse Launcher ===== -->
+    <string name="preference_about_title">Hakkında</string>
+    <string name="preference_about_description">Sürüm, lisans ve teşekkürler</string>
+    <string name="about_category_app">PvPHouse Launcher</string>
+    <string name="about_version_title">Sürüm</string>
+    <string name="about_based_on_title">PojavLauncher tabanlıdır</string>
+    <string name="about_based_on_summary">PojavLauncher\'ın devamı olan Amethyst-Android üzerine kurulmuştur. Ana projeyi açmak için dokunun.</string>
+    <string name="about_pojav_title">PojavLauncher (orijinal proje)</string>
+    <string name="about_source_title">Kaynak kodu</string>
+    <string name="about_source_summary">Bu uygulamanın tüm kaynak kodu GitHub\'da açıktır.</string>
+    <string name="about_license_title">Lisans: LGPL-3.0</string>
+    <string name="about_license_summary">Bu uygulama, PojavLauncher gibi GNU Lesser General Public License v3.0 ile lisanslanmıştır.</string>
+    <string name="about_disclaimer">Resmî bir Minecraft ürünü değildir. Mojang veya Microsoft tarafından onaylanmamıştır ve bunlarla bağlantılı değildir.</string>
 </resources>

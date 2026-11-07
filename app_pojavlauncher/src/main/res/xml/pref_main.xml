@@ -53,6 +53,14 @@
             android:summary="@string/preference_experimental_description"
             android:fragment="net.kdt.pojavlaunch.prefs.screens.LauncherPreferenceExperimentalFragment"
             />
+
+        <Preference
+            android:key="about_screen_setting"
+            android:title="@string/preference_about_title"
+            android:summary="@string/preference_about_description"
+            android:fragment="net.kdt.pojavlaunch.prefs.screens.LauncherPreferenceAboutFragment"
+            android:icon="@drawable/ic_setting_misc"
+            />
     </PreferenceCategory>
 
     <SwitchPreference
