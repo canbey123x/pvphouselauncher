@@ -455,4 +455,5 @@
     <string name="pvphouse_tile_install">Mod / .jar yükle</string>
     <string name="pvphouse_tile_files">Oyun dosyaları</string>
     <string name="pvphouse_tile_logs">Log paylaş</string>
+    <string name="pvphouse_tile_website">Web sitesi · pvphouse.net</string>
 </resources>

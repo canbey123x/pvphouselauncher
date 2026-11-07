@@ -1,31 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     PvPHouse Launcher - all app colors live in this single file.
-    Palette: dark background + red/orange accent.
+    Palette: dark purple background + purple/pink accent, sampled from the PvPHouse logo.
 -->
 <resources>
     <!-- PvPHouse palette -->
-    <color name="pvp_red">#E53935</color>
-    <color name="pvp_red_dark">#B71C1C</color>
-    <color name="pvp_orange">#FF6D00</color>
-    <color name="pvp_orange_light">#FF9E40</color>
-    <color name="pvp_bg_darkest">#0E0E10</color>
-    <color name="pvp_bg_dark">#16161A</color>
-    <color name="pvp_bg_surface">#1F1F25</color>
-    <color name="pvp_bg_elevated">#2A2A32</color>
+    <color name="pvp_purple">#8E2BC9</color>
+    <color name="pvp_purple_dark">#5A1880</color>
+    <color name="pvp_pink">#F030C0</color>
+    <color name="pvp_pink_light">#F5A8E4</color>
+    <color name="pvp_bg_darkest">#0D0714</color>
+    <color name="pvp_bg_dark">#140B1F</color>
+    <color name="pvp_bg_surface">#1F112F</color>
+    <color name="pvp_bg_elevated">#30194A</color>
     <color name="pvp_online">#43A047</color>
     <color name="pvp_offline">#E53935</color>
 
     <!-- Theme roles -->
-    <color name="colorPrimary">@color/pvp_red</color>
+    <color name="colorPrimary">@color/pvp_purple</color>
     <color name="colorPrimaryDark">@color/pvp_bg_darkest</color>
-    <color name="colorAccent">@color/pvp_orange</color>
+    <color name="colorAccent">@color/pvp_pink</color>
 
     <!-- Names used throughout the original codebase, re-pointed to the palette -->
     <color name="control_button_color">#4CC4C4C4</color>
     <color name="control_button_pressed_color">#4D000000</color>
 
-    <color name="minebutton_color">@color/pvp_red</color>
+    <color name="minebutton_color">@color/pvp_purple</color>
     <color name="background_app">@color/pvp_bg_dark</color>
     <color name="divider">@color/background_overlay</color>
     <color name="background_overlay">@color/pvp_bg_elevated</color>
@@ -33,7 +33,7 @@
     <color name="background_bottom_bar">@color/pvp_bg_surface</color>
 
     <color name="primary_text">#FFFFFF</color>
-    <color name="secondary_text">#B2B2B2</color>
+    <color name="secondary_text">#BFA9CF</color>
 
     <!-- Launcher icon / splash -->
     <color name="ic_launcher_background">@color/pvp_bg_darkest</color>

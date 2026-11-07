@@ -12,6 +12,9 @@ public final class PvPHouseConfig {
     /** Display name used in servers.dat and the UI. */
     public static final String SERVER_NAME = "PvPHouse";
 
+    /** PvPHouse website, opened from the main menu. */
+    public static final String WEBSITE_URL = "https://pvphouse.net";
+
     /** Minecraft version of the server (vanilla). */
     public static final String GAME_VERSION = "1.21.11";
 

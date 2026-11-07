@@ -42,6 +42,17 @@
             android:text="@string/pvphouse_tile_logs" />
     </LinearLayout>
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+        <Button
+            android:id="@+id/pvphouse_site_button"
+            style="@style/PvPHouseTile"
+            android:drawableTop="@drawable/ic_menu_news"
+            android:text="@string/pvphouse_tile_website" />
+    </LinearLayout>
+
     <!-- Upstream links (Amethyst wiki / Discord): hidden, kept so the fragment code still finds them -->
     <Button android:id="@+id/news_button" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
     <Button android:id="@+id/discord_button" android:layout_width="0dp" android:layout_height="0dp" android:visibility="gone" />
