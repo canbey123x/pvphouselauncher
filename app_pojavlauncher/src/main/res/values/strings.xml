@@ -518,7 +518,7 @@
     <string name="use_angle_checkbox">Use ANGLE (might help FPS)</string>
 
     <!-- ===== PvPHouse Launcher ===== -->
-    <string name="pvphouse_source_url" translatable="false">https://github.com/OWNER/pvphouselauncher</string>
+    <string name="pvphouse_source_url" translatable="false">https://github.com/canbey123x/pvphouselauncher</string>
     <string name="pvphouse_upstream_amethyst_url" translatable="false">https://github.com/AngelAuraMC/Amethyst-Android</string>
     <string name="pvphouse_upstream_pojav_url" translatable="false">https://github.com/PojavLauncherTeam/PojavLauncher</string>
     <string name="pvphouse_license_url" translatable="false">https://www.gnu.org/licenses/lgpl-3.0.html</string>
