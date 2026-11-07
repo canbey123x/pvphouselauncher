@@ -94,6 +94,13 @@ public class mcVersionSpinner extends ExtendedTextView {
         mProfileAdapter.reloadProfiles();
     }
 
+    /** PvPHouse: reload profiles and select (and persist) the profile with the given key, if it exists. */
+    public void reloadAndSelectProfile(String profileKey){
+        mProfileAdapter.reloadProfiles();
+        int index = mProfileAdapter.resolveProfileIndex(profileKey);
+        if(index >= 0) setProfileSelection(index);
+    }
+
     /** Initialize various behaviors */
     private void init(){
         // Setup various attributes

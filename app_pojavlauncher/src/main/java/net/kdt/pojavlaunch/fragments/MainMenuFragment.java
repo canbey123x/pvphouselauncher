@@ -118,6 +118,11 @@ public class MainMenuFragment extends Fragment {
         mVersionSpinner.reloadProfiles();
     }
 
+    /** PvPHouse: called by LauncherActivity when the PvPHouse profile has just been created. */
+    public void onProfileCreated(String profileKey) {
+        if (mVersionSpinner != null) mVersionSpinner.reloadAndSelectProfile(profileKey);
+    }
+
     private void runInstallerWithConfirmation(boolean isCustomArgs) {
         if (ProgressKeeper.getTaskCount() == 0)
             Tools.installMod(requireActivity(), isCustomArgs);

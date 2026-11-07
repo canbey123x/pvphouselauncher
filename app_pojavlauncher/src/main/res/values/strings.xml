@@ -534,4 +534,8 @@
     <string name="about_license_title">License: LGPL-3.0</string>
     <string name="about_license_summary">This app is licensed under the GNU Lesser General Public License v3.0, like PojavLauncher.</string>
     <string name="about_disclaimer">Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.</string>
+    <string name="pvphouse_profile_setup_progress">Setting up the PvPHouse profile…</string>
+    <string name="pvphouse_profile_ready">PvPHouse profile is ready</string>
+    <string name="pvphouse_profile_setup_failed">Could not set up the PvPHouse profile. Check your internet connection; it will be retried on the next start.</string>
+    <string name="pvphouse_profile_no_fabric">No stable Fabric Loader is available for Minecraft %1$s yet. The PvPHouse profile will be created once one is released.</string>
 </resources>

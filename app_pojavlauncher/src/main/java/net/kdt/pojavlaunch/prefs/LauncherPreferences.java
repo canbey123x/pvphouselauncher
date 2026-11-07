@@ -154,16 +154,20 @@ public class LauncherPreferences {
      */
     private static int findBestRAMAllocation(Context ctx){
         int deviceRam = Tools.getTotalDeviceMemory(ctx);
-        if (deviceRam < 1024) return 296;
-        if (deviceRam < 1536) return 448;
-        if (deviceRam < 2048) return 656;
-        // Limit the max for 32 bits devices more harshly
-        if (is32BitsDevice()) return 696;
-
-        if (deviceRam < 3064) return 936;
-        if (deviceRam < 4096) return 1144;
-        if (deviceRam < 6144) return 1536;
-        return 2048; //Default RAM allocation for 64 bits
+        // 32-bit JVMs cannot reliably reserve 1 GB of heap: keep upstream's conservative values.
+        if (is32BitsDevice()) {
+            if (deviceRam < 1024) return 296;
+            if (deviceRam < 1536) return 448;
+            if (deviceRam < 2048) return 656;
+            return 696;
+        }
+        // PvPHouse: ~40% of device RAM, clamped to [1 GB, 4 GB]
+        int ram = Math.round(deviceRam * net.kdt.pojavlaunch.pvphouse.PvPHouseConfig.RAM_FRACTION);
+        ram = Math.max(net.kdt.pojavlaunch.pvphouse.PvPHouseConfig.RAM_MIN_MB, ram);
+        ram = Math.min(net.kdt.pojavlaunch.pvphouse.PvPHouseConfig.RAM_MAX_MB, ram);
+        // Never exceed what the RAM slider allows (LauncherPreferenceJavaFragment), so Android can breathe
+        int sliderMax = deviceRam < 2048 ? Math.min(1024, deviceRam) : deviceRam - (deviceRam < 3064 ? 800 : 1024);
+        return Math.min(ram, sliderMax);
     }
 
     /// Find a correct resolution for the device

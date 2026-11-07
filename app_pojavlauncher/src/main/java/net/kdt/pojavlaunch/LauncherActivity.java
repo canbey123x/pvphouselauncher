@@ -271,6 +271,25 @@ public class LauncherActivity extends BaseActivity {
         }
     };
 
+    /* PvPHouse: result of the first-start profile setup */
+    private final net.kdt.pojavlaunch.pvphouse.PvPHouseProfileSetup.Listener mPvPHouseProfileListener =
+            new net.kdt.pojavlaunch.pvphouse.PvPHouseProfileSetup.Listener() {
+        @Override
+        public void onProfileReady(String profileKey, boolean created) {
+            if (!created || isFinishing() || isDestroyed()) return;
+            Fragment root = getSupportFragmentManager().findFragmentByTag("ROOT");
+            if (root instanceof MainMenuFragment) ((MainMenuFragment) root).onProfileCreated(profileKey);
+            Toast.makeText(LauncherActivity.this, R.string.pvphouse_profile_ready, Toast.LENGTH_SHORT).show();
+        }
+
+        @Override
+        public void onProfileFailed(int messageRes, Throwable error) {
+            if (isFinishing() || isDestroyed()) return;
+            Toast.makeText(LauncherActivity.this,
+                    getString(messageRes, net.kdt.pojavlaunch.pvphouse.PvPHouseConfig.GAME_VERSION), Toast.LENGTH_LONG).show();
+        }
+    };
+
     private ActivityResultLauncher<String> mRequestNotificationPermissionLauncher;
     private ActivityResultLauncher<String> mRequestMicrophonePermissionLauncher;
     private WeakReference<Runnable> mRequestNotificationPermissionRunnable;
@@ -341,6 +360,9 @@ public class LauncherActivity extends BaseActivity {
         new AsyncVersionList().getVersionList(versions -> ExtraCore.setValue(ExtraConstants.RELEASE_TABLE, versions), false);
 
         mInstallTracker = new ModloaderInstallTracker(this);
+
+        // PvPHouse: create the default "PvPHouse" profile (Fabric + server version) on first start
+        net.kdt.pojavlaunch.pvphouse.PvPHouseProfileSetup.ensureProfile(mPvPHouseProfileListener);
 
         mProgressLayout.observe(ProgressLayout.DOWNLOAD_MINECRAFT);
         mProgressLayout.observe(ProgressLayout.UNPACK_RUNTIME);

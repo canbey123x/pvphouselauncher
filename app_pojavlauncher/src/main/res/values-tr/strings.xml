@@ -437,4 +437,8 @@
     <string name="about_license_title">Lisans: LGPL-3.0</string>
     <string name="about_license_summary">Bu uygulama, PojavLauncher gibi GNU Lesser General Public License v3.0 ile lisanslanmıştır.</string>
     <string name="about_disclaimer">Resmî bir Minecraft ürünü değildir. Mojang veya Microsoft tarafından onaylanmamıştır ve bunlarla bağlantılı değildir.</string>
+    <string name="pvphouse_profile_setup_progress">PvPHouse profili hazırlanıyor…</string>
+    <string name="pvphouse_profile_ready">PvPHouse profili hazır</string>
+    <string name="pvphouse_profile_setup_failed">PvPHouse profili hazırlanamadı. İnternet bağlantınızı kontrol edin; bir sonraki açılışta tekrar denenecek.</string>
+    <string name="pvphouse_profile_no_fabric">Minecraft %1$s için henüz kararlı bir Fabric Loader yok. Yayınlandığında PvPHouse profili oluşturulacak.</string>
 </resources>
