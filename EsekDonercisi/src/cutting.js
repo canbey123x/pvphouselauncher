@@ -20,7 +20,9 @@ export class CuttingStation {
     this.zone = document.getElementById('cutZone');
     this.active = false;
     this.slices = 0;
-    this.item = null;       // { type, slices }
+    this.item = null;       // { type, slices, salad }
+    this.maxSlices = MAX_SLICES; // Büyük tepsi yükseltmesiyle 12
+    this.swipeFactor = 1;        // Keskin bıçak yükseltmesiyle 0.6
     this.meatLevel = 1;     // 0..1 döner miktarı
     this.flying = [];
     this.pile = [];
@@ -64,7 +66,7 @@ export class CuttingStation {
       if (!s || s.id !== e.pointerId || !this.active) return;
       e.preventDefault();
       const H = z.clientHeight || window.innerHeight;
-      const threshold = Math.max(42, H * 0.085);
+      const threshold = Math.max(28, H * 0.085 * this.swipeFactor);
       const dy = e.clientY - s.lastY;
       s.lastY = e.clientY;
       if (dy > 0) {
@@ -123,23 +125,24 @@ export class CuttingStation {
   }
 
   _meatScale() {
-    return 0.45 + 0.55 * this.meatLevel;
+    return 0.12 + 0.88 * this.meatLevel;
   }
 
   /** Tek dilim kes. */
   cut() {
     if (!this.active) return;
-    if (this.slices >= MAX_SLICES) {
+    if (this.slices >= this.maxSlices) {
       this.ctx.toast('Tepsi dolu! Ekmek Arası ya da Dürüm yap 🥖🌯', 'warn', 'trayfull');
       return;
     }
-    if (this.meatLevel < 0.08) {
-      this.ctx.toast('Döner bitti! Biraz pişmesini bekle... 🔥', 'warn', 'nomeat');
+    const stock = this.ctx.stock;
+    if (stock.meat <= 0) {
+      this.ctx.toast('🥩 Döner eti bitti! Kasaptan et al.', 'bad', 'nomeat');
       return;
     }
+    stock.meat--;
     this.slices++;
     this.totalCut++;
-    this.meatLevel = Math.max(0, this.meatLevel - 0.04);
 
     const y = clamp(this.knifeY, this.shop.meatBottomY + 0.1, this.shop.meatTopY - 0.05);
     const r = this._meatRadiusAt(y);
@@ -181,8 +184,17 @@ export class CuttingStation {
       this.ctx.toast('Önce döner kes! Ekranı aşağı kaydır 👇', 'warn', 'noslice');
       return false;
     }
+    const stock = this.ctx.stock;
+    const need = type === 'ekmek' ? 'ekmek' : 'lavas';
+    if (stock[need] <= 0) {
+      this.ctx.toast(type === 'ekmek' ? '🥖 Ekmek bitti! Fırından ya da bakkaldan al.' : '🫓 Lavaş bitti! Fırından ya da bakkaldan al.', 'bad', 'no' + need);
+      return false;
+    }
+    stock[need]--;
+    const salad = stock.salata > 0;
+    if (salad) stock.salata--;
     const n = this.slices;
-    this.item = { type, slices: n };
+    this.item = { type, slices: n, salad };
     this.slices = 0;
     this._clearPile();
     this.itemMesh = type === 'ekmek' ? buildBread(n) : buildDurum(n);
@@ -190,7 +202,7 @@ export class CuttingStation {
     this.ctx.scene.add(this.itemMesh);
     this.ctx.sfx.wrap();
     const info = ITEM_INFO[type];
-    this.ctx.toast(`${info.icon} ${info.label} hazır (${n} dilim) → Servis Et!`, 'ok');
+    this.ctx.toast(`${info.icon} ${info.label} hazır (${n} dilim${salad ? ', salatalı 🥗' : ''}) → Servis Et!`, 'ok');
     return true;
   }
 
@@ -204,9 +216,11 @@ export class CuttingStation {
 
   update(dt, open = true) {
     const s = this.shop;
+    const target = Math.min(1, (this.ctx.stock ? this.ctx.stock.meat : 60) / 60);
+    this.meatLevel += (target - this.meatLevel) * Math.min(1, dt * 4);
     if (open) {
       s.spit.rotation.y += dt * 0.9;
-      this.meatLevel = Math.min(1, this.meatLevel + dt * 0.012);
+      // Şişteki et miktarı stoğu gösterir (60 dilim = dolu şiş)
     }
     const sc = this._meatScale();
     s.meat.scale.set(sc, 1, sc);

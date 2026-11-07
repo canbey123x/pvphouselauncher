@@ -629,3 +629,55 @@ button { font-family: inherit; cursor: pointer; }
   #sleepClock { font-size: 32px; }
   .sleep-box .moon { font-size: 48px; }
 }
+
+/* ================= v3: stok ve dükkân paneli ================= */
+.pill.stock.low { border-color: rgba(230, 57, 70, 0.85); animation: lowE 0.9s ease-in-out infinite; }
+#shopPanel { z-index: 45; }
+.shop-card { width: min(94vw, 560px); max-height: 88vh; gap: 8px; }
+.shop-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.shop-keeper { font-weight: 800; opacity: 0.7; margin-top: -2px; }
+.shop-x {
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 3px solid var(--brown);
+  background: #fff;
+  color: var(--brown);
+  font-size: 20px;
+  font-weight: 900;
+}
+.shop-greet { font-style: italic; font-weight: 700; background: rgba(0, 0, 0, 0.05); border-radius: 12px; padding: 8px 10px; }
+.shop-stock { display: flex; flex-wrap: wrap; gap: 6px; font-weight: 900; }
+.shop-stock span { background: #fff; border: 2px solid rgba(42, 26, 16, 0.25); border-radius: 999px; padding: 3px 10px; }
+.shop-stock .m { background: #e8fff0; border-color: #1f9d5c; color: #0f5c35; }
+.shop-items { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 3px solid var(--brown);
+  border-radius: 14px;
+  padding: 8px 10px;
+  box-shadow: 0 3px 0 var(--brown);
+}
+.shop-item.owned { opacity: 0.6; }
+.si-icon { font-size: 30px; width: 40px; text-align: center; flex: none; }
+.si-text { flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
+.si-text small { opacity: 0.7; font-weight: 700; }
+.si-buy {
+  flex: none;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 84px;
+  font-weight: 900;
+  font-size: 15px;
+  color: #fff;
+  background: linear-gradient(180deg, #4fe39a, #1f9d5c);
+  box-shadow: 0 4px 0 #0f5c35;
+}
+.si-buy:active { transform: translateY(3px); box-shadow: 0 1px 0 #0f5c35; }
+.si-buy.poor { background: linear-gradient(180deg, #b9b6c8, #7d7a90); box-shadow: 0 4px 0 #4a4858; }
+.si-buy:disabled { background: #cfd8d3; color: #4a5a50; box-shadow: none; }

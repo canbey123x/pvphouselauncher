@@ -11,6 +11,7 @@ import { CustomerManager } from './customers.js';
 import { NPCManager, createPerson, animatePerson } from './npcs.js';
 import { DayNight, formatClock } from './daynight.js';
 import { Home } from './house.js';
+import { CATALOG, ShopInterior, START_STOCK, STOCK_INFO } from './shops.js';
 
 const $ = (id) => document.getElementById(id);
 const HS_KEY = 'esekdonercisi.highscore';
@@ -187,6 +188,13 @@ const ui = {
   joyZone: $('joyZone'),
   highScore: $('highScore'),
   btnSound: $('btnSound'),
+  stockPill: $('stockPill'),
+  shopPanel: $('shopPanel'),
+  shopTitle: $('shopTitle'),
+  shopKeeper: $('shopKeeper'),
+  shopGreet: $('shopGreet'),
+  shopStock: $('shopStock'),
+  shopItems: $('shopItems'),
   btnStart: $('btnStart'),
   btnContinue: $('btnContinue'),
   fade: $('fade'),
@@ -282,6 +290,8 @@ const cityWorld = {
 };
 // Oyuncunun o an bulunduğu dünya (kasaba ya da evin içi)
 const homeWorld = { colliders: home.colliders, heightAt: () => home.heightAt(), resolve: (p, r) => home.resolve(p, r) };
+const shopRoom = new ShopInterior(scene);
+const shopWorld = { colliders: shopRoom.colliders, heightAt: () => shopRoom.heightAt(), resolve: (p, r) => shopRoom.resolve(p, r) };
 
 const game = {
   state: 'menu', // menu | playing | paused
@@ -295,6 +305,10 @@ const game = {
   minutes: START_MIN,
   energy: 100,
   shopOpen: false,
+  stock: { ...START_STOCK },
+  upgrades: {},
+  look: {},
+  stockWarned: {},
   snapCam: true,
   cutTutorial: false,
   busy: false,
@@ -305,14 +319,15 @@ const game = {
   sleep: null,
   day: null,
 };
-const pw = () => (game.inside ? homeWorld : cityWorld);
+const pw = () => (game.inside === 'home' ? homeWorld : game.inside === 'shop' ? shopWorld : cityWorld);
 const hourNow = () => (game.minutes % 1440) / 60;
 const dayNum = () => Math.floor(game.minutes / 1440) + 1;
 
-const ctx = { scene, camera, sfx, toast, addMoney, world: cityWorld };
+const ctx = { scene, camera, sfx, toast, addMoney, world: cityWorld, stock: game.stock };
 
+const PLAYER_BASE = { shirt: 0xffffff, pants: 0x2d3142, hat: 'chef', apron: true, mustache: true, hair: 0x1a1a1a, skin: 0xe9b47f };
 const player = {
-  person: createPerson({ shirt: 0xffffff, pants: 0x2d3142, hat: 'chef', apron: true, mustache: true, hair: 0x1a1a1a, skin: 0xe9b47f }),
+  person: createPerson(PLAYER_BASE),
   pos: new THREE.Vector3(),
   heading: Math.PI,
   phase: 0,
@@ -323,6 +338,21 @@ const player = {
 scene.add(player.person.group);
 
 const donkey = new Donkey(ctx, city.donkeySpawn);
+const BASE_DONKEY_SPEED = donkey.maxSpeed;
+
+/** Berber vb. sonrası oyuncu modelini yeniden kur. */
+function rebuildPlayer() {
+  const old = player.person;
+  const vis = old.group.visible;
+  scene.remove(old.group);
+  old.group.traverse((o) => o.isMesh && o.geometry.userData.owned && o.geometry.dispose());
+  const hair = game.look.hair ?? PLAYER_BASE.hair;
+  player.person = createPerson({ ...PLAYER_BASE, ...game.look, beardColor: hair });
+  player.person.group.visible = vis;
+  player.person.group.position.copy(old.group.position);
+  player.person.group.rotation.copy(old.group.rotation);
+  scene.add(player.person.group);
+}
 const cutting = new CuttingStation(ctx, city.shop);
 const customers = new CustomerManager(ctx, city.shop);
 const npcs = new NPCManager(ctx, city);
@@ -416,6 +446,9 @@ function saveGame() {
     perfect: customers.perfect,
     lost: customers.lost,
     totalCut: cutting.totalCut,
+    stock: game.stock,
+    upgrades: game.upgrades,
+    look: game.look,
     day: game.day,
   };
   lsSet(SAVE_KEY, JSON.stringify(data));
@@ -488,6 +521,9 @@ function computeActions() {
       }
     }
     if (distXZ(player.pos, city.home.doorPoint) < 2.2) list.push({ id: 'enter', icon: '🏠', label: 'Eve Gir', cls: 'blue' + (night ? ' hot' : ''), onPress: enterHome });
+    for (const sh of city.shops) {
+      if (distXZ(player.pos, sh.door) < 2.0) list.push({ id: 'shop-' + sh.id, icon: '🚪', label: `Gir: ${CATALOG[sh.id].title}`, cls: 'blue', onPress: () => enterShop(sh) });
+    }
     if (distXZ(player.pos, donkey.pos) < 2.6) list.push({ id: 'mount', icon: '🐴', label: 'Eşeğe Bin', cls: 'green', onPress: mount });
     const npc = npcs.nearest(player.pos, 2.7);
     if (npc) list.push({ id: 'talk-' + npc.id, icon: '💬', label: 'Konuş', cls: 'blue', onPress: () => startTalk(npc) });
@@ -503,6 +539,10 @@ function computeActions() {
     list.push({ id: 'serve', icon: '🛎️', label: 'Servis Et', cls: 'green' + (cutting.item && customers.front() ? ' hot' : ''), onPress: serve });
     list.push({ id: 'exit', icon: '🚪', label: 'Tezgahtan Çık', cls: 'gray', onPress: exitCounter });
     setActions(list, true);
+  } else if (game.mode === 'home' && game.inside === 'shop') {
+    if (distXZ(player.pos, shopRoom.counterPoint) < 2.6) list.push({ id: 'buy', icon: '🛒', label: 'Alışveriş', cls: 'yellow hot', onPress: openShopPanel });
+    if (distXZ(player.pos, shopRoom.doorPoint) < 1.7) list.push({ id: 'exit', icon: '🚪', label: 'Dışarı Çık', cls: 'gray', onPress: exitShop });
+    setActions(list);
   } else if (game.mode === 'home') {
     if (distXZ(player.pos, home.bedPoint) < 1.8) list.push({ id: 'sleep', icon: '🛏️', label: hourNow() >= 18 || hourNow() < 6 ? 'Uyu' : 'Kestir (2 saat)', cls: 'blue' + (night || game.energy < 30 ? ' hot' : ''), onPress: () => startSleep('bed') });
     if (distXZ(player.pos, home.teaPoint) < 1.6) list.push({ id: 'tea', icon: '☕', label: 'Çay İç', cls: 'yellow', onPress: drinkTea });
@@ -628,7 +668,7 @@ function startTalk(npc) {
 function enterHome() {
   sfx.door();
   fadeTo(() => {
-    game.inside = true;
+    game.inside = 'home';
     player.pos.copy(home.entry);
     player.heading = -Math.PI / 2;
     setMode('home');
@@ -658,6 +698,131 @@ function drinkTea() {
   game.minutes += 15;
   sfx.click();
   toast('☕ Tavşan kanı bir çay! +15 enerji', 'ok');
+}
+
+/* =========================================================
+   Dükkânlar: içeri gir, alışveriş, yükseltmeler
+   ========================================================= */
+function applyUpgrades() {
+  const u = game.upgrades;
+  cutting.maxSlices = u.tepsi ? 12 : 8;
+  cutting.swipeFactor = u.bicak ? 0.6 : 1;
+  customers.patienceMul = u.tabure ? 1.4 : 1;
+  donkey.maxSpeed = BASE_DONKEY_SPEED * (u.nal ? 1.25 : 1);
+}
+
+function enterShop(sh) {
+  const c = CATALOG[sh.id];
+  sfx.door();
+  fadeTo(() => {
+    game.inside = 'shop';
+    game.shopId = sh.id;
+    game.shopDoor = sh.door;
+    shopRoom.setShop(sh.id);
+    player.pos.copy(shopRoom.entry);
+    player.heading = -Math.PI / 2;
+    setMode('home');
+    toast(`${c.keeper}: "Hoş geldin usta!" — Tezgaha gel 🛒`, 'info', 'shopin');
+  });
+}
+
+function exitShop() {
+  closeShopPanel();
+  sfx.door();
+  fadeTo(() => {
+    game.inside = false;
+    player.pos.copy(game.shopDoor);
+    player.heading = game.shopDoor.z < 0 ? 0 : Math.PI;
+    cam.yaw = game.shopDoor.z < 0 ? Math.PI : 0;
+    setMode('walk');
+  });
+}
+
+function openShopPanel() {
+  if (!game.shopId) return;
+  sfx.click();
+  setMode('talk');
+  renderShopPanel();
+  show(ui.shopPanel, true);
+}
+
+function closeShopPanel() {
+  if (ui.shopPanel.classList.contains('hidden')) return;
+  show(ui.shopPanel, false);
+  if (game.inside === 'shop') setMode('home');
+}
+
+function renderShopPanel() {
+  const c = CATALOG[game.shopId];
+  ui.shopTitle.textContent = c.title;
+  ui.shopKeeper.textContent = c.keeper;
+  ui.shopGreet.textContent = `"${c.greet}"`;
+  const st = game.stock;
+  ui.shopStock.innerHTML =
+    `<span class="m">💰 ${fmt(game.money)} TL</span>` +
+    Object.entries(STOCK_INFO).map(([k, v]) => `<span title="${v.name}">${v.icon} ${st[k]}</span>`).join('') +
+    `<span>⚡ ${Math.round(game.energy)}</span>`;
+  ui.shopItems.innerHTML = '';
+  for (const it of c.items) {
+    const owned = it.upgrade && game.upgrades[it.upgrade];
+    const poor = game.money < it.price;
+    const row = document.createElement('div');
+    row.className = 'shop-item' + (owned ? ' owned' : '');
+    row.innerHTML = `<div class="si-icon">${it.icon}</div><div class="si-text"><b></b><small></small></div>`;
+    row.querySelector('b').textContent = it.name;
+    row.querySelector('small').textContent = it.desc;
+    const btn = document.createElement('button');
+    btn.className = 'si-buy' + (poor && !owned ? ' poor' : '');
+    btn.textContent = owned ? '✓ Alındı' : `${fmt(it.price)} TL`;
+    btn.disabled = !!owned;
+    btn.addEventListener('click', () => buy(it));
+    row.appendChild(btn);
+    ui.shopItems.appendChild(row);
+  }
+}
+
+function buy(it) {
+  if (it.upgrade && game.upgrades[it.upgrade]) return;
+  if (game.money < it.price) {
+    sfx.bad();
+    toast(`💸 Paran yetmiyor! ${fmt(it.price - game.money)} TL daha lazım.`, 'bad', 'nomoney');
+    return;
+  }
+  addMoney(-it.price);
+  if (it.stock) {
+    for (const [k, v] of Object.entries(it.stock)) {
+      game.stock[k] += v;
+      game.stockWarned[k] = false;
+    }
+  }
+  if (it.energy) game.energy = Math.min(100, game.energy + it.energy);
+  if (it.minutes) game.minutes += it.minutes;
+  if (it.upgrade) {
+    game.upgrades[it.upgrade] = true;
+    applyUpgrades();
+  }
+  if (it.look) {
+    Object.assign(game.look, it.look);
+    rebuildPlayer();
+  }
+  sfx.coin();
+  toast(`${it.icon} ${it.name} alındı!`, 'ok');
+  renderShopPanel();
+  saveGame();
+}
+
+function checkStock() {
+  const st = game.stock;
+  const warn = (k, cond, msg) => {
+    if (cond && !game.stockWarned[k]) {
+      game.stockWarned[k] = true;
+      toast(msg, 'warn');
+    }
+  };
+  if (!game.shopOpen) return;
+  warn('meat', st.meat <= 6, `🥩 Döner eti azaldı (${st.meat} dilim)! Kasaptan al.`);
+  warn('ekmek', st.ekmek <= 1, `🥖 Ekmek azaldı (${st.ekmek})! Fırına uğra.`);
+  warn('lavas', st.lavas <= 1, `🫓 Lavaş azaldı (${st.lavas})! Fırına uğra.`);
 }
 
 /* =========================================================
@@ -728,7 +893,7 @@ function finishSleep() {
   // Gece boyunca: müşteriler gitti, NPC'ler yerine döndü
   customers.clearAll();
   npcs.reset();
-  game.inside = true;
+  game.inside = 'home';
   player.pos.copy(home.bedPoint);
   player.heading = Math.PI;
   game.energy = 100;
@@ -816,8 +981,14 @@ function newGame() {
   sfx.unlock();
   sfx.click();
   resetWorld();
-  game.money = 0;
-  setText(ui.money, '0');
+  game.money = 100;
+  setText(ui.money, '100');
+  Object.assign(game.stock, START_STOCK);
+  game.upgrades = {};
+  game.look = {};
+  game.stockWarned = {};
+  rebuildPlayer();
+  applyUpgrades();
   game.minutes = START_MIN;
   game.energy = 100;
   game.shopOpen = false;
@@ -851,7 +1022,12 @@ function continueGame() {
   cutting.totalCut = s.totalCut || 0;
   game.day = s.day || null;
   if (!game.day) newDayStats();
-  game.inside = !!s.inside;
+  Object.assign(game.stock, START_STOCK, s.stock || {});
+  game.upgrades = s.upgrades || {};
+  game.look = s.look || {};
+  rebuildPlayer();
+  applyUpgrades();
+  game.inside = s.inside === 'shop' ? false : s.inside ? 'home' : false;
   if (game.inside) {
     player.pos.copy(home.entry);
     setMode('home');
@@ -878,6 +1054,7 @@ function goMenu() {
   setActions([]);
   show(ui.pause, false);
   show(ui.sleep, false);
+  show(ui.shopPanel, false);
   show(ui.hud, false);
   show(ui.menu, true);
   city.shop.setOpen(true, true);
@@ -895,7 +1072,9 @@ function pause() {
     `📅 Gün <b>${dayNum()}</b> · 🕗 <b>${formatClock(game.minutes)}</b> · ⚡ <b>${Math.round(game.energy)}</b><br>` +
     `💰 Kasa: <b>${fmt(game.money)} TL</b> · 🏆 Rekor: <b>${fmt(game.high)} TL</b><br>` +
     `🥙 Servis: <b>${customers.served}</b> · 😍 Mükemmel: <b>${customers.perfect}</b> · 😤 Kaçan: <b>${customers.lost}</b><br>` +
-    `🔪 Kesilen dilim: <b>${cutting.totalCut}</b> · Oyun otomatik kaydedilir.`;
+    `🔪 Kesilen dilim: <b>${cutting.totalCut}</b><br>` +
+    `📦 Stok: 🥩 <b>${game.stock.meat}</b> · 🥖 <b>${game.stock.ekmek}</b> · 🫓 <b>${game.stock.lavas}</b> · 🥗 <b>${game.stock.salata}</b><br>` +
+    `🛠️ Yükseltmeler: <b>${Object.keys(game.upgrades).length}</b>/5 · Oyun otomatik kaydedilir.`;
   show(ui.pause, true);
 }
 
@@ -939,6 +1118,10 @@ $('btnMenu').addEventListener('click', () => {
   goMenu();
 });
 $('btnWake').addEventListener('click', wakeUp);
+$('shopClose').addEventListener('click', () => {
+  sfx.click();
+  closeShopPanel();
+});
 ui.btnSound.addEventListener('click', () => {
   sfx.setEnabled(!sfx.enabled);
   updateSoundBtn();
@@ -965,6 +1148,10 @@ window.addEventListener('keydown', (e) => {
   }
   if (game.mode === 'sleep') {
     if ((e.code === 'Enter' || e.code === 'Space') && !ui.summary.classList.contains('hidden')) wakeUp();
+    return;
+  }
+  if (!ui.shopPanel.classList.contains('hidden')) {
+    if (e.code === 'Escape' || e.code === 'KeyE' || e.code === 'KeyQ') closeShopPanel();
     return;
   }
   if (e.code === 'Escape' || e.code === 'KeyP') return pause();
@@ -1039,7 +1226,7 @@ function updateCamera(dt, look) {
     desiredLook.copy(city.shop.cutLookAt);
     k = 1 - Math.exp(-dt * 6);
   } else if (game.inside) {
-    home.cameraFor(player.pos, desiredPos);
+    (game.inside === 'shop' ? shopRoom : home).cameraFor(player.pos, desiredPos);
     desiredLook.set(desiredPos.x + (player.pos.x - desiredPos.x) * 0.8, player.pos.y + 0.7, player.pos.z - 1.2);
     k = 1 - Math.exp(-dt * 6);
   } else {
@@ -1136,6 +1323,9 @@ function updateWalk(dt) {
 }
 
 function customerRate() {
+  return baseRate() * (game.upgrades.tabela ? 1.3 : 1);
+}
+function baseRate() {
   if (!game.shopOpen) return 0;
   const h = hourNow();
   if (h < 7 || h >= 23) return 0;
@@ -1190,6 +1380,7 @@ function updatePlaying(dt) {
   }
 
   customers.update(dt, true, customerRate());
+  checkStock();
   computeActions();
   updateHud();
   if (game.time - game.lastSave > 30) saveGame();
@@ -1202,6 +1393,9 @@ function objective() {
   const tired = game.energy < 20;
   if (game.shopOpen) {
     if (tired || h >= 22 || h < 6) return { pos: city.shop.interactPoint, text: '🔒 Geç oldu! Dükkânı kapat, sonra eve git.' };
+    const shopDoor = (id) => city.shops.find((x) => x.id === id).door;
+    if (game.stock.meat <= 0) return { pos: shopDoor('kasap'), text: '🥩 Döner eti bitti! Kasaba git, et al.' };
+    if (game.stock.ekmek + game.stock.lavas <= 0) return { pos: shopDoor('firin'), text: '🥖 Ekmek ve lavaş bitti! Fırına git.' };
     if (customers.waitingCount() > 0) return { pos: city.shop.interactPoint, text: '🥙 Müşteri bekliyor! Tezgaha geç.' };
     return null;
   }
@@ -1223,9 +1417,12 @@ function updateHud() {
   setText(ui.queue, `👥 ${customers.waitingCount()}`);
   const showCarry = game.mode === 'cut' || cutting.slices > 0 || !!cutting.item;
   show(ui.carry, showCarry);
-  let carry = `🔪 ${cutting.slices}/${MAX_SLICES}`;
+  let carry = `🔪 ${cutting.slices}/${cutting.maxSlices}`;
   if (cutting.item) carry += ` · ${ITEM_INFO[cutting.item.type].icon}${cutting.item.slices}`;
   setText(ui.carry, carry);
+  const st = game.stock;
+  setText(ui.stockPill, `🥩${st.meat} 🥖${st.ekmek} 🫓${st.lavas}${st.salata ? ' 🥗' + st.salata : ''}`);
+  ui.stockPill.classList.toggle('low', st.meat < 6 || st.ekmek + st.lavas < 3);
 
   if (game.mode === 'cut') {
     const nx = customers.nextInfo();
@@ -1341,7 +1538,9 @@ function frame() {
 
   const n = dayNight.update(hour, camera.position, camLook);
   city.setNight(n);
-  home.setDaylight(dayNight.sky, n, game.inside);
+  home.setDaylight(dayNight.sky, n, game.inside === 'home');
+  shopRoom.setDaylight(n, game.inside === 'shop');
+  if (game.inside === 'shop') shopRoom.update(dt, player.pos);
   city.shop.light.intensity = game.shopOpen || game.state === 'menu' ? 3 + n * 30 : 0;
   const clockMin = Math.floor((game.state === 'menu' ? hour * 60 : game.minutes % 1440) / 5);
   if (clockMin !== game.lastClockDraw) {
@@ -1369,6 +1568,10 @@ window.__androidBack = () => {
   }
   if (game.state === 'playing') {
     if (game.mode === 'sleep') return true;
+    if (!ui.shopPanel.classList.contains('hidden')) {
+      closeShopPanel();
+      return true;
+    }
     if (game.mode === 'talk') npcs.close();
     else if (game.mode === 'cut') exitCounter();
     else pause();

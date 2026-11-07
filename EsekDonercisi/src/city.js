@@ -590,22 +590,45 @@ export function buildCity(scene) {
 
   /* ---------- Caddeler boyunca yapılar ---------- */
   const ranges = xRanges();
-  const MAIN_N = { zFront: -8.8, facing: 1, reserved: [[-17.2, -10.8], [-3.4, 3.4]], signs: ['FIRIN', 'BERBER', 'KASAP', 'TERZİ'] };
-  const MAIN_S = { zFront: 8.8, facing: -1, reserved: [[-46, -14], [6.6, 13.4], [29, 52.5], [53, 63]], signs: ['ECZANE', 'POSTANE', 'KIRAATHANE', 'MANAV'] };
+  // Tabelasız sıradan binalar. Tabelalı (girilebilir) dükkânlar aşağıda TEK TEK yerleştirilir,
+  // böylece her dükkândan kasabada yalnızca bir tane olur.
+  const MAIN_N_RES = [[-27.2, -20.8], [-17.2, -10.8], [-3.4, 3.4], [5.2, 11.8], [31, 37], [39, 45]];
+  const MAIN_S_RES = [[-46, -14], [-11.2, -4.8], [-2.6, 3.8], [6.6, 13.4], [29, 52.5], [53, 63], [64, 70]];
   for (const [a, b] of ranges) {
-    fillRow(a, b, MAIN_N.zFront, MAIN_N.facing, MAIN_N.reserved, { signs: MAIN_N.signs.splice(0, 2) });
-    fillRow(a, b, MAIN_S.zFront, MAIN_S.facing, MAIN_S.reserved, { signs: MAIN_S.signs.splice(0, 2) });
+    fillRow(a, b, -8.8, 1, MAIN_N_RES);
+    fillRow(a, b, 8.8, -1, MAIN_S_RES);
     // Gül Sokak: iki yanı bahçeli evler (oyuncunun evi x=10'da)
     houseRow(a, b, -30.8, -1, [[5.0, 15]]);
     houseRow(a, b, -45.2, 1);
     // Pazar Caddesi
-    fillRow(a, b, 40.8, 1, [[-46, -14], [-13.5, 15]], { signs: ['HAMAM', 'LOKANTA'] });
-    fillRow(a, b, 55.2, -1, [], { signs: ['KUAFÖR', 'NALBUR', 'KİTAPÇI', 'TATLICI'] });
+    fillRow(a, b, 40.8, 1, [[-46, -14], [-13.5, 15]]);
+    fillRow(a, b, 55.2, -1, [[-13.5, -6.5], [-3, 3]]);
   }
 
-  // Özel binalar
-  building(-14, -8.8 - 3.5, 6, 7, 2, 0, { sign: { text: 'BAKKAL NURİ', colors: ['#1e6fb8', '#ffffff'] }, color: 0xf7f0e1, flatRoof: true });
-  building(10, 8.8 + 3.2, 6.4, 6.4, 1, Math.PI, { sign: { text: 'ÇAY OCAĞI', colors: ['#7a2e12', '#ffd166'] }, color: 0xf0c9a0, flatRoof: true });
+  /* ---------- Girilebilir dükkânlar (her biri tek) ---------- */
+  const shops = [];
+  function shopBuilding(id, text, colors, cx, zFront, facing, w, d, floors, extra = {}) {
+    const cz = zFront - (facing * d) / 2;
+    building(cx, cz, w, d, floors, facing > 0 ? 0 : Math.PI, { sign: { text, colors }, ...extra });
+    const door = facing > 0 ? new THREE.Vector3(cx - w / 2 + 1.0, 0, zFront + 0.9) : new THREE.Vector3(cx + w / 2 - 1.0, 0, zFront - 0.9);
+    // Kapı üstü küçük lamba (gece yanar)
+    const lx = door.x;
+    const lz = zFront + facing * 0.12;
+    addBox(root, 0.28, 0.22, 0.28, lampMat, lx, 2.35, lz, false);
+    lampHeads.push(new THREE.Vector3(lx, 2.3, lz + facing * 0.2));
+    shops.push({ id, name: text, door });
+  }
+  shopBuilding('firin', 'FIRIN', ['#7a2e12', '#ffd166'], -24, -8.8, 1, 6, 7, 2);
+  shopBuilding('bakkal', 'BAKKAL NURİ', ['#1e6fb8', '#ffffff'], -14, -8.8, 1, 6, 7, 2, { color: 0xf7f0e1, flatRoof: true });
+  shopBuilding('kasap', 'KASAP', ['#9d0208', '#ffffff'], 8.5, -8.8, 1, 6, 7, 2);
+  shopBuilding('eczane', 'ECZANE', ['#c1121f', '#ffffff'], 34, -8.8, 1, 6, 7, 2);
+  shopBuilding('nalbur', 'NALBUR', ['#264653', '#e9c46a'], 42, -8.8, 1, 6, 7, 2);
+  shopBuilding('manav', 'MANAV', ['#2a7a3b', '#ffffff'], -8, 8.8, -1, 6, 7, 1);
+  shopBuilding('lokanta', 'LOKANTA', ['#5a189a', '#ffffff'], 0.6, 8.8, -1, 6, 7, 2);
+  shopBuilding('cay', 'ÇAY OCAĞI', ['#7a2e12', '#ffd166'], 10, 8.8, -1, 6.4, 6.4, 1, { color: 0xf0c9a0, flatRoof: true });
+  shopBuilding('tatlici', 'TATLICI', ['#ff70a6', '#ffffff'], 67, 8.8, -1, 6, 7, 2);
+  shopBuilding('hamam', 'HAMAM', ['#2a6f97', '#ffffff'], -10, 55.2, -1, 7, 7, 1);
+  shopBuilding('berber', 'BERBER', ['#e63946', '#ffffff'], 0, 55.2, -1, 6, 7, 2);
   for (const tx of [7.6, 9.8]) {
     addMesh(root, new THREE.CylinderGeometry(0.4, 0.4, 0.06, 10), 0x8b5a2b, tx, 0.85, 7.4);
     addMesh(root, new THREE.CylinderGeometry(0.06, 0.06, 0.75, 6), 0x5a3a1a, tx, 0.48, 7.4);
@@ -1251,7 +1274,7 @@ export function buildCity(scene) {
   const spots = {
     imam: { x: -26.5, z: 10.8, rot: Math.PI },
     bakkal: { x: -14, z: -7.7, rot: 0 },
-    cayci: { x: 11.9, z: 7.5, rot: Math.PI },
+    cayci: { x: 13.9, z: 7.4, rot: Math.PI },
     muhtar: benches[0],
     pazarci: marketSpot,
     fatma: [[-12, 6.5], [5.5, 6.5]],
@@ -1268,6 +1291,7 @@ export function buildCity(scene) {
     heightAt,
     shop,
     home: { doorPoint: homeDoor },
+    shops,
     spots,
     benches,
     drawCalls,

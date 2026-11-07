@@ -98,6 +98,8 @@
       <li><b>💬 Konuş:</b> Kasabalılara yaklaş, <i>Konuş</i> butonuna bas, iki cevaptan birini seç. Bazıları sadece gündüz, Bekçi Murtaza ise gece çıkar.</li>
       <li><b>🔓 Dükkân:</b> Sabah dükkânın önünde <i>Dükkânı Aç</i>, akşam <i>Dükkânı Kapat</i>. Kapalıyken müşteri gelmez; öğle (11-14) ve akşam (18-21) kalabalık olur.</li>
       <li><b>🌙 Gece & Ev:</b> Gece müşteri gelmez. Gül Sokak'taki evine git (sarı ok yolu gösterir), <i>Eve Gir</i>, yatakta <i>Uyu</i>. Sabah gün özeti çıkar.</li>
+      <li><b>📦 Stok:</b> Her dilim döner etinden, her ekmek arası 1 ekmekten, her dürüm 1 lavaştan düşer. Et <i>Kasap</i>'tan, ekmek ve lavaş <i>Fırın</i>'dan (acil durumda <i>Bakkal</i>'dan) alınır. <i>Manav</i>'dan salata alırsan her satış +10 TL getirir.</li>
+      <li><b>🛒 Dükkânlar:</b> Tabelalı her dükkâna girebilirsin (kasabada her dükkândan bir tane var). Tezgaha yaklaş, <i>Alışveriş</i>'e bas. Lokanta, tatlıcı, çay ocağı, eczane ve hamam enerji verir. Berberde görünüşünü değiştirirsin. Nalburdan dükkân yükseltmeleri alınır: büyük tepsi, keskin bıçak, neon tabela, tabure ve eşeğe çelik nal.</li>
       <li><b>⚡ Enerji:</b> Zamanla azalır. Biterse sokakta bayılırsın! Evde çay içmek biraz enerji verir, uyku tamamen doldurur.</li>
       <li><b>🎥 Kamera:</b> Sürükle = döndür/eğ, iki parmak = yakınlaştır, 🎥 butonu = hazır açılar (Yakın / Normal / Uzak / Kuşbakışı).</li>
       <li><b>⌨️ Klavye:</b> E = eylem, 1/2 = seçenek ya da ekmek/dürüm, Enter = servis, S/↓ = kes, Q = tezgahtan çık, C = kamera açısı, fare tekerleği = zoom, P = duraklat.</li>
@@ -127,6 +129,7 @@
     <div class="hud-sub">
       <div class="pill small energy" id="energyPill"><span class="e-ico">⚡</span><span class="e-bar"><i id="energyBar"></i></span></div>
       <div class="pill small" id="shopPill">🔒 Kapalı</div>
+      <div class="pill small stock" id="stockPill">🥩30 🥖6 🫓6</div>
       <div class="pill small" id="queuePill">👥 0</div>
       <div class="pill small" id="carryPill">🔪 0/8</div>
     </div>
@@ -145,6 +148,22 @@
       <div class="dlg-head"><span id="dlgPortrait">🙂</span><span id="dlgName"></span></div>
       <div id="dlgText"></div>
       <div id="dlgOptions"></div>
+    </div>
+  </div>
+
+  <!-- Dükkân alışveriş paneli -->
+  <div id="shopPanel" class="screen overlay hidden">
+    <div class="modal-card shop-card">
+      <div class="shop-head">
+        <div>
+          <h2 id="shopTitle">Dükkân</h2>
+          <div id="shopKeeper" class="shop-keeper"></div>
+        </div>
+        <button id="shopClose" class="shop-x" aria-label="Kapat">✕</button>
+      </div>
+      <div id="shopGreet" class="shop-greet"></div>
+      <div id="shopStock" class="shop-stock"></div>
+      <div id="shopItems" class="shop-items"></div>
     </div>
   </div>
 

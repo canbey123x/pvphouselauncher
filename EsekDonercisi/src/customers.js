@@ -149,7 +149,7 @@ export class CustomerManager {
       slot: -1,
       order: this._randomOrder(),
       patience: 0,
-      maxPatience: Math.max(30, 70 - this.served * 1.5),
+      maxPatience: Math.max(30, 70 - this.served * 1.5) * (this.patienceMul || 1),
       speed: 3.0 + Math.random() * 0.6,
       mood: null,
     };
@@ -197,6 +197,10 @@ export class CustomerManager {
       pay = Math.round(base * 0.5);
       mood = 'meh';
       msg = pick(LINES.wrong);
+    }
+    if (item.salad) {
+      pay += 10;
+      msg += ' (+10 TL salata)';
     }
     this.served++;
     this.ctx.addMoney(pay);
