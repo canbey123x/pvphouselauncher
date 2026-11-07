@@ -77,6 +77,18 @@ jobs:
           echo "jre21-$(cat "$D"/bin-*.tar.xz | sha256sum | cut -c1-16)" > "$D/version"
           ls -la "$D"; cat "$D/version"
 
+      # PvPHouse auto-login client mod (Fabric, MC 1.21.11), bundled into the APK assets
+      - name: Build PvPHouse auto-login mod
+        working-directory: pvphouse-autologin
+        run: |
+          ./gradlew build --no-daemon --stacktrace
+          ls -la build/libs
+          JAR=$(ls build/libs/pvphouse-autologin-*.jar | grep -v -- '-sources' | head -n1)
+          test -n "$JAR"
+          mkdir -p ../app_pojavlauncher/src/main/assets/pvphouse
+          cp "$JAR" ../app_pojavlauncher/src/main/assets/pvphouse/pvphouse-autologin.jar
+          unzip -l ../app_pojavlauncher/src/main/assets/pvphouse/pvphouse-autologin.jar | grep -E 'fabric.mod.json|PvPHouseAutoLogin|refmap'
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           validate-wrappers: false

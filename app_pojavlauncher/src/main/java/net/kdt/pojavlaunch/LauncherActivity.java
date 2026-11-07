@@ -371,6 +371,8 @@ public class LauncherActivity extends BaseActivity {
 
         mInstallTracker = new ModloaderInstallTracker(this);
 
+        // PvPHouse: remove a credential hand-off file left behind by a crashed game
+        net.kdt.pojavlaunch.pvphouse.PvPHouseAutoLoginBridge.cleanupStaleHandoff(this);
         // PvPHouse: create the default "PvPHouse" profile (Fabric + server version) on first start
         net.kdt.pojavlaunch.pvphouse.PvPHouseProfileSetup.ensureProfile(mPvPHouseProfileListener);
 

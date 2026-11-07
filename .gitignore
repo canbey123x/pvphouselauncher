@@ -19,3 +19,6 @@ app_pojavlauncher/.cxx/
 *.jks
 !debug.keystore
 keystore.properties
+
+# PvPHouse: built in CI from pvphouse-autologin/
+app_pojavlauncher/src/main/assets/pvphouse/

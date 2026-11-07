@@ -1,0 +1,11 @@
+{
+	"required": false,
+	"package": "net.pvphouse.autologin.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"ClientPacketListenerMixin"
+	],
+	"injectors": {
+		"defaultRequire": 0
+	}
+}

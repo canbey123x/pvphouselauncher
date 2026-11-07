@@ -548,6 +548,9 @@ public final class Tools {
         }
         // We use a janky lwjgl setup. We don't want more people complaining it crashes.
         if (hasSodiumMod) javaArgList.add("-Dsodium.checks.issue2561=false");
+        // PvPHouse: auto /register|/login mod + one-time credential hand-off (PvPHouse profile only)
+        net.kdt.pojavlaunch.pvphouse.PvPHouseAutoLoginBridge.prepare(activity, minecraftAccount,
+                minecraftProfile, gamedir, versionId, javaArgList);
         javaArgList.add(versionInfo.mainClass);
         javaArgList.addAll(Arrays.asList(launchArgs));
         // ctx.appendlnToLog("full args: "+javaArgList.toString());
