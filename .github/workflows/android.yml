@@ -32,11 +32,15 @@ jobs:
           submodules: "recursive"
           fetch-depth: 0   # version name uses `git describe --tags`
 
-      - name: Set up JDK 21
+      # 21 is the default (listed last) for the launcher build; 25 is only used to run
+      # Gradle for the auto-login mod (Fabric Loom 1.19 needs a Java 25 JVM).
+      - name: Set up JDK 21 (+25 for the mod build)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '21'
+          java-version: |
+            25
+            21
 
       # Java 8 runtime (old MC versions) - same source as upstream Amethyst
       - name: Get JRE 8
@@ -80,7 +84,10 @@ jobs:
       # PvPHouse auto-login client mod (Fabric, MC 1.21.11), bundled into the APK assets
       - name: Build PvPHouse auto-login mod
         working-directory: pvphouse-autologin
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_25_X64 }}
         run: |
+          java -version
           ./gradlew build --no-daemon --stacktrace
           ls -la build/libs
           JAR=$(ls build/libs/pvphouse-autologin-*.jar | grep -v -- '-sources' | head -n1)
