@@ -565,3 +565,67 @@ button { font-family: inherit; cursor: pointer; }
   .action-btn { min-width: 118px; font-size: 14px; padding: 0 10px; }
   #joyBase { width: 118px; height: 118px; }
 }
+
+/* ================= v2: saat, enerji, kamera, uyku ================= */
+.hud-sub {
+  position: absolute;
+  top: calc(58px + var(--safe-t));
+  left: calc(10px + var(--safe-l));
+  right: calc(10px + var(--safe-r));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  z-index: 3;
+}
+.pill.small { font-size: 12px; padding: 4px 9px; }
+.pill.clock { font-family: 'Bungee', Impact, sans-serif; font-weight: 400; color: #ffe8a3; }
+.pill.clock.night { color: #b9c6ff; border-color: rgba(150, 170, 255, 0.5); }
+.energy { display: flex; align-items: center; gap: 5px; }
+.e-bar { width: 64px; height: 9px; border-radius: 6px; background: rgba(255, 255, 255, 0.15); overflow: hidden; display: inline-block; }
+.e-bar i { display: block; height: 100%; width: 100%; background: #2ec27e; transition: width 0.3s, background 0.3s; }
+.energy.low { animation: lowE 0.9s ease-in-out infinite; border-color: rgba(230, 57, 70, 0.8); }
+@keyframes lowE { 50% { background: rgba(160, 20, 30, 0.75); } }
+#hint { top: calc(96px + var(--safe-t)); }
+#orderCard { top: calc(96px + var(--safe-t)); }
+#toasts { top: calc(140px + var(--safe-t)); }
+#hud[data-mode="cut"] #toasts { top: calc(212px + var(--safe-t)); }
+
+#fade {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 50;
+  transition: opacity 0.35s ease;
+}
+#fade.on { opacity: 1; pointer-events: auto; }
+
+#sleepOverlay {
+  z-index: 55;
+  background: radial-gradient(circle at 50% 35%, #2a2560, #07061a 70%);
+  flex-direction: column;
+}
+.sleep-box { text-align: center; }
+.sleep-box .moon { font-size: 72px; animation: bob 2.4s ease-in-out infinite; }
+#sleepClock { font-family: 'Bungee', Impact, sans-serif; font-size: 44px; color: #ffe8a3; margin-top: 6px; }
+.sleep-text { opacity: 0.8; font-weight: 800; margin-top: 6px; }
+.zzz { font-family: 'Bungee', Impact, sans-serif; font-size: 34px; color: #b9c6ff; height: 44px; }
+.zzz span { display: inline-block; animation: zz 1.8s ease-in-out infinite; }
+.zzz span:nth-child(2) { animation-delay: 0.3s; font-size: 0.8em; }
+.zzz span:nth-child(3) { animation-delay: 0.6s; font-size: 0.6em; }
+@keyframes zz { 0% { transform: translateY(10px); opacity: 0; } 40% { opacity: 1; } 100% { transform: translateY(-24px); opacity: 0; } }
+@keyframes bob { 50% { transform: translateY(-8px) rotate(-6deg); } }
+#summaryCard { margin-top: 18px; }
+#summaryBody b { color: #9d0208; }
+#summaryBody .neg { color: #c1121f; }
+#summaryBody .pos { color: #1f9d5c; }
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .hud-sub { top: calc(52px + var(--safe-t)); }
+  #hint, #orderCard { top: calc(84px + var(--safe-t)); }
+  #toasts { top: calc(120px + var(--safe-t)); }
+  #hud[data-mode="cut"] #toasts { top: calc(170px + var(--safe-t)); }
+  #sleepClock { font-size: 32px; }
+  .sleep-box .moon { font-size: 48px; }
+}

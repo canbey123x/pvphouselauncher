@@ -2,7 +2,7 @@
 // npcs.js — Kasaba sakinleri, insan modeli ve 2 seçenekli Türkçe diyalog ağacı
 // =========================================================
 import * as THREE from 'three';
-import { mat, canvasTexture } from './city.js';
+import { mat, canvasTexture, bakeHierarchy } from './city.js';
 
 /* ---------------- Ortak insan modeli ---------------- */
 const G = {
@@ -110,6 +110,7 @@ export function createPerson(o = {}) {
       M(G.sarikTop, 0x7a1f2b, 0, 0.44, 0, head);
     }
   }
+  bakeHierarchy(g);
   return { group: g, legL, legR, armL, armR, head, torso };
 }
 
@@ -374,6 +375,106 @@ const NPC_DATA = [
       },
     },
   },
+  {
+    id: 'bekci',
+    name: 'Bekçi Murtaza',
+    portrait: '👮',
+    place: 'bekci',
+    kind: 'walk',
+    loop: true,
+    speed: 1.1,
+    schedule: 'night',
+    look: { shirt: 0x1d3557, pants: 0x14213d, hat: 'kasket', hatColor: 0x14213d, mustache: true, hair: 0x2b2b2b, skin: 0xd9a066 },
+    start: 'a',
+    nodes: {
+      a: {
+        text: 'Hayırdır usta, gecenin bu saatinde? Kasaba uyuyor, bir ben uyumuyorum, bir de sen. Bir de senin eşek; o hiç uyumuyor zaten.',
+        options: [
+          { label: 'Dükkânı yeni kapattım, eve gidiyorum.', next: 'b' },
+          { label: 'Gece dönerciliği yapsak mı abi?', next: 'c' },
+        ],
+      },
+      b: {
+        text: 'Aferin. Kepengi iyi indirdin mi? Geçen ay bakkalın kepengi açık kaldı, sabaha kedi lokantası olmuştu.',
+        options: [
+          { label: 'Kilitledim abi, içim rahat.', reply: 'Rahat uyu o zaman. Ben buradayım, düdük de cebimde. 🎵', effect: { toast: '😴 Bekçi: "İyi geceler usta!"' } },
+          { label: 'Bir de sen bakıver abi.', reply: 'Bakarım bakarım. Ama karşılığında yarın bir dürüm, bol soğanlı!' },
+        ],
+      },
+      c: {
+        text: 'Gece dönerciliği mi? Kime satacaksın, baykuşlara mı? Gece uyunur usta, döner gündüz kesilir.',
+        options: [
+          { label: 'Haklısın, eve gidip yatayım.', reply: 'İşte bu! Uykusuz dönerci, dönerini yan keser. Hadi iyi geceler.' },
+          { label: 'Sana gece mesaisi dürümü yaparım!', reply: 'Hıh... Teklifini kayda geçtim. Ama önce uyu, gözlerin kan çanağı.', effect: { money: 10, toast: '👮 Bekçi kahve parası bıraktı: +10 TL' } },
+        ],
+      },
+    },
+  },
+  {
+    id: 'pazarci',
+    name: 'Pazarcı Yusuf',
+    portrait: '🧑‍🌾',
+    place: 'pazarci',
+    kind: 'stand',
+    look: { shirt: 0x6a994e, pants: 0x3b3b3b, hat: 'kasket', hatColor: 0x8d5524, mustache: true, apron: true, hair: 0x3b2314, skin: 0xd9a066 },
+    start: 'a',
+    nodes: {
+      a: {
+        text: 'Gel abiii gel! Domates bal, biber şeker, soğan... soğan soğan işte! Dönerciye özel fiyat var!',
+        options: [
+          { label: 'Bana bir kasa domates lazım.', next: 'b' },
+          { label: 'Soğan ağlatıyor mu Yusuf abi?', next: 'c' },
+        ],
+      },
+      b: {
+        text: 'Al sana en kırmızısından! Ama parasını sonra ver, sen bizim kasabanın yüz akısın. Bir de bahşiş: eşeğe havuç koydum kasaya.',
+        options: [
+          { label: 'Eyvallah Yusuf abi!', reply: 'Hayırlı satışlar! Domatesler dürümde patlarsa benden bilme. 🍅', effect: { money: 20, toast: '🍅 Pazarcı iskontosu: +20 TL kâr' } },
+          { label: 'Havuç eşeğe değil bana!', reply: 'Hahah! Al o zaman, iki havuç. Biri senin biri eşeğin.' },
+        ],
+      },
+      c: {
+        text: 'Soğan ağlatmaz abi, fiyatları ağlatır! Ama benim soğan tatlı, döner üstüne yakışır, sumaklı yaparsın.',
+        options: [
+          { label: 'Sumaklı soğan, efsane olur!', reply: 'Aynen! Müşteri bayılır. Kasaba tadını bilir abi.' },
+          { label: 'Ben soğansız severim.', reply: 'Soğansız döner mi?! Abi bunu pazarda yüksek sesle söyleme, linç ederler.' },
+        ],
+      },
+    },
+  },
+  {
+    id: 'komsu',
+    name: 'Komşu Ayşe Abla',
+    portrait: '👩',
+    place: 'komsu',
+    kind: 'walk',
+    speed: 1.1,
+    look: { shirt: 0x2a9d8f, pants: 0x264653, hat: 'basortu', scarf: 0xe9c46a, skin: 0xf0c08f },
+    start: 'a',
+    nodes: {
+      a: {
+        text: 'Komşuuu! Dün gece senin eşek yine anırdı, bütün sokak uyandı. Ama itiraf edeyim, horozdan iyi çalar saat.',
+        options: [
+          { label: 'Kusura bakma abla, özlem çekiyor.', next: 'b' },
+          { label: 'Alarm hizmeti bedava abla!', next: 'c' },
+        ],
+      },
+      b: {
+        text: 'Özlem mi? Kimi özlüyor? Pazarcının eşeğini mi? Ay ne romantik! Al şu tepsi börekten bir parça, eşeğin de bir dilim alsın.',
+        options: [
+          { label: 'Ellerine sağlık abla!', reply: 'Afiyet olsun komşu. Akşam erken yat ama, gözlerinin altı mosmor.', effect: { toast: '🥧 Ayşe abla börek verdi! Afiyet olsun.' } },
+          { label: 'Eşek börek yemez abla.', reply: 'Yer yer, geçen sefer bütün tepsiyi bitirdi. Şaka değil!' },
+        ],
+      },
+      c: {
+        text: 'Bedava mı? O zaman benim oğlana söyle, sabah okula geç kalmasın, eşek 7\'de anırsın!',
+        options: [
+          { label: 'Tamam, 07:00\'ye kuruyorum!', reply: 'Hahah, sen de komiksin komşu. Hadi kolay gelsin.' },
+          { label: 'Eşek sadece dönerle çalışıyor.', reply: 'O zaman oğlana bir dürüm borçlusun, anlaştık!' },
+        ],
+      },
+    },
+  },
 ];
 
 const lerpAngle = (a, b, t) => {
@@ -466,10 +567,19 @@ export class NPCManager {
     }
   }
 
+  /** NPC şu saatte sokakta mı? (gündüzcüler 07-21, bekçi 20-06) */
+  _active(n, hour) {
+    const sch = n.def.schedule ?? 'day';
+    if (sch === 'always') return true;
+    if (sch === 'night') return hour >= 20 || hour < 6;
+    return hour >= 7 && hour < 21;
+  }
+
   nearest(pos, maxD) {
     let best = null;
     let bd = maxD;
     for (const n of this.list) {
+      if (!n.person.group.visible) continue;
       const d = Math.hypot(n.pos.x - pos.x, n.pos.z - pos.z);
       if (d < bd) {
         bd = d;
@@ -479,10 +589,12 @@ export class NPCManager {
     return best;
   }
 
-  update(dt, playerPos, playing) {
+  update(dt, playerPos, playing, hour = 12) {
     const world = this.ctx.world;
     for (const n of this.list) {
       const def = n.def;
+      if (!n.talking) n.person.group.visible = this._active(n, hour);
+      if (!n.person.group.visible) continue;
       const dPlayer = Math.hypot(n.pos.x - playerPos.x, n.pos.z - playerPos.z);
       let moving = false;
       if (def.kind === 'walk' && !n.talking && !(playing && dPlayer < 2.2)) {

@@ -2,7 +2,7 @@
 // donkey.js — Sevimli low-poly eşek: model, araba mantığında sürüş fiziği, animasyon
 // =========================================================
 import * as THREE from 'three';
-import { addBox, addMesh, mat } from './city.js';
+import { addBox, addMesh, mat, bakeHierarchy } from './city.js';
 
 const approach = (v, t, d) => (v < t ? Math.min(v + d, t) : Math.max(v - d, t));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -127,6 +127,7 @@ export class Donkey {
     addMesh(nazar, new THREE.CylinderGeometry(0.09, 0.09, 0.03, 12), mat(0x1d5fd1, { emissive: 0x0a2050 }), 0, 0, 0, false).rotation.x = Math.PI / 2;
     addMesh(nazar, new THREE.CylinderGeometry(0.055, 0.055, 0.035, 12), 0xffffff, 0, 0, 0.003, false).rotation.x = Math.PI / 2;
     addMesh(nazar, new THREE.CylinderGeometry(0.03, 0.03, 0.04, 10), 0x111111, 0, 0, 0.006, false).rotation.x = Math.PI / 2;
+    bakeHierarchy(this.group);
   }
 
   /** Sürücü oturma noktası (dünya koordinatı). */

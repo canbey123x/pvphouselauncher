@@ -16,7 +16,10 @@ export class Controls {
     this.keys = new Set();
     this.brakeHeld = false;
     this.lookDX = 0;
-    this.look = { id: null, lastX: 0 };
+    this.lookDY = 0;
+    this.zoomDelta = 0;
+    this.lookPts = new Map();
+    this.pinchLast = 0;
     this.enabled = true;
 
     this._bindJoystick();
@@ -85,23 +88,43 @@ export class Controls {
   }
 
   _bindLook(el) {
+    // Tek parmak: kamerayı döndür (x) ve eğ (y). İki parmak: yakınlaştır/uzaklaştır.
+    const pts = this.lookPts;
+    const pinchDist = () => {
+      const [a, b] = [...pts.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
     el.addEventListener('pointerdown', (e) => {
-      if (this.look.id !== null) return;
-      this.look.id = e.pointerId;
-      this.look.lastX = e.clientX;
+      if (pts.size >= 2) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { el.setPointerCapture(e.pointerId); } catch { /* yok say */ }
+      if (pts.size === 2) this.pinchLast = pinchDist();
     });
     el.addEventListener('pointermove', (e) => {
-      if (e.pointerId !== this.look.id) return;
-      this.lookDX += e.clientX - this.look.lastX;
-      this.look.lastX = e.clientX;
+      const p = pts.get(e.pointerId);
+      if (!p) return;
+      if (pts.size === 1) {
+        this.lookDX += e.clientX - p.x;
+        this.lookDY += e.clientY - p.y;
+      }
+      p.x = e.clientX;
+      p.y = e.clientY;
+      if (pts.size === 2) {
+        const d = pinchDist();
+        this.zoomDelta += (this.pinchLast - d) * 0.03;
+        this.pinchLast = d;
+      }
     });
     const end = (e) => {
-      if (e.pointerId === this.look.id) this.look.id = null;
+      pts.delete(e.pointerId);
     };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', end);
     el.addEventListener('lostpointercapture', end);
+    el.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.zoomDelta += Math.sign(e.deltaY) * 1.2;
+    }, { passive: false });
   }
 
   _bindKeyboard() {
@@ -118,10 +141,12 @@ export class Controls {
     });
   }
 
-  /** Kamera sürükleme miktarını (piksel) al ve sıfırla. */
+  /** Kamera sürükleme (piksel) ve zoom miktarını al ve sıfırla. */
   consumeLook() {
-    const v = this.lookDX;
+    const v = { dx: this.lookDX, dy: this.lookDY, zoom: this.zoomDelta };
     this.lookDX = 0;
+    this.lookDY = 0;
+    this.zoomDelta = 0;
     return v;
   }
 

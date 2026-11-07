@@ -11,7 +11,14 @@ Derleme yok, `npm install` yok: Three.js CDN üzerinden ES Module olarak yüklen
 - **Eşek sürüşü:** Araba mantığında gaz, geri vites, dönüş ve fren. Eşeğin yanına git, **Eşeğe Bin**. Kamera arkandan takip eder. *Anırt* butonunu da dene. 📣
 - **Döner kesme:** **Tezgaha Geç**, sonra ekranı **yukarıdan aşağı kaydır**: her kaydırma bir dilim düşürür. Dilimleri **Ekmek Arası 🥖** ya da **Dürüm 🌯** yap, **Servis Et 🛎️**.
 - **Müşteriler:** Kaldırımdan yürüyüp sıraya girerler. Başlarındaki balonda sipariş ve sabır çubuğu görünür. Sipariş birebir tutarsa bahşiş alırsın. Çok bekletirsen sinirlenip giderler.
-- **NPC'ler ve diyalog:** İmam Hüseyin Efendi, Muhtar Rıza (bankta), Fatma Teyze, Çaycı Cemil, Bakkal Nuri, Küçük Emre ve Turist John. Yaklaşınca **Konuş** butonu çıkar. Alt ekranda iki seçenekli, esprili Türkçe diyaloglar açılır. Bazı cevaplar para kazandırır (ya da kaybettirir 😄).
+- **Gece / gündüz:** 1 oyun saati = 20 saniye. Güneş doğar ve batar; gece ay, yıldızlar, yanan sokak lambaları ve pencereler çıkar. Saat kulesi oyun saatini gösterir.
+- **Dükkânı aç / kapat:** Kepenk iner ve kalkar, "AÇIK / KAPALI" levhası değişir. Kapalıyken müşteri gelmez. Öğle (11-14) ve akşam (18-21) saatleri kalabalıktır, 23:00'ten sonra kimse gelmez. Gece açık bırakırsan kasadan para kaybolabilir!
+- **Ev ve uyku:** Gül Sokak'ta bahçeli **Usta'nın Evi** var. *Eve Gir* ile içeri girersin: yatak, sedir, çay sehpası. Gece *Uyu* ile sabah 07:00'ye geçilir ve gün özeti çıkar (kazanç, servis, kira). Gündüz *Kestir* 2 saat sürer.
+- **Enerji:** Uyanık kaldıkça azalır. Çay içmek biraz verir, uyku tamamen doldurur. Biterse sokakta bayılırsın; bekçi seni eve taşır ama çay parası ister.
+- **Genişleyen kasaba:** Ana cadde, mahalle sokağı (Gül Sokak), Pazar Caddesi ve 3 ara sokak var. Ayrıca fırın, berber, eczane, hamam gibi tabelalı dükkânlar, pazar tezgahları, saat kulesi ve tarlalar.
+- **Kamera:** Engellere girmeyen takip kamerası. Tek parmakla sürükleyince döner ve eğilir, iki parmakla yakınlaşır. 🎥 butonu 4 hazır açı arasında geçiş yapar (Yakın, Normal, Uzak, Kuşbakışı). Yürürken yavaşça arkana döner.
+- **Kayıt:** Oyun kendiliğinden kaydedilir; menüden *Devam Et* ile kaldığın yerden sürersin.
+- **NPC'ler ve diyalog:** İmam Hüseyin Efendi, Muhtar Rıza (bankta), Fatma Teyze, Çaycı Cemil, Bakkal Nuri, Küçük Emre ve Turist John, Pazarcı Yusuf, Komşu Ayşe Abla ve sadece gece çıkan Bekçi Murtaza. Yaklaşınca **Konuş** butonu çıkar. Alt ekranda iki seçenekli, esprili Türkçe diyaloglar açılır. Bazı cevaplar para kazandırır (ya da kaybettirir 😄).
 
 ### Ekonomi
 
@@ -29,7 +36,9 @@ Derleme yok, `npm install` yok: Three.js CDN üzerinden ES Module olarak yüklen
 | Eylem | Dokunmatik | Klavye |
 |---|---|---|
 | Yürü / sür | Sol alttaki joystick | WASD / ok tuşları |
-| Kamerayı çevir | Ekranı sürükle | Fare ile sürükle |
+| Kamerayı çevir / eğ | Ekranı sürükle | Fare ile sürükle |
+| Yakınlaş / uzaklaş | İki parmak | Fare tekerleği |
+| Kamera açısı | 🎥 | C |
 | Bağlamsal eylem | Sağ alttaki butonlar | E / Enter |
 | Fren | 🛑 Fren (basılı tut) | Boşluk |
 | Döner kes | Aşağı kaydır | S / ↓ |
@@ -51,8 +60,10 @@ EsekDonercisi/
 │   ├── donkey.js               # Eşek modeli, sürüş fiziği ve animasyonu
 │   ├── cutting.js              # Döner kesme swipe mekaniği ve dilim efektleri
 │   ├── customers.js            # Müşteriler, sipariş balonları, kuyruk ve ekonomi
-│   ├── npcs.js                 # İnsan modeli, kasaba sakinleri ve diyalog ağacı
-│   └── controls.js             # Sanal joystick, kamera sürükleme, klavye
+│   ├── npcs.js                 # İnsan modeli, kasaba sakinleri (gündüz/gece) ve diyalog ağacı
+│   ├── daynight.js             # Gece/gündüz: gökyüzü, güneş/ay, yıldızlar, ışıklar
+│   ├── house.js                # Ustanın evinin içi: yatak, sedir, çay, kapı
+│   └── controls.js             # Sanal joystick, kamera sürükleme/zoom, klavye
 ├── .github/workflows/deploy.yml  # main dalına her push'ta GitHub Pages'e yayın
 └── README.md
 ```
@@ -92,8 +103,8 @@ git push -u origin main
 - **Three.js r160**, `importmap` ile `cdn.jsdelivr.net` üzerinden yüklenir.
 - Tüm 3D modeller kodla, ilkel geometrilerle (box, cylinder, cone, sphere, torus, icosahedron) üretilir. Harici model ya da görsel dosyası yoktur. Tabelalar ve bayraklar `<canvas>` ile çizilir.
 - Sesler Web Audio API ile anlık sentezlenir: kesme, para, anırma, diyalog cıvıltısı.
-- Mobil performans için: `MeshLambertMaterial` + flat shading, önbelleklenen malzemeler, paylaşılan insan geometrileri, oyuncuyu takip eden tek bir gölge kamerası ve en fazla 1.75 piksel oranı.
-- Rekor ve ses tercihi `localStorage`'da saklanır.
+- Mobil performans için: sabit kasaba parçaları açılışta köşe renkli (vertex color) birkaç büyük geometride birleştirilir. Kasaba yaklaşık 50 draw call ile çizilir; karakterler ve eşek de grup başına tek mesh'e indirgenir. Ayrıca oyuncuyu takip eden tek bir gölge kamerası, lamba ışıltıları için tek bir `Points` nesnesi ve en fazla 1.75 piksel oranı kullanılır.
+- Rekor, ses tercihi, kamera açısı ve oyun kaydı `localStorage`'da saklanır.
 - Geliştirici kancası: adresin sonuna `?debug` eklersen konsolda `window.__dbg` ile oyun durumunu inceleyebilirsin.
 
 Afiyet olsun, usta! 🥙

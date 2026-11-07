@@ -81,6 +81,9 @@ export class CustomerManager {
 
   _dispose(c) {
     this.ctx.scene.remove(c.person.group);
+    c.person.group.traverse((o) => {
+      if (o.isMesh && o.geometry.userData.owned) o.geometry.dispose();
+    });
     c.bubble.tex.dispose();
     c.bubble.sprite.material.dispose();
   }
@@ -111,7 +114,9 @@ export class CustomerManager {
   }
 
   spawn() {
-    const side = Math.random() < 0.5 ? -1 : 1;
+    // Müşteriler ya ara sokaktan (kuzeyden) ya da caddenin batısından gelir
+    const fromSide = Math.random() < 0.55;
+    const side = -1;
     const hat = rnd(HATS);
     const person = createPerson({
       shirt: rnd(SHIRTS),
@@ -133,8 +138,9 @@ export class CustomerManager {
     const c = {
       person,
       bubble,
-      pos: new THREE.Vector3(side * 46, 0, this.laneZ),
-      heading: side > 0 ? -Math.PI / 2 : Math.PI / 2,
+      pos: fromSide ? new THREE.Vector3(16.3, 0, -26) : new THREE.Vector3(side * 38, 0, this.laneZ),
+      via: fromSide ? [new THREE.Vector3(16.3, 0, this.laneZ)] : [],
+      heading: fromSide ? 0 : Math.PI / 2,
       phase: Math.random() * 6,
       state: 'queue',
       atQueue: false,
@@ -144,7 +150,7 @@ export class CustomerManager {
       order: this._randomOrder(),
       patience: 0,
       maxPatience: Math.max(30, 70 - this.served * 1.5),
-      speed: 2.1 + Math.random() * 0.6,
+      speed: 3.0 + Math.random() * 0.6,
       mood: null,
     };
     this.list.push(c);
@@ -200,12 +206,35 @@ export class CustomerManager {
     return pay;
   }
 
-  update(dt, playing) {
+  /** Tüm müşterileri anında kaldır (uyku sonrası vb.), sayaçlara dokunma. */
+  clearAll() {
+    for (const c of this.list) this._dispose(c);
+    this.list = [];
+    this.timer = 3;
+  }
+
+  /** Dükkân kapanınca sıradaki herkes gider. */
+  closeShop() {
+    let n = 0;
+    for (const c of this.queued()) {
+      this.leave(c, 'meh');
+      n++;
+    }
+    return n;
+  }
+
+  /**
+   * @param {number} dt
+   * @param {boolean} playing sabır süresi işlesin mi
+   * @param {number} rate müşteri yoğunluğu (0 = kimse gelmez, 1 = normal, 1.5 = öğle kalabalığı)
+   */
+  update(dt, playing, rate = 1) {
     // Yeni müşteri
-    this.timer -= dt;
+    this.timer -= dt * Math.max(rate, 0.0001);
+    if (rate <= 0) this.timer = Math.max(this.timer, 2);
     if (this.timer <= 0) {
       if (this.queued().length < this.slots.length) this.spawn();
-      this.timer = Math.max(5, 13 - this.served * 0.35) * (0.75 + Math.random() * 0.5);
+      this.timer = Math.max(5, 13 - this.served * 0.25) * (0.75 + Math.random() * 0.5);
     }
 
     // Kuyruk yerleşimi
@@ -214,7 +243,7 @@ export class CustomerManager {
       if (c.slot !== i) {
         c.slot = i;
         const s = this.slots[i];
-        c.path = c.atQueue ? [s.clone()] : [new THREE.Vector3(s.x, 0, this.laneZ), s.clone()];
+        c.path = c.atQueue ? [s.clone()] : [...c.via, new THREE.Vector3(s.x, 0, this.laneZ), s.clone()];
         c.arrived = false;
       }
     });
@@ -231,6 +260,7 @@ export class CustomerManager {
         if (d <= step) {
           c.pos.x = tgt.x;
           c.pos.z = tgt.z;
+          if (c.via && c.via[0] === tgt) c.via.shift();
           c.path.shift();
         } else {
           c.pos.x += (dx / d) * step;

@@ -69,6 +69,7 @@
       <div class="record" id="highScoreBox">🏆 Rekor Kasa: <b id="highScore">0</b> TL</div>
 
       <div class="menu-buttons">
+        <button id="btnContinue" class="menu-btn primary hidden">▶ Devam Et</button>
         <button id="btnStart" class="menu-btn primary">▶ Oyuna Başla</button>
         <button id="btnHow" class="menu-btn">📖 Nasıl Oynanır</button>
         <button id="btnAbout" class="menu-btn">ℹ️ Hakkında</button>
@@ -94,8 +95,12 @@
       <li><b>🥖 / 🌯 Hazırla:</b> Kestiğin dilimleri <i>Ekmek Arası</i> ya da <i>Dürüm</i> yap.</li>
       <li><b>🛎️ Servis Et:</b> Sıradaki müşterinin siparişi ekranın üstünde yazar. Tür ve dilim sayısı tutarsa bahşiş kaparsın!</li>
       <li><b>🐴 Eşek:</b> Yanına git, <i>Eşeğe Bin</i>. Joystick yukarı = gaz, aşağı = geri, sağ/sol = dönüş. <i>Fren</i> butonu (Boşluk) ile dur.</li>
-      <li><b>💬 Konuş:</b> Kasabalılara yaklaş, <i>Konuş</i> butonuna bas, iki cevaptan birini seç.</li>
-      <li><b>⌨️ Klavye:</b> E = eylem, 1/2 = seçenek ya da ekmek/dürüm, Enter = servis, S/↓ = kes, Q = tezgahtan çık, P = duraklat.</li>
+      <li><b>💬 Konuş:</b> Kasabalılara yaklaş, <i>Konuş</i> butonuna bas, iki cevaptan birini seç. Bazıları sadece gündüz, Bekçi Murtaza ise gece çıkar.</li>
+      <li><b>🔓 Dükkân:</b> Sabah dükkânın önünde <i>Dükkânı Aç</i>, akşam <i>Dükkânı Kapat</i>. Kapalıyken müşteri gelmez; öğle (11-14) ve akşam (18-21) kalabalık olur.</li>
+      <li><b>🌙 Gece & Ev:</b> Gece müşteri gelmez. Gül Sokak'taki evine git (sarı ok yolu gösterir), <i>Eve Gir</i>, yatakta <i>Uyu</i>. Sabah gün özeti çıkar.</li>
+      <li><b>⚡ Enerji:</b> Zamanla azalır. Biterse sokakta bayılırsın! Evde çay içmek biraz enerji verir, uyku tamamen doldurur.</li>
+      <li><b>🎥 Kamera:</b> Sürükle = döndür/eğ, iki parmak = yakınlaştır, 🎥 butonu = hazır açılar (Yakın / Normal / Uzak / Kuşbakışı).</li>
+      <li><b>⌨️ Klavye:</b> E = eylem, 1/2 = seçenek ya da ekmek/dürüm, Enter = servis, S/↓ = kes, Q = tezgahtan çık, C = kamera açısı, fare tekerleği = zoom, P = duraklat.</li>
     </ul>
   </template>
 
@@ -114,10 +119,16 @@
 
     <div class="hud-top">
       <div class="pill money" id="moneyPill">💰 <span id="money">0</span> TL</div>
-      <div class="pill" id="carryPill">🔪 0/8</div>
-      <div class="pill" id="queuePill">👥 0</div>
+      <div class="pill clock" id="clockPill">☀️ 07:30</div>
       <div class="spacer"></div>
+      <button id="camBtn" class="icon-btn" aria-label="Kamera açısı">🎥</button>
       <button id="pauseBtn" class="icon-btn" aria-label="Duraklat">☰</button>
+    </div>
+    <div class="hud-sub">
+      <div class="pill small energy" id="energyPill"><span class="e-ico">⚡</span><span class="e-bar"><i id="energyBar"></i></span></div>
+      <div class="pill small" id="shopPill">🔒 Kapalı</div>
+      <div class="pill small" id="queuePill">👥 0</div>
+      <div class="pill small" id="carryPill">🔪 0/8</div>
     </div>
 
     <div id="orderCard" class="hidden"></div>
@@ -134,6 +145,24 @@
       <div class="dlg-head"><span id="dlgPortrait">🙂</span><span id="dlgName"></span></div>
       <div id="dlgText"></div>
       <div id="dlgOptions"></div>
+    </div>
+  </div>
+
+  <!-- Geçiş karartması -->
+  <div id="fade"></div>
+
+  <!-- Uyku ekranı + gün özeti -->
+  <div id="sleepOverlay" class="screen hidden">
+    <div class="sleep-box">
+      <div class="zzz"><span>Z</span><span>z</span><span>z</span></div>
+      <div class="moon">🌙</div>
+      <div id="sleepClock">23:00</div>
+      <div class="sleep-text" id="sleepText">Usta uyuyor...</div>
+    </div>
+    <div id="summaryCard" class="modal-card hidden">
+      <h2 id="summaryTitle">☀️ Günaydın!</h2>
+      <div id="summaryBody" class="pause-stats"></div>
+      <button id="btnWake" class="menu-btn primary">☀️ Güne Başla</button>
     </div>
   </div>
 

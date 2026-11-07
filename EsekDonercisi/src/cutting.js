@@ -202,10 +202,12 @@ export class CuttingStation {
     return it;
   }
 
-  update(dt) {
+  update(dt, open = true) {
     const s = this.shop;
-    s.spit.rotation.y += dt * 0.9;
-    this.meatLevel = Math.min(1, this.meatLevel + dt * 0.012);
+    if (open) {
+      s.spit.rotation.y += dt * 0.9;
+      this.meatLevel = Math.min(1, this.meatLevel + dt * 0.012);
+    }
     const sc = this._meatScale();
     s.meat.scale.set(sc, 1, sc);
 
