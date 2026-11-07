@@ -538,4 +538,12 @@
     <string name="pvphouse_profile_ready">PvPHouse profile is ready</string>
     <string name="pvphouse_profile_setup_failed">Could not set up the PvPHouse profile. Check your internet connection; it will be retried on the next start.</string>
     <string name="pvphouse_profile_no_fabric">No stable Fabric Loader is available for Minecraft %1$s yet. The PvPHouse profile will be created once one is released.</string>
+    <string name="pvphouse_server_title">PvPHouse</string>
+    <string name="pvphouse_join_button">Join PvPHouse</string>
+    <string name="pvphouse_status_checking">Checking server status…</string>
+    <string name="pvphouse_status_online">Online</string>
+    <string name="pvphouse_status_offline">Offline (tap to retry)</string>
+    <string name="pvphouse_status_players">%1$d/%2$d players</string>
+    <string name="pvphouse_status_ping">%1$d ms</string>
+    <string name="pvphouse_profile_not_ready">The PvPHouse profile is still being set up. Please try again in a moment.</string>
 </resources>

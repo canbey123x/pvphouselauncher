@@ -441,4 +441,12 @@
     <string name="pvphouse_profile_ready">PvPHouse profili hazır</string>
     <string name="pvphouse_profile_setup_failed">PvPHouse profili hazırlanamadı. İnternet bağlantınızı kontrol edin; bir sonraki açılışta tekrar denenecek.</string>
     <string name="pvphouse_profile_no_fabric">Minecraft %1$s için henüz kararlı bir Fabric Loader yok. Yayınlandığında PvPHouse profili oluşturulacak.</string>
+    <string name="pvphouse_server_title">PvPHouse</string>
+    <string name="pvphouse_join_button">PvPHouse\'a Katıl</string>
+    <string name="pvphouse_status_checking">Sunucu durumu kontrol ediliyor…</string>
+    <string name="pvphouse_status_online">Çevrimiçi</string>
+    <string name="pvphouse_status_offline">Çevrimdışı (yenilemek için dokunun)</string>
+    <string name="pvphouse_status_players">%1$d/%2$d oyuncu</string>
+    <string name="pvphouse_status_ping">%1$d ms</string>
+    <string name="pvphouse_profile_not_ready">PvPHouse profili hâlâ hazırlanıyor. Lütfen birazdan tekrar deneyin.</string>
 </resources>

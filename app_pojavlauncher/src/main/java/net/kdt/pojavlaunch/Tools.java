@@ -404,7 +404,8 @@ public final class Tools {
     }
 
     public static void launchMinecraft(final AppCompatActivity activity, MinecraftAccount minecraftAccount,
-                                       MinecraftProfile minecraftProfile, String versionId, int versionJavaRequirement) throws Throwable {
+                                       MinecraftProfile minecraftProfile, String versionId, int versionJavaRequirement,
+                                       @Nullable String quickPlayServer) throws Throwable {
         int freeDeviceMemory = getFreeDeviceMemory(activity);
         int localeString;
         int freeAddressSpace = Architecture.is32BitsDevice() ? getMaxContinuousAddressSpaceSize() : -1;
@@ -456,6 +457,14 @@ public final class Tools {
         // Pre-process specific files
         disableSplash(gamedir);
         String[] launchArgs = getMinecraftClientArgs(minecraftAccount, versionInfo, gamedir);
+        // PvPHouse: join the server directly (Quick Play, MC 1.20+ only; needs modern "arguments" json)
+        if (quickPlayServer != null && versionInfo.arguments != null) {
+            String[] withQuickPlay = Arrays.copyOf(launchArgs, launchArgs.length + 2);
+            withQuickPlay[launchArgs.length] = "--quickPlayMultiplayer";
+            withQuickPlay[launchArgs.length + 1] = quickPlayServer;
+            launchArgs = withQuickPlay;
+            Log.i("PvPHouse", "Quick Play multiplayer: " + quickPlayServer);
+        }
 
         // Select the appropriate openGL version
         OldVersionsUtils.selectOpenGlVersion(versionInfo);

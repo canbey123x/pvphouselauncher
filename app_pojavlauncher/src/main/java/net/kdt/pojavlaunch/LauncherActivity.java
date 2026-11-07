@@ -171,6 +171,9 @@ public class LauncherActivity extends BaseActivity {
     };
 
     private final ExtraListener<Boolean> mLaunchGameListener = (key, value) -> {
+        // PvPHouse: consume the join request first so a refused launch never leaks it into a later one
+        final String quickPlayServer = net.kdt.pojavlaunch.pvphouse.PvPHouseLaunch.consumeQuickPlayTarget(
+                LauncherPreferences.DEFAULT_PREF.getString(LauncherPreferences.PREF_KEY_CURRENT_PROFILE, ""));
         if(ProgressLayout.hasProcesses()){
             Toast.makeText(this, R.string.tasks_ongoing, Toast.LENGTH_LONG).show();
             return false;
@@ -233,6 +236,8 @@ public class LauncherActivity extends BaseActivity {
             }
         }
 
+        net.kdt.pojavlaunch.pvphouse.PvPHouseLaunch.prepareGameDir(selectedProfile, prof);
+
         String normalizedVersionId = AsyncMinecraftDownloader.normalizeVersionId(prof.lastVersionId);
         JMinecraftVersionList.Version mcVersion = AsyncMinecraftDownloader.getListedVersion(normalizedVersionId);
 
@@ -256,7 +261,7 @@ public class LauncherActivity extends BaseActivity {
                 this,
                 mcVersion,
                 normalizedVersionId,
-                new ContextAwareDoneListener(this, normalizedVersionId)
+                new ContextAwareDoneListener(this, normalizedVersionId, quickPlayServer)
         );
         return false;
     };
@@ -294,6 +299,11 @@ public class LauncherActivity extends BaseActivity {
     private ActivityResultLauncher<String> mRequestMicrophonePermissionLauncher;
     private WeakReference<Runnable> mRequestNotificationPermissionRunnable;
     private WeakReference<Runnable> mRequestMicrophonePermissionRunnable;
+
+    /** PvPHouse: (re)run the PvPHouse profile setup, e.g. after a failed first attempt. */
+    public void ensurePvPHouseProfile() {
+        net.kdt.pojavlaunch.pvphouse.PvPHouseProfileSetup.ensureProfile(mPvPHouseProfileListener);
+    }
 
     @Override
     protected boolean shouldIgnoreNotch() {

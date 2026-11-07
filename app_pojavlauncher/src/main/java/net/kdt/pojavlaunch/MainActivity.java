@@ -90,6 +90,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     public static volatile ClipboardManager GLOBAL_CLIPBOARD;
     public static final String TAG = "MainActivity";
     public static final String INTENT_MINECRAFT_VERSION = "intent_version";
+    /** PvPHouse: "host:port" to join directly via --quickPlayMultiplayer (null = normal main menu). */
+    public static final String INTENT_QUICKPLAY_SERVER = "pvphouse_quickplay_server";
 
     volatile public static boolean isInputStackCall;
 
@@ -495,7 +497,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
         LauncherProfiles.load();
         int requiredJavaVersion = 8;
         if(version.javaVersion != null) requiredJavaVersion = version.javaVersion.majorVersion;
-        Tools.launchMinecraft(this, minecraftAccount, minecraftProfile, versionId, requiredJavaVersion);
+        Tools.launchMinecraft(this, minecraftAccount, minecraftProfile, versionId, requiredJavaVersion,
+                getIntent().getStringExtra(INTENT_QUICKPLAY_SERVER));
         //Note that we actually stall in the above function, even if the game crashes. But let's be safe.
         Tools.runOnUiThread(()-> mServiceBinder.isActive = false);
     }

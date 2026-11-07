@@ -18,15 +18,23 @@ import net.kdt.pojavlaunch.utils.NotificationUtils;
 public class ContextAwareDoneListener implements AsyncMinecraftDownloader.DoneListener, ContextExecutorTask {
     private final String mErrorString;
     private final String mNormalizedVersionid;
+    private final String mQuickPlayServer;
 
     public ContextAwareDoneListener(Context baseContext, String versionId) {
+        this(baseContext, versionId, null);
+    }
+
+    /** @param quickPlayServer PvPHouse: "host:port" to join directly, or null for the normal main menu */
+    public ContextAwareDoneListener(Context baseContext, String versionId, String quickPlayServer) {
         this.mErrorString = baseContext.getString(R.string.mc_download_failed);
         this.mNormalizedVersionid = versionId;
+        this.mQuickPlayServer = quickPlayServer;
     }
 
     private Intent createGameStartIntent(Context context) {
         Intent mainIntent = new Intent(context, MainActivity.class);
         mainIntent.putExtra(INTENT_MINECRAFT_VERSION, mNormalizedVersionid);
+        if (mQuickPlayServer != null) mainIntent.putExtra(MainActivity.INTENT_QUICKPLAY_SERVER, mQuickPlayServer);
         mainIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         return mainIntent;
     }
