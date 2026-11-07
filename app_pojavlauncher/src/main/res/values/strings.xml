@@ -581,4 +581,19 @@
     <string name="pvphouse_perf_sodium_note">Sodium is meant for the MobileGlues or LTW renderer. The PvPHouse profile may use Vulkan (Zink) for the server resource pack; if you see graphical glitches or crashes, turn the pack off.</string>
     <string name="pvphouse_perf_removed">The performance pack was removed. Your own mods were not touched.</string>
     <string name="pvphouse_perf_failed">The performance pack could not be set up: %1$s</string>
+    <string name="pvphouse_cosm_title">Cosmetics</string>
+    <string name="pvphouse_cosm_subtitle">Pick a cape, hat and wings. Changes apply the next time you start the game.</string>
+    <string name="pvphouse_cosm_section_cape">Cape</string>
+    <string name="pvphouse_cosm_section_hat">Hat</string>
+    <string name="pvphouse_cosm_section_wings">Wings</string>
+    <string name="pvphouse_cosm_none">None</string>
+    <string name="pvphouse_cosm_cape_pvphouse">PvPHouse</string>
+    <string name="pvphouse_cosm_cape_galaxy">Galaxy</string>
+    <string name="pvphouse_cosm_cape_neon">Neon</string>
+    <string name="pvphouse_cosm_hat_crown">Crown</string>
+    <string name="pvphouse_cosm_hat_tophat">Top hat</string>
+    <string name="pvphouse_cosm_hat_horns">Devil horns</string>
+    <string name="pvphouse_cosm_wings_angel">Angel</string>
+    <string name="pvphouse_cosm_wings_demon">Demon</string>
+    <string name="pvphouse_cosm_note">Cosmetics are only visible to you, on the PvPHouse profile. The cape needs \"Cape\" enabled in Minecraft\'s Skin Customization.</string>
 </resources>

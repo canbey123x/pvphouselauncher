@@ -31,6 +31,7 @@ public final class PvPHouseAutoLogin implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		net.pvphouse.autologin.cosmetics.Cosmetics.load();
 		String file = System.getProperty(FILE_PROPERTY);
 		if (file == null || file.isEmpty()) {
 			LOGGER.info("Not started by PvPHouse Launcher with saved credentials, auto-login inactive");

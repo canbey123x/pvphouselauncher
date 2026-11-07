@@ -145,6 +145,8 @@ public class MainMenuFragment extends Fragment {
         // MineButton forces its own background in its constructor, so set ours afterwards
         joinButton.setBackground(ResourcesCompat.getDrawable(getResources(), R.drawable.pvp_join_button_background, null));
         joinButton.setOnClickListener(v -> joinPvPHouse());
+        root.findViewById(R.id.pvphouse_cosmetics_button).setOnClickListener(v ->
+                Tools.swapFragment(requireActivity(), PvPHouseCosmeticsFragment.class, PvPHouseCosmeticsFragment.TAG, null));
         root.findViewById(R.id.pvphouse_site_button)
                 .setOnClickListener(v -> Tools.openURL(requireActivity(), PvPHouseConfig.WEBSITE_URL));
         mStatusText.setOnClickListener(v -> PvPHouseServerStatus.refreshNow());

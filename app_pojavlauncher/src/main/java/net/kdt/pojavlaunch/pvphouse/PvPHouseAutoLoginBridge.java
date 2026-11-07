@@ -56,6 +56,8 @@ public final class PvPHouseAutoLoginBridge {
                 return;
             }
             if (!installMod(context, modFile)) return;
+            // Cosmetics selection (no secrets, always written for the PvPHouse profile)
+            PvPHouseCosmetics.writeConfig(context, gameDir);
 
             PvPHouseCredentials.Credentials credentials = PvPHouseCredentials.load(context);
             if (credentials == null || credentials.password == null) return;

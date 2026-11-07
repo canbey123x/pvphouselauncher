@@ -47,6 +47,11 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal">
         <Button
+            android:id="@+id/pvphouse_cosmetics_button"
+            style="@style/PvPHouseTile"
+            android:drawableTop="@drawable/ic_menu_custom_controls"
+            android:text="@string/pvphouse_cosm_title" />
+        <Button
             android:id="@+id/pvphouse_site_button"
             style="@style/PvPHouseTile"
             android:drawableTop="@drawable/ic_menu_news"

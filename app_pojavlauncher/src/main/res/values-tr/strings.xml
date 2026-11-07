@@ -484,4 +484,19 @@
     <string name="pvphouse_perf_sodium_note">Sodium, MobileGlues veya LTW renderer için tasarlanmıştır. PvPHouse profili sunucunun doku paketi için Vulkan (Zink) kullanıyor olabilir; grafik hatası veya çökme görürsen paketi kapat.</string>
     <string name="pvphouse_perf_removed">Performans paketi kaldırıldı. Kendi eklediğin modlara dokunulmadı.</string>
     <string name="pvphouse_perf_failed">Performans paketi kurulamadı: %1$s</string>
+    <string name="pvphouse_cosm_title">Kozmetikler</string>
+    <string name="pvphouse_cosm_subtitle">Pelerin, şapka ve kanat seç. Değişiklikler oyunu bir sonraki başlatışında geçerli olur.</string>
+    <string name="pvphouse_cosm_section_cape">Pelerin</string>
+    <string name="pvphouse_cosm_section_hat">Şapka</string>
+    <string name="pvphouse_cosm_section_wings">Kanat</string>
+    <string name="pvphouse_cosm_none">Yok</string>
+    <string name="pvphouse_cosm_cape_pvphouse">PvPHouse</string>
+    <string name="pvphouse_cosm_cape_galaxy">Galaksi</string>
+    <string name="pvphouse_cosm_cape_neon">Neon</string>
+    <string name="pvphouse_cosm_hat_crown">Taç</string>
+    <string name="pvphouse_cosm_hat_tophat">Silindir şapka</string>
+    <string name="pvphouse_cosm_hat_horns">Şeytan boynuzu</string>
+    <string name="pvphouse_cosm_wings_angel">Melek</string>
+    <string name="pvphouse_cosm_wings_demon">Şeytan</string>
+    <string name="pvphouse_cosm_note">Kozmetikleri yalnızca sen görürsün (PvPHouse profilinde). Pelerin için Minecraft\'ta Görünüm Özelleştirme &gt; Pelerin açık olmalı.</string>
 </resources>

@@ -3,7 +3,10 @@
 	"package": "net.pvphouse.autologin.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
-		"ClientPacketListenerMixin"
+		"ClientPacketListenerMixin",
+		"AbstractClientPlayerMixin",
+		"AvatarRendererMixin",
+		"LivingEntityRendererInvoker"
 	],
 	"injectors": {
 		"defaultRequire": 0
