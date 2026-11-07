@@ -1,33 +1,44 @@
 name: Android CI
 
+# PvPHouse Launcher
+# - every push / PR      -> debug APK (artifact)
+# - tags "v*"            -> release APK signed with the key from GitHub Secrets + GitHub Release
+#
+# Required secrets for release builds (Settings -> Secrets and variables -> Actions):
+#   PVPHOUSE_KEYSTORE_BASE64   base64 of your .jks file   (base64 -w0 release.jks)
+#   PVPHOUSE_KEYSTORE_PASSWORD keystore password
+#   PVPHOUSE_KEY_ALIAS         key alias
+#   PVPHOUSE_KEY_PASSWORD      key password
+
 on:
-  pull_request:
-    branches-ignore:
-      - 'l10n_v3_openjdk' 
-    types: [ opened, reopened ]
   push:
-    branches-ignore:
-      - 'l10n_v3_openjdk'
+    branches: [ '**' ]
+    tags: [ 'v*' ]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create the GitHub Release on tags
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      GPLAY_KEYSTORE_PASSWORD: ${{ secrets.GPLAY_KEYSTORE_PASSWORD }}
       CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: "recursive"
+          fetch-depth: 0   # version name uses `git describe --tags`
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
 
+      # Java 8 runtime (old MC versions) - same source as upstream Amethyst
       - name: Get JRE 8
         uses: dawidd6/action-download-artifact@v9
         with:
@@ -38,35 +49,33 @@ jobs:
           branch: buildjre8
           name: jre8-pojav
 
-      # - name: Get JRE17
-      #   uses: dawidd6/action-download-artifact@v9
-      #   with:
-      #     workflow: build.yml
-      #     path: app_pojavlauncher/src/main/assets/components/jre-new
-      #     workflow_conclusion: completed
-      #     repo: AngelAuraMC/angelauramc-openjdk-build
-      #     branch: buildjre17-21
-      #     name: jre17-pojav
-      #
-      # - name: Get JRE21
-      #   uses: dawidd6/action-download-artifact@v9
-      #   with:
-      #     workflow: build.yml
-      #     path: app_pojavlauncher/src/main/assets/components/jre-21
-      #     workflow_conclusion: completed
-      #     repo: AngelAuraMC/angelauramc-openjdk-build
-      #     branch: buildjre17-21
-      #     name: jre21-pojav
-      #
-      # - name: Get JRE25
-      #   uses: dawidd6/action-download-artifact@v9
-      #   with:
-      #     workflow: build.yml
-      #     path: app_pojavlauncher/src/main/assets/components/jre-25
-      #     workflow_conclusion: completed
-      #     repo: FCL-Team/Android-OpenJDK-Build
-      #     branch: Build_JRE_25
-      #     name: jre25-multiarch
+      # Java 21 runtime bundled in the APK (MC 1.20.5+ / 1.21.11 needs it).
+      # Uses the same per-arch archives the launcher would otherwise download at runtime
+      # (NewJREUtil.getJreSource). The launcher's internal-runtime installer extracts
+      # universal.tar.xz then bin-<arch>.tar.xz into one folder, so a full per-arch archive
+      # works as bin-<arch> with an empty universal part. No native code changes.
+      - name: Bundle JRE 21
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          D=app_pojavlauncher/src/main/assets/components/jre-21
+          DL=$(mktemp -d)
+          mkdir -p "$D"
+          gh release download download_jre21 -R AngelAuraMC/angelauramc-openjdk-build \
+            -D "$DL" -p 'jre21-android-*.tar.xz'
+          ls -la "$DL"
+          for a in arm64 arm x86_64; do
+            if [ -f "$DL/jre21-android-$a.tar.xz" ]; then
+              cp "$DL/jre21-android-$a.tar.xz" "$D/bin-$a.tar.xz"
+            else
+              echo "::warning::No bundled JRE 21 for $a (launcher will download it on demand)"
+            fi
+          done
+          test -f "$D/bin-arm64.tar.xz"   # arm64 is the main target, fail loudly if missing
+          tar -cJf "$D/universal.tar.xz" -T /dev/null
+          echo "jre21-$(cat "$D"/bin-*.tar.xz | sha256sum | cut -c1-16)" > "$D/version"
+          ls -la "$D"; cat "$D/version"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -76,36 +85,48 @@ jobs:
       - name: Run scripts
         run: |
           ./scripts/languagelist_updater.sh
-          mkdir out
-
-      - name: Build Release .apk
-        run: |
-          # Build the launcher
-          gradle :app_pojavlauncher:assembleRelease
-          mv app_pojavlauncher/build/outputs/apk/release/app_pojavlauncher-release.apk out/app-release.apk
-
-      - name: Gen md5sums
-        run: |
-          md5sum out/app-release.apk > out/app-release.md5
+          mkdir -p out
 
       - name: Build Debug .apk
         run: |
-          # Build the launcher
           gradle :app_pojavlauncher:assembleDebug
-          mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/app-debug.apk
-
-      - name: Gen md5sums
-        run: |
-          md5sum out/app-debug.apk > out/app-debug.md5
+          mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/pvphouse-launcher-debug.apk
+          md5sum out/pvphouse-launcher-debug.apk > out/pvphouse-launcher-debug.md5
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug (recommended)
-          path: out/app-debug.*
+          name: pvphouse-launcher-debug
+          path: out/pvphouse-launcher-debug.*
 
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: out/app-release.*
+      # ---------- release (tags only) ----------
+      - name: Decode release keystore
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KS_B64: ${{ secrets.PVPHOUSE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "::error::PVPHOUSE_KEYSTORE_BASE64 secret is not set - cannot sign release"; exit 1
+          fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "PVPHOUSE_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed Release .apk
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          PVPHOUSE_KEYSTORE_PASSWORD: ${{ secrets.PVPHOUSE_KEYSTORE_PASSWORD }}
+          PVPHOUSE_KEY_ALIAS: ${{ secrets.PVPHOUSE_KEY_ALIAS }}
+          PVPHOUSE_KEY_PASSWORD: ${{ secrets.PVPHOUSE_KEY_PASSWORD }}
+        run: |
+          gradle :app_pojavlauncher:assembleRelease
+          mv app_pojavlauncher/build/outputs/apk/release/app_pojavlauncher-release.apk "out/pvphouse-launcher-${GITHUB_REF_NAME}.apk"
+          md5sum "out/pvphouse-launcher-${GITHUB_REF_NAME}.apk" > "out/pvphouse-launcher-${GITHUB_REF_NAME}.md5"
+          rm -f "$PVPHOUSE_KEYSTORE_FILE"
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/pvphouse-launcher-${GITHUB_REF_NAME}.* \
+            -R "$GITHUB_REPOSITORY" --title "PvPHouse Launcher $GITHUB_REF_NAME" --generate-notes
