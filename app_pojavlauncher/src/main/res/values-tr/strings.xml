@@ -456,4 +456,20 @@
     <string name="pvphouse_tile_files">Oyun dosyaları</string>
     <string name="pvphouse_tile_logs">Log paylaş</string>
     <string name="pvphouse_tile_website">Web sitesi · pvphouse.net</string>
+    <string name="pvphouse_auth_button">PvPHouse hesabı (kullanıcı adı + şifre)</string>
+    <string name="pvphouse_login_title">PvPHouse\'a giriş yap</string>
+    <string name="pvphouse_login_subtitle">PvPHouse hesabının kullanıcı adı ve şifresini gir.</string>
+    <string name="pvphouse_register_title">PvPHouse hesabı oluştur</string>
+    <string name="pvphouse_register_subtitle">Bir kullanıcı adı ve şifre seç. İlk girişinde oyun seni otomatik olarak kaydeder.</string>
+    <string name="pvphouse_login_username">Kullanıcı adı</string>
+    <string name="pvphouse_login_password">Şifre</string>
+    <string name="pvphouse_login_password_confirm">Şifre (tekrar)</string>
+    <string name="pvphouse_login_password_note">Şifren bu cihazda şifrelenmiş olarak saklanır ve sunucuya girişte /login olarak gönderilir. Başka bir yerde kullandığın bir şifreyi kullanma.</string>
+    <string name="pvphouse_login_no_secure_storage">Bu Android sürümü şifreleri güvenli saklayamıyor; oyunda /login komutunu kendin yazman gerekecek.</string>
+    <string name="pvphouse_login_action_login">Giriş yap</string>
+    <string name="pvphouse_login_action_register">Kayıt ol</string>
+    <string name="pvphouse_login_switch_to_register">Hesabın yok mu? Kayıt ol</string>
+    <string name="pvphouse_login_switch_to_login">Zaten hesabın var mı? Giriş yap</string>
+    <string name="pvphouse_login_bad_password">Şifre %1$d–%2$d karakter olmalı ve boşluk içermemeli.</string>
+    <string name="pvphouse_login_password_mismatch">Şifreler eşleşmiyor.</string>
 </resources>

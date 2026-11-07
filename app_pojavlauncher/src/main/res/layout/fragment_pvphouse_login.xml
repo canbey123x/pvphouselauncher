@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PvPHouse: account screen (offline username + AuthMe password, login / register) -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background_app"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:padding="@dimen/_12sdp">
+
+        <ImageView
+            android:layout_width="@dimen/_110sdp"
+            android:layout_height="@dimen/_80sdp"
+            android:adjustViewBounds="true"
+            android:contentDescription="@string/pvphouse_server_title"
+            android:scaleType="fitCenter"
+            android:src="@drawable/splash_logo" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_8sdp"
+            android:background="@drawable/pvp_card_background"
+            android:orientation="vertical"
+            android:padding="@dimen/_14sdp">
+
+            <TextView
+                android:id="@+id/pvphouse_login_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/noto_sans_bold"
+                android:text="@string/pvphouse_login_title"
+                android:textColor="@color/primary_text"
+                android:textSize="@dimen/_16ssp" />
+
+            <TextView
+                android:id="@+id/pvphouse_login_subtitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_2sdp"
+                android:text="@string/pvphouse_login_subtitle"
+                android:textColor="@color/secondary_text"
+                android:textSize="@dimen/_10ssp" />
+
+            <TextView
+                style="@style/PvPHouseSectionLabel"
+                android:layout_marginStart="0dp"
+                android:layout_marginTop="@dimen/_12sdp"
+                android:text="@string/pvphouse_login_username" />
+
+            <com.kdt.mcgui.MineEditText
+                android:id="@+id/pvphouse_login_username"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_36sdp"
+                android:layout_marginTop="@dimen/_4sdp"
+                android:imeOptions="flagNoExtractUi|actionNext"
+                android:importantForAutofill="no"
+                android:inputType="textNoSuggestions|textVisiblePassword"
+                android:maxLength="16"
+                android:singleLine="true"
+                android:textColor="@color/primary_text"
+                android:textSize="@dimen/_14ssp" />
+
+            <TextView
+                style="@style/PvPHouseSectionLabel"
+                android:layout_marginStart="0dp"
+                android:layout_marginTop="@dimen/_10sdp"
+                android:text="@string/pvphouse_login_password" />
+
+            <com.kdt.mcgui.MineEditText
+                android:id="@+id/pvphouse_login_password"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_36sdp"
+                android:layout_marginTop="@dimen/_4sdp"
+                android:imeOptions="flagNoExtractUi|actionNext"
+                android:importantForAutofill="no"
+                android:inputType="textPassword"
+                android:maxLength="30"
+                android:singleLine="true"
+                android:textColor="@color/primary_text"
+                android:textSize="@dimen/_14ssp" />
+
+            <LinearLayout
+                android:id="@+id/pvphouse_login_confirm_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    style="@style/PvPHouseSectionLabel"
+                    android:layout_marginStart="0dp"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:text="@string/pvphouse_login_password_confirm" />
+
+                <com.kdt.mcgui.MineEditText
+                    android:id="@+id/pvphouse_login_password_confirm"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_36sdp"
+                    android:layout_marginTop="@dimen/_4sdp"
+                    android:imeOptions="flagNoExtractUi|actionDone"
+                    android:importantForAutofill="no"
+                    android:inputType="textPassword"
+                    android:maxLength="30"
+                    android:singleLine="true"
+                    android:textColor="@color/primary_text"
+                    android:textSize="@dimen/_14ssp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/pvphouse_login_note"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_10sdp"
+                android:text="@string/pvphouse_login_password_note"
+                android:textColor="@color/secondary_text"
+                android:textSize="@dimen/_9ssp" />
+
+            <com.kdt.mcgui.MineButton
+                android:id="@+id/pvphouse_login_submit"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_44sdp"
+                android:layout_marginTop="@dimen/_12sdp"
+                android:text="@string/pvphouse_login_action_login"
+                android:textAllCaps="true"
+                android:textColor="@color/primary_text" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/pvphouse_login_switch_mode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_10sdp"
+            android:background="?android:attr/selectableItemBackground"
+            android:padding="@dimen/_8sdp"
+            android:text="@string/pvphouse_login_switch_to_register"
+            android:textColor="@color/pvp_pink_light"
+            android:textSize="@dimen/_12ssp" />
+    </LinearLayout>
+</ScrollView>

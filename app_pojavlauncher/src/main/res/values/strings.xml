@@ -553,4 +553,20 @@
     <string name="pvphouse_tile_files">Game files</string>
     <string name="pvphouse_tile_logs">Share logs</string>
     <string name="pvphouse_tile_website">Website · pvphouse.net</string>
+    <string name="pvphouse_auth_button">PvPHouse account (username + password)</string>
+    <string name="pvphouse_login_title">Log in to PvPHouse</string>
+    <string name="pvphouse_login_subtitle">Use the username and password of your PvPHouse account.</string>
+    <string name="pvphouse_register_title">Create a PvPHouse account</string>
+    <string name="pvphouse_register_subtitle">Pick a username and a password. The game registers you automatically on your first join.</string>
+    <string name="pvphouse_login_username">Username</string>
+    <string name="pvphouse_login_password">Password</string>
+    <string name="pvphouse_login_password_confirm">Password (again)</string>
+    <string name="pvphouse_login_password_note">Your password is stored encrypted on this device and sent to PvPHouse as /login when you join. Do not use a password you use anywhere else.</string>
+    <string name="pvphouse_login_no_secure_storage">This Android version cannot store passwords securely, so you will need to type /login yourself in game.</string>
+    <string name="pvphouse_login_action_login">Log in</string>
+    <string name="pvphouse_login_action_register">Register</string>
+    <string name="pvphouse_login_switch_to_register">No account yet? Register</string>
+    <string name="pvphouse_login_switch_to_login">Already have an account? Log in</string>
+    <string name="pvphouse_login_bad_password">The password must be %1$d–%2$d characters and contain no spaces.</string>
+    <string name="pvphouse_login_password_mismatch">Passwords do not match.</string>
 </resources>
