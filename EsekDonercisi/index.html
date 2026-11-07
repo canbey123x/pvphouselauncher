@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1030">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="EsekDonercisi — mobil öncelikli, low-poly 3D Türk kasabası dönerci simülasyonu.">
+  <title>EsekDonercisi</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A5%99%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+  <script>
+    // Modül yüklenemezse (eski tarayıcı / bağlantı yok) oyuncuya bilgi ver.
+    window.__showFatal = function (msg) {
+      var el = document.getElementById('loadingText');
+      if (el) el.textContent = msg;
+      var sp = document.querySelector('#loading .spinner');
+      if (sp) sp.style.display = 'none';
+    };
+    window.addEventListener('error', function (e) {
+      if (!window.__gameReady) window.__showFatal('Oyun yüklenemedi 😢 ' + (e && e.message ? '(' + e.message + ')' : ''));
+    });
+    setTimeout(function () {
+      if (!window.__gameReady) window.__showFatal('Yükleme uzun sürdü... İnternet bağlantını kontrol edip sayfayı yenile.');
+    }, 20000);
+  </script>
+</head>
+<body>
+  <!-- 3D sahne -->
+  <canvas id="game"></canvas>
+
+  <!-- Yükleme ekranı -->
+  <div id="loading" class="screen">
+    <div class="loading-box">
+      <div class="spinner">🥙</div>
+      <div id="loadingText">Kasaba kuruluyor, döner pişiyor...</div>
+    </div>
+  </div>
+
+  <!-- ============ ANA MENÜ (Landing) ============ -->
+  <div id="menu" class="screen hidden">
+    <div class="bunting" aria-hidden="true"></div>
+    <div class="floaters" aria-hidden="true">
+      <span style="--x:6%;--d:9s;--s:0s">🥙</span>
+      <span style="--x:18%;--d:12s;--s:2s">🧅</span>
+      <span style="--x:30%;--d:10s;--s:5s">🍅</span>
+      <span style="--x:46%;--d:13s;--s:1s">🌯</span>
+      <span style="--x:60%;--d:11s;--s:4s">🐴</span>
+      <span style="--x:72%;--d:9s;--s:6s">🫓</span>
+      <span style="--x:84%;--d:12s;--s:3s">🥛</span>
+      <span style="--x:93%;--d:10s;--s:7s">🌶️</span>
+    </div>
+
+    <div class="menu-card">
+      <div class="since">★ 1987'DEN BERİ ★</div>
+      <h1 class="title" aria-label="EsekDonercisi">
+        <span class="t1">Esek</span><span class="t2">Donercisi</span>
+      </h1>
+      <p class="subtitle">Kasabanın en hızlı dönercisi ol, eşeğinle sokakları fethet!</p>
+
+      <div class="record" id="highScoreBox">🏆 Rekor Kasa: <b id="highScore">0</b> TL</div>
+
+      <div class="menu-buttons">
+        <button id="btnStart" class="menu-btn primary">▶ Oyuna Başla</button>
+        <button id="btnHow" class="menu-btn">📖 Nasıl Oynanır</button>
+        <button id="btnAbout" class="menu-btn">ℹ️ Hakkında</button>
+      </div>
+      <div class="menu-foot">Telefonda en iyi deneyim için yatay ya da dikey, fark etmez — sadece aç!</div>
+    </div>
+  </div>
+
+  <!-- Menü pencereleri -->
+  <div id="modal" class="screen overlay hidden">
+    <div class="modal-card">
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody"></div>
+      <button id="modalClose" class="menu-btn primary small">Tamam</button>
+    </div>
+  </div>
+
+  <template id="tplHow">
+    <ul class="how-list">
+      <li><b>🕹️ Yürü:</b> Sol alttaki joystick (klavyede WASD / ok tuşları). Ekranı sağa-sola sürükleyerek kamerayı çevir.</li>
+      <li><b>🥙 Tezgaha Geç:</b> Dükkânın önündeki sarı oka git, sağdaki <i>Tezgaha Geç</i> butonuna bas.</li>
+      <li><b>🔪 Döner Kes:</b> Ekranda parmağını <b>yukarıdan aşağı kaydır</b>. Her kaydırma bir dilim!</li>
+      <li><b>🥖 / 🌯 Hazırla:</b> Kestiğin dilimleri <i>Ekmek Arası</i> ya da <i>Dürüm</i> yap.</li>
+      <li><b>🛎️ Servis Et:</b> Sıradaki müşterinin siparişi ekranın üstünde yazar. Tür ve dilim sayısı tutarsa bahşiş kaparsın!</li>
+      <li><b>🐴 Eşek:</b> Yanına git, <i>Eşeğe Bin</i>. Joystick yukarı = gaz, aşağı = geri, sağ/sol = dönüş. <i>Fren</i> butonu (Boşluk) ile dur.</li>
+      <li><b>💬 Konuş:</b> Kasabalılara yaklaş, <i>Konuş</i> butonuna bas, iki cevaptan birini seç.</li>
+      <li><b>⌨️ Klavye:</b> E = eylem, 1/2 = seçenek ya da ekmek/dürüm, Enter = servis, S/↓ = kes, Q = tezgahtan çık, P = duraklat.</li>
+    </ul>
+  </template>
+
+  <template id="tplAbout">
+    <p><b>EsekDonercisi</b>, tamamen tarayıcıda çalışan, mobil öncelikli, düşük poligonlu bir 3D Türk kasabası simülasyonudur.</p>
+    <p>Tüm modeller (camii, minareler, eşek, döner şişi...) Three.js'in ilkel geometrileriyle kodla üretilmiştir — tek bir 3D dosya yoktur.</p>
+    <p>Derleme yok, kurulum yok: GitHub Pages'e at, linke tıkla, oyna. Rekorun bu cihazda saklanır.</p>
+    <p class="muted">Three.js r160 · ES Modules · Web Audio · Sürüm 1.0</p>
+  </template>
+
+  <!-- ============ OYUN HUD ============ -->
+  <div id="hud" class="hidden">
+    <div id="cutZone" class="hidden">
+      <div class="cut-guide"><span class="hand">👆</span><span>Döneri kesmek için aşağı kaydır</span></div>
+    </div>
+
+    <div class="hud-top">
+      <div class="pill money" id="moneyPill">💰 <span id="money">0</span> TL</div>
+      <div class="pill" id="carryPill">🔪 0/8</div>
+      <div class="pill" id="queuePill">👥 0</div>
+      <div class="spacer"></div>
+      <button id="pauseBtn" class="icon-btn" aria-label="Duraklat">☰</button>
+    </div>
+
+    <div id="orderCard" class="hidden"></div>
+    <div id="hint" class="hidden"></div>
+    <div id="toasts"></div>
+
+    <div id="joyZone">
+      <div id="joyBase"><div id="joyKnob"></div></div>
+    </div>
+
+    <div id="actions"></div>
+
+    <div id="dialog" class="hidden">
+      <div class="dlg-head"><span id="dlgPortrait">🙂</span><span id="dlgName"></span></div>
+      <div id="dlgText"></div>
+      <div id="dlgOptions"></div>
+    </div>
+  </div>
+
+  <!-- Duraklatma menüsü -->
+  <div id="pauseMenu" class="screen overlay hidden">
+    <div class="modal-card">
+      <h2>⏸ Mola</h2>
+      <div id="pauseStats" class="pause-stats"></div>
+      <button id="btnResume" class="menu-btn primary">▶ Devam Et</button>
+      <button id="btnSound" class="menu-btn">🔊 Ses: Açık</button>
+      <button id="btnMenu" class="menu-btn">🏠 Ana Menü</button>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
