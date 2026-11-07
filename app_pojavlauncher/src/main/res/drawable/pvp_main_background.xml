@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PvPHouse: main screen background (subtle purple glow) -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:type="radial"
+        android:gradientRadius="90%p"
+        android:centerX="0.5"
+        android:centerY="0.25"
+        android:startColor="@color/pvp_bg_elevated"
+        android:endColor="@color/pvp_bg_darkest" />
+</shape>

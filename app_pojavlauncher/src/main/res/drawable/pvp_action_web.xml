@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PvPHouse: round shortcut icon (circle + icon), API 21 safe (insets, no item sizes) -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@color/pvp_bg_surface" />
+            <stroke android:width="1dp" android:color="@color/pvp_bg_elevated" />
+            <size android:width="56dp" android:height="56dp" />
+        </shape>
+    </item>
+    <item android:left="16dp" android:top="16dp" android:right="16dp" android:bottom="16dp"
+        android:drawable="@drawable/ic_pvp_web" />
+</layer-list>

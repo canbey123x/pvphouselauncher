@@ -500,4 +500,9 @@
     <string name="pvphouse_cosm_wings_demon">Şeytan</string>
     <string name="pvphouse_cosm_note">Kozmetikleri yalnızca sen görürsün (PvPHouse profilinde). Pelerin için Minecraft\'ta Görünüm Özelleştirme &gt; Pelerin açık olmalı.</string>
     <string name="about_privacy_title">Gizlilik politikası</string>
+    <string name="pvphouse_play">Oyna</string>
+    <string name="pvphouse_action_website">Web sitesi</string>
+    <string name="pvphouse_more">Diğer</string>
+    <string name="pvphouse_menu_install">Mod / .jar yükle</string>
+    <string name="pvphouse_menu_advanced">Gelişmiş mod (diğer sürümler)</string>
 </resources>

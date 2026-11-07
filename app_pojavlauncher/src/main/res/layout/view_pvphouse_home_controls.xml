@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PvPHouse: home screen controls (status, MOTD, PLAY, shortcuts). Shared by portrait/landscape. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_horizontal"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/pvphouse_server_address"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:letterSpacing="0.05"
+        android:textColor="@color/secondary_text"
+        android:textSize="@dimen/_10ssp"
+        tools:text="Minecraft 1.21.11 · mc.pvphouse.net" />
+
+    <LinearLayout
+        android:id="@+id/pvphouse_status_pill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/_8sdp"
+        android:background="@drawable/pvp_status_pill"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="@dimen/_10sdp"
+        android:paddingTop="@dimen/_5sdp"
+        android:paddingEnd="@dimen/_12sdp"
+        android:paddingBottom="@dimen/_5sdp">
+
+        <View
+            android:id="@+id/pvphouse_status_dot"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:background="@drawable/pvp_status_dot_unknown" />
+
+        <TextView
+            android:id="@+id/pvphouse_status_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/_6sdp"
+            android:text="@string/pvphouse_status_checking"
+            android:textColor="@color/primary_text"
+            android:textSize="@dimen/_11ssp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/pvphouse_motd"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/_6sdp"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="2"
+        android:paddingHorizontal="@dimen/_12sdp"
+        android:textColor="@color/pvp_pink_light"
+        android:textSize="@dimen/_11ssp"
+        android:visibility="gone"
+        tools:text="PvPHouse - Hoş geldin!"
+        tools:visibility="visible" />
+
+    <com.kdt.mcgui.MineButton
+        android:id="@+id/pvphouse_join_button"
+        android:layout_width="@dimen/_240sdp"
+        android:layout_height="@dimen/_56sdp"
+        android:layout_marginTop="@dimen/_16sdp"
+        android:fontFamily="@font/noto_sans_bold"
+        android:text="@string/pvphouse_play"
+        android:textAllCaps="true"
+        android:textColor="@color/primary_text"
+        android:letterSpacing="0.1"
+        android:textSize="@dimen/_16ssp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/_16sdp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/pvphouse_cosmetics_button"
+            style="@style/PvPHouseRoundAction"
+            android:drawableTop="@drawable/pvp_action_cosmetics"
+            android:text="@string/pvphouse_cosm_title" />
+
+        <Button
+            android:id="@+id/custom_control_button"
+            style="@style/PvPHouseRoundAction"
+            android:drawableTop="@drawable/pvp_action_controls"
+            android:text="@string/pvphouse_tile_controls" />
+
+        <Button
+            android:id="@+id/pvphouse_site_button"
+            style="@style/PvPHouseRoundAction"
+            android:drawableTop="@drawable/pvp_action_web"
+            android:text="@string/pvphouse_action_website" />
+    </LinearLayout>
+</LinearLayout>

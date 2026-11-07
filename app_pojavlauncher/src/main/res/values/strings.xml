@@ -598,4 +598,9 @@
     <string name="pvphouse_cosm_note">Cosmetics are only visible to you, on the PvPHouse profile. The cape needs \"Cape\" enabled in Minecraft\'s Skin Customization.</string>
     <string name="pvphouse_privacy_url" translatable="false">https://github.com/canbey123x/pvphouselauncher/blob/main/PRIVACY.md</string>
     <string name="about_privacy_title">Privacy policy</string>
+    <string name="pvphouse_play">Play</string>
+    <string name="pvphouse_action_website">Website</string>
+    <string name="pvphouse_more">More</string>
+    <string name="pvphouse_menu_install">Install mod / .jar</string>
+    <string name="pvphouse_menu_advanced">Advanced mode (other versions)</string>
 </resources>

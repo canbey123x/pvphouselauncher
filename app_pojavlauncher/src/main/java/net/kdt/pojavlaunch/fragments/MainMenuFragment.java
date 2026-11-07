@@ -149,7 +149,39 @@ public class MainMenuFragment extends Fragment {
                 Tools.swapFragment(requireActivity(), PvPHouseCosmeticsFragment.class, PvPHouseCosmeticsFragment.TAG, null));
         root.findViewById(R.id.pvphouse_site_button)
                 .setOnClickListener(v -> Tools.openURL(requireActivity(), PvPHouseConfig.WEBSITE_URL));
-        mStatusText.setOnClickListener(v -> PvPHouseServerStatus.refreshNow());
+        root.findViewById(R.id.pvphouse_status_pill).setOnClickListener(v -> PvPHouseServerStatus.refreshNow());
+        setupMoreMenu(root);
+    }
+
+    private static final String PREF_ADVANCED_MODE = "pvphouse_advanced_mode";
+
+    /** ⋯ menu: tools that used to be buttons on the main screen, plus "Advanced mode". */
+    private void setupMoreMenu(View root) {
+        View advancedBar = root.findViewById(R.id.pvphouse_advanced_bar);
+        advancedBar.setVisibility(LauncherPreferences.DEFAULT_PREF.getBoolean(PREF_ADVANCED_MODE, false) ? View.VISIBLE : View.GONE);
+        View more = root.findViewById(R.id.pvphouse_more_button);
+        more.setOnClickListener(v -> {
+            android.widget.PopupMenu menu = new android.widget.PopupMenu(requireContext(), more);
+            menu.getMenu().add(0, 1, 0, R.string.pvphouse_menu_install);
+            menu.getMenu().add(0, 2, 1, R.string.pvphouse_tile_files);
+            menu.getMenu().add(0, 3, 2, R.string.pvphouse_tile_logs);
+            menu.getMenu().add(0, 4, 3, R.string.pvphouse_menu_advanced).setCheckable(true)
+                    .setChecked(advancedBar.getVisibility() == View.VISIBLE);
+            menu.setOnMenuItemClickListener(item -> {
+                switch (item.getItemId()) {
+                    case 1: root.findViewById(R.id.install_jar_button).performClick(); return true;
+                    case 2: root.findViewById(R.id.open_files_button).performClick(); return true;
+                    case 3: root.findViewById(R.id.share_logs_button).performClick(); return true;
+                    case 4:
+                        boolean show = advancedBar.getVisibility() != View.VISIBLE;
+                        advancedBar.setVisibility(show ? View.VISIBLE : View.GONE);
+                        LauncherPreferences.DEFAULT_PREF.edit().putBoolean(PREF_ADVANCED_MODE, show).apply();
+                        return true;
+                    default: return false;
+                }
+            });
+            menu.show();
+        });
     }
 
     /** "Join PvPHouse": select the PvPHouse profile and launch straight into the server. */
