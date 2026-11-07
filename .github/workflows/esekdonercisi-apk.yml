@@ -1,0 +1,72 @@
+name: EsekDonercisi APK
+
+# EsekDonercisi/ klasörü her değiştiğinde Android APK'sını derler:
+#  - Actions sekmesinde "EsekDonercisi-apk" artifact'ı olarak
+#  - "esekdonercisi-latest" sürümünde (Releases) doğrudan indirilebilir EsekDonercisi.apk olarak
+
+on:
+  push:
+    paths:
+      - 'EsekDonercisi/**'
+      - '.github/workflows/esekdonercisi-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: esek-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: EsekDonercisi/android
+    steps:
+      - name: Kodu çek
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: three.js'i APK içine indir (oyun internetsiz çalışsın)
+        run: |
+          mkdir -p vendor
+          curl -fsSL --retry 4 https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js -o vendor/three.module.js
+          ls -la vendor
+
+      - name: APK derle
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: APK'yı adlandır
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/EsekDonercisi.apk"
+          ls -la "$GITHUB_WORKSPACE/EsekDonercisi.apk"
+
+      - name: Artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: EsekDonercisi-apk
+          path: EsekDonercisi.apk
+
+      - name: Releases'a yayınla (esekdonercisi-latest)
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete esekdonercisi-latest --cleanup-tag -y || true
+          gh release create esekdonercisi-latest EsekDonercisi.apk \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "EsekDonercisi APK (son sürüm)" \
+            --notes "Telefona indir, aç, kur. Bilinmeyen kaynaklardan yüklemeye izin vermen gerekebilir. Derleme: ${GITHUB_SHA::7} (#${GITHUB_RUN_NUMBER})"

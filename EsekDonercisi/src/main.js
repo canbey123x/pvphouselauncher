@@ -816,6 +816,25 @@ setMode('walk');
 ui.loading.classList.add('hidden');
 ui.menu.classList.remove('hidden');
 window.__gameReady = true;
+// Android uygulaması (APK) için geri tuşu ve arka plana alma kancaları.
+window.__androidBack = () => {
+  if (!ui.modal.classList.contains('hidden')) {
+    ui.modal.classList.add('hidden');
+    return true;
+  }
+  if (game.state === 'playing') {
+    if (game.mode === 'talk') npcs.close();
+    else if (game.mode === 'cut') exitCounter();
+    else pause();
+    return true;
+  }
+  if (game.state === 'paused') {
+    goMenu();
+    return true;
+  }
+  return false; // ana menüde: uygulamadan çık
+};
+window.__androidPause = () => pause();
 // Geliştirici kancası: ?debug ile konsoldan durum incelenebilir.
 if (new URLSearchParams(location.search).has('debug')) window.__dbg = { game, player, donkey, npcs, customers, cutting, city };
 frame();
