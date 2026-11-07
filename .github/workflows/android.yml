@@ -132,6 +132,13 @@ jobs:
         run: |
           gradle :app_pojavlauncher:assembleDebug
           mv app_pojavlauncher/build/outputs/apk/debug/app_pojavlauncher-debug.apk out/pvphouse-launcher-debug.apk
+          # Guard: an APK whose versionCode is not above the first PvPHouse builds (10000000) cannot be
+          # installed over them ("package appears to be invalid") - never publish such a build
+          AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -n1)aapt2
+          BADGING=$("$AAPT2" dump badging out/pvphouse-launcher-debug.apk | head -n1)
+          echo "$BADGING"
+          CODE=$(echo "$BADGING" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p")
+          if [ -z "$CODE" ] || [ "$CODE" -le 10000000 ]; then echo "::error::versionCode $CODE is too low"; exit 1; fi
           md5sum out/pvphouse-launcher-debug.apk > out/pvphouse-launcher-debug.md5
 
       - name: Upload debug APK

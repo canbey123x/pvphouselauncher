@@ -60,22 +60,36 @@ def getVersionName = {
     }
 }
 
-// PvPHouse: stores only accept an update when versionCode grows, so derive it from the newest
-// vX.Y.Z tag reachable from HEAD: major*1_000_000 + minor*1_000 + patch (v1.2.3 -> 1002003).
-// Builds before the first release tag use 1.
+// PvPHouse: Android refuses to install an update whose versionCode is lower than the installed
+// one (some phones report it as "package appears to be invalid"), so it must always grow:
+// - release builds:  20_000_000 + major*1_000_000 + minor*1_000 + patch of the newest vX.Y.Z tag
+//                    (v1.0.0 -> 21000000)
+// - other builds:    10_000_000 + number of commits on HEAD (debug/test builds; first PvPHouse
+//                    debug builds used 10000000, so this stays above them)
 def getVersionCode = {
+    def isRelease = project.gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
+    if (isRelease) {
+        try {
+            String tag = providers.exec {
+                commandLine 'git', 'describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*.[0-9]*.[0-9]*'
+                ignoreExitValue = true
+            }.getStandardOutput().asText.get().trim()
+            def m = tag =~ /^v(\d+)\.(\d+)\.(\d+)$/
+            if (m.matches()) {
+                return 20000000 + (m.group(1) as int) * 1000000 + (m.group(2) as int) * 1000 + (m.group(3) as int)
+            }
+        } catch (Exception ignored) {
+        }
+    }
     try {
-        String tag = providers.exec {
-            commandLine 'git', 'describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*.[0-9]*.[0-9]*'
+        String count = providers.exec {
+            commandLine 'git', 'rev-list', '--count', 'HEAD'
             ignoreExitValue = true
         }.getStandardOutput().asText.get().trim()
-        def m = tag =~ /^v(\d+)\.(\d+)\.(\d+)$/
-        if (m.matches()) {
-            return (m.group(1) as int) * 1000000 + (m.group(2) as int) * 1000 + (m.group(3) as int)
-        }
+        if (count ==~ /\d+/) return 10000000 + (count as int)
     } catch (Exception ignored) {
     }
-    return 1
+    return 10000001
 }
 
 def getCFApiKey = {
