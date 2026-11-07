@@ -281,6 +281,9 @@ public class LauncherActivity extends BaseActivity {
             new net.kdt.pojavlaunch.pvphouse.PvPHouseProfileSetup.Listener() {
         @Override
         public void onProfileReady(String profileKey, boolean created) {
+            // Daily performance-pack refresh, started only after the profile setup so the two
+            // never share the progress bar at the same time
+            net.kdt.pojavlaunch.pvphouse.PvPHousePerformancePack.refreshIfDue(null);
             if (!created || isFinishing() || isDestroyed()) return;
             Fragment root = getSupportFragmentManager().findFragmentByTag("ROOT");
             if (root instanceof MainMenuFragment) ((MainMenuFragment) root).onProfileCreated(profileKey);

@@ -472,4 +472,16 @@
     <string name="pvphouse_login_switch_to_login">Zaten hesabın var mı? Giriş yap</string>
     <string name="pvphouse_login_bad_password">Şifre %1$d–%2$d karakter olmalı ve boşluk içermemeli.</string>
     <string name="pvphouse_login_password_mismatch">Şifreler eşleşmiyor.</string>
+    <string name="pvphouse_settings_title">PvPHouse</string>
+    <string name="pvphouse_settings_description">Performans paketi, otomatik başlatma, sunucu seçenekleri</string>
+    <string name="pvphouse_settings_category_performance">Performans</string>
+    <string name="pvphouse_perf_title">Performans paketi</string>
+    <string name="pvphouse_perf_summary">PvPHouse profili için Modrinth\'ten Sodium (+Podium), Lithium, FerriteCore ve Fabric API indirir. Yalnızca sunucu sürümüyle uyumlu sürümler kurulur.</string>
+    <string name="pvphouse_perf_resolving">Performans modları kontrol ediliyor…</string>
+    <string name="pvphouse_perf_downloading">%1$s indiriliyor…</string>
+    <string name="pvphouse_perf_installed">Kuruldu:\n%1$s</string>
+    <string name="pvphouse_perf_unavailable">Şunlar için Minecraft %1$s ile uyumlu sürüm bulunamadı, atlandı:\n%2$s</string>
+    <string name="pvphouse_perf_sodium_note">Sodium, MobileGlues (varsayılan) veya LTW renderer\'ı gerektirir. Oyunda grafik hataları görürsen paketi kapat.</string>
+    <string name="pvphouse_perf_removed">Performans paketi kaldırıldı. Kendi eklediğin modlara dokunulmadı.</string>
+    <string name="pvphouse_perf_failed">Performans paketi kurulamadı: %1$s</string>
 </resources>

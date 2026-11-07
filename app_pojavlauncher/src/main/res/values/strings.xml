@@ -569,4 +569,16 @@
     <string name="pvphouse_login_switch_to_login">Already have an account? Log in</string>
     <string name="pvphouse_login_bad_password">The password must be %1$d–%2$d characters and contain no spaces.</string>
     <string name="pvphouse_login_password_mismatch">Passwords do not match.</string>
+    <string name="pvphouse_settings_title">PvPHouse</string>
+    <string name="pvphouse_settings_description">Performance pack, auto start, server options</string>
+    <string name="pvphouse_settings_category_performance">Performance</string>
+    <string name="pvphouse_perf_title">Performance pack</string>
+    <string name="pvphouse_perf_summary">Downloads Sodium (+Podium), Lithium, FerriteCore and Fabric API for the PvPHouse profile from Modrinth. Only versions compatible with the server version are installed.</string>
+    <string name="pvphouse_perf_resolving">Checking performance mods…</string>
+    <string name="pvphouse_perf_downloading">Downloading %1$s…</string>
+    <string name="pvphouse_perf_installed">Installed:\n%1$s</string>
+    <string name="pvphouse_perf_unavailable">No version compatible with Minecraft %1$s was found for these, so they were skipped:\n%2$s</string>
+    <string name="pvphouse_perf_sodium_note">Sodium needs the MobileGlues (default) or LTW renderer. If the game shows graphical glitches, turn the pack off.</string>
+    <string name="pvphouse_perf_removed">The performance pack was removed. Your own mods were not touched.</string>
+    <string name="pvphouse_perf_failed">The performance pack could not be set up: %1$s</string>
 </resources>

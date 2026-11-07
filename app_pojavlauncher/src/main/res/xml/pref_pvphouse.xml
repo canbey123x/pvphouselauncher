@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PvPHouse Launcher: PvPHouse settings -->
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <net.kdt.pojavlaunch.prefs.BackButtonPreference/>
+
+    <PreferenceCategory android:title="@string/pvphouse_settings_category_performance">
+        <SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="pvphouse_perf_pack"
+            android:title="@string/pvphouse_perf_title"
+            android:summary="@string/pvphouse_perf_summary"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+</PreferenceScreen>

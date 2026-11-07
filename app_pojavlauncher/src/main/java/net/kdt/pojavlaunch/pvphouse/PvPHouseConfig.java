@@ -30,7 +30,19 @@ public final class PvPHouseConfig {
     /** Separate game folder so the PvPHouse mods never leak into other profiles. Relative to Tools.DIR_GAME_HOME. */
     public static final String PROFILE_GAME_DIR = "./custom_instances/pvphouse";
 
-    /** Default RAM: ~40% of device RAM, clamped to [1 GB, 4 GB] on 64-bit devices. */
+    /**
+     * Optional performance pack (Modrinth project slugs). Versions are never hard-coded: the
+     * newest release compatible with GAME_VERSION + Fabric is resolved from the Modrinth API.
+     */
+    public static final String[] PERF_PACK_MODS = {"fabric-api", "lithium", "ferrite-core"};
+    /**
+     * Sodium crashes on purpose under Pojav/Amethyst unless Podium (disables that check) is present,
+     * and needs the MobileGlues or LTW renderer. It is only installed when BOTH resolve.
+     */
+    public static final String PERF_PACK_SODIUM = "sodium";
+    public static final String PERF_PACK_SODIUM_COMPANION = "podium";
+
+        /** Default RAM: ~40% of device RAM, clamped to [1 GB, 4 GB] on 64-bit devices. */
     public static final float RAM_FRACTION = 0.40f;
     public static final int RAM_MIN_MB = 1024;
     public static final int RAM_MAX_MB = 4096;

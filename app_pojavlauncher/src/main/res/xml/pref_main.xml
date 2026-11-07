@@ -13,6 +13,15 @@
         android:title="@string/preference_category_main_categories"
         >
 
+        <!-- PvPHouse settings first -->
+        <Preference
+            android:key="pvphouse_screen_setting"
+            android:title="@string/pvphouse_settings_title"
+            android:summary="@string/pvphouse_settings_description"
+            android:fragment="net.kdt.pojavlaunch.prefs.screens.LauncherPreferencePvPHouseFragment"
+            android:icon="@drawable/ic_menu_custom_controls"
+            />
+
         <Preference
             android:key="video_screen_setting"
             android:title="@string/preference_video_title"
