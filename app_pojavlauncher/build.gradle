@@ -34,6 +34,11 @@ def getVersionName = {
     }
 
 
+    // PvPHouse: an exact release tag (v1.2.3) gives a clean version name "1.2.3"
+    if (TAG.trim() ==~ /v\d+\.\d+\.\d+/) {
+        return TAG.trim().substring(1)
+    }
+
     if(!TAG.isBlank()){
         TAG_STRING = TAG
     }else {
@@ -53,6 +58,24 @@ def getVersionName = {
     }else {
         return TAG_STRING.trim().replace("-g", "-") + "-" + "release-" + semVer
     }
+}
+
+// PvPHouse: stores only accept an update when versionCode grows, so derive it from the newest
+// vX.Y.Z tag reachable from HEAD: major*1_000_000 + minor*1_000 + patch (v1.2.3 -> 1002003).
+// Builds before the first release tag use 1.
+def getVersionCode = {
+    try {
+        String tag = providers.exec {
+            commandLine 'git', 'describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*.[0-9]*.[0-9]*'
+            ignoreExitValue = true
+        }.getStandardOutput().asText.get().trim()
+        def m = tag =~ /^v(\d+)\.(\d+)\.(\d+)$/
+        if (m.matches()) {
+            return (m.group(1) as int) * 1000000 + (m.group(2) as int) * 1000 + (m.group(3) as int)
+        }
+    } catch (Exception ignored) {
+    }
+    return 1
 }
 
 def getCFApiKey = {
@@ -109,7 +132,7 @@ android {
         applicationId "net.pvphouse.launcher"
         minSdkVersion 21
         targetSdkVersion 34
-        versionCode 10000000
+        versionCode getVersionCode()
         versionName getVersionName()
         multiDexEnabled true //important
         resValue 'string', 'curseforge_api_key', getCFApiKey()
