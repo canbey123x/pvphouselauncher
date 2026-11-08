@@ -4,11 +4,8 @@ name: EsekMarketi APK
 #  - Actions sekmesinde "EsekMarketi-apk" artifact'ı olarak
 #  - "esekmarketi-latest" sürümünde (Releases) doğrudan indirilebilir EsekMarketi.apk olarak
 
+# 📦 Proje rafa kaldırıldı: artık otomatik derlenmiyor, gerekirse Actions sekmesinden elle çalıştırılır.
 on:
-  push:
-    paths:
-      - 'EsekMarketi/**'
-      - '.github/workflows/esekmarketi-apk.yml'
   workflow_dispatch:
 
 permissions:

@@ -1,5 +1,7 @@
 # 🐴 EsekMarketi
 
+> 📦 **Rafa kaldırıldı.** Bu proje şimdilik geliştirilmiyor. Kod olduğu gibi duruyor; son APK `esekmarketi-latest` sürümünde. APK iş akışı yalnızca elle çalıştırılıyor (Actions → EsekMarketi APK → Run workflow).
+
 Eşekli, mobil uyumlu **market işletme oyunu**. Raflarını doldur, fiyatlarını belirle, kasada müşterileri karşıla. Siparişlerini kasabanın en çalışkan eşeği arabasıyla depona getirir.
 
 > **Temel proje:** Bu oyun [ShopSim 3D](https://github.com/Ishu-dev/shop-sim-3d) (Copyright © 2026 Ishu Chaudhary, MIT lisansı) üzerine kuruldu. Orijinal kod bu repoda ayrı bir commit olarak değiştirilmeden içe aktarıldı (`EsekMarketi: import ShopSim 3D ...`). Sonraki commit'ler onu market işletme oyununa dönüştürdü.
