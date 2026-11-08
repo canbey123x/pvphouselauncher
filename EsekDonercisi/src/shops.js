@@ -11,9 +11,17 @@ export const STOCK_INFO = {
   meat: { icon: '🥩', name: 'Döner eti', unit: 'dilim' },
   ekmek: { icon: '🥖', name: 'Ekmek', unit: 'adet' },
   lavas: { icon: '🫓', name: 'Lavaş', unit: 'adet' },
-  salata: { icon: '🥗', name: 'Salata', unit: 'porsiyon' },
+  domates: { icon: '🍅', name: 'Domates', unit: 'porsiyon' },
+  sogan: { icon: '🧅', name: 'Soğan', unit: 'porsiyon' },
+  marul: { icon: '🥬', name: 'Marul', unit: 'porsiyon' },
+  tursu: { icon: '🥒', name: 'Turşu', unit: 'porsiyon' },
+  acisos: { icon: '🌶️', name: 'Acı sos', unit: 'porsiyon' },
+  mayonez: { icon: '🥫', name: 'Mayonez', unit: 'porsiyon' },
+  ayran: { icon: '🥛', name: 'Ayran', unit: 'şişe' },
 };
-export const START_STOCK = { meat: 30, ekmek: 6, lavas: 6, salata: 0 };
+/** Ürüne eklenebilen malzemeler (sırayla kesim ekranındaki düğmeler) */
+export const TOPPINGS = ['domates', 'sogan', 'marul', 'tursu', 'acisos', 'mayonez'];
+export const START_STOCK = { meat: 30, ekmek: 6, lavas: 6, domates: 6, sogan: 6, marul: 6, tursu: 4, acisos: 6, mayonez: 6, ayran: 4 };
 
 /** Dükkân yükseltmeleri (Nalbur'dan alınır) */
 export const UPGRADES = {
@@ -67,20 +75,26 @@ export const CATALOG = {
     items: [
       { id: 'b_ekmek', icon: '🥖', name: '3 Ekmek', desc: 'Acil durum ekmeği', price: 30, stock: { ekmek: 3 } },
       { id: 'b_lavas', icon: '🫓', name: '3 Lavaş', desc: 'Acil durum lavaşı', price: 24, stock: { lavas: 3 } },
+      { id: 'ayran6', icon: '🥛', name: '6 Ayran (koli)', desc: 'Müşteriye 25 TL\'den satılır', price: 48, stock: { ayran: 6 } },
+      { id: 'ayran24', icon: '🥛', name: '24 Ayran (büyük koli)', desc: 'Toptan, şişe başı 6,5 TL', price: 155, stock: { ayran: 24 } },
+      { id: 'acisos', icon: '🌶️', name: 'Acı sos (20 porsiyon)', desc: 'Ateş gibi!', price: 30, stock: { acisos: 20 } },
+      { id: 'mayo', icon: '🥫', name: 'Mayonez (20 porsiyon)', desc: 'Kremamsı', price: 30, stock: { mayonez: 20 } },
       { id: 'gazoz', icon: '🥤', name: 'Gazoz', desc: '+10 enerji', price: 12, energy: 10 },
-      { id: 'ayran', icon: '🥛', name: 'Ayran', desc: '+8 enerji, serinletir', price: 10, energy: 8 },
     ],
   },
   manav: {
     title: 'Manav',
     keeper: 'Manav Kemal',
-    greet: 'Domates bal gibi, soğan şeker gibi! Salatalı döner olur mu? Olur! Müşteri fazladan bahşiş bırakır.',
+    greet: 'Domates bal gibi, soğan şeker gibi! Müşteri ne isterse koy usta, istediğini bulan müşteri bir daha gelir!',
     wall: 0xe8f4dc,
     goods: [0xe63946, 0x2a9d3f, 0xffd60a],
     look: { shirt: 0x6a994e, pants: 0x3b3b3b, hat: 'kasket', hatColor: 0x2a7a3b, mustache: true, hair: 0x3b2314, skin: 0xd9a066 },
     items: [
-      { id: 'salata10', icon: '🥗', name: 'Salata — 10 porsiyon', desc: 'Domates, soğan, maydanoz. Her satışta +10 TL', price: 45, stock: { salata: 10 } },
-      { id: 'salata30', icon: '🥗', name: 'Salata — 30 porsiyon', desc: 'Kasa kasa, toptan', price: 120, stock: { salata: 30 } },
+      { id: 'domates', icon: '🍅', name: 'Domates — 15 porsiyon', desc: 'Bal gibi, dilim dilim', price: 30, stock: { domates: 15 } },
+      { id: 'sogan', icon: '🧅', name: 'Soğan — 15 porsiyon', desc: 'Sumaklı, piyazlık', price: 20, stock: { sogan: 15 } },
+      { id: 'marul', icon: '🥬', name: 'Marul — 15 porsiyon', desc: 'Çıtır çıtır', price: 25, stock: { marul: 15 } },
+      { id: 'tursu', icon: '🥒', name: 'Turşu — 15 porsiyon', desc: 'Ev yapımı, kıtır', price: 35, stock: { tursu: 15 } },
+      { id: 'sebzekasa', icon: '🧺', name: 'Sebze kasası (her birinden 15)', desc: 'Domates+soğan+marul+turşu, %15 indirim', price: 93, stock: { domates: 15, sogan: 15, marul: 15, tursu: 15 } },
       { id: 'elma', icon: '🍎', name: 'Kıtır elma', desc: '+8 enerji', price: 8, energy: 8 },
     ],
   },

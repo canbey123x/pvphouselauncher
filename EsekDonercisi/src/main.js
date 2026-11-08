@@ -12,7 +12,8 @@ import { NPCManager, createPerson, animatePerson } from './npcs.js';
 import { DayNight, formatClock } from './daynight.js';
 import { Home } from './house.js';
 import { Life } from './life.js';
-import { CATALOG, ShopInterior, START_STOCK, STOCK_INFO } from './shops.js';
+import { CATALOG, ShopInterior, START_STOCK, STOCK_INFO, TOPPINGS } from './shops.js';
+import { TOP_ICON } from './customers.js';
 
 const $ = (id) => document.getElementById(id);
 const HS_KEY = 'esekdonercisi.highscore';
@@ -283,6 +284,8 @@ const ui = {
   shopGreet: $('shopGreet'),
   shopStock: $('shopStock'),
   shopItems: $('shopItems'),
+  popPill: $('popPill'),
+  toppingBar: $('toppingBar'),
   btnStart: $('btnStart'),
   btnContinue: $('btnContinue'),
   fade: $('fade'),
@@ -403,6 +406,8 @@ const game = {
   upgrades: {},
   look: {},
   stockWarned: {},
+  pop: 30,
+  popMilestones: {},
   snapCam: true,
   cutTutorial: false,
   busy: false,
@@ -417,7 +422,7 @@ const pw = () => (game.inside === 'home' ? homeWorld : game.inside === 'shop' ? 
 const hourNow = () => (game.minutes % 1440) / 60;
 const dayNum = () => Math.floor(game.minutes / 1440) + 1;
 
-const ctx = { scene, camera, sfx, toast, addMoney, world: cityWorld, stock: game.stock };
+const ctx = { scene, camera, sfx, toast, addMoney, addPop, getPop: () => game.pop, world: cityWorld, stock: game.stock };
 
 const PLAYER_BASE = { shirt: 0xffffff, pants: 0x2d3142, hat: 'chef', apron: true, mustache: true, hair: 0x1a1a1a, skin: 0xe9b47f };
 const player = {
@@ -480,6 +485,7 @@ function newDayStats() {
     perfect0: customers.perfect,
     lost0: customers.lost,
     opened: game.shopOpen,
+    pop0: game.pop,
   };
   game.tiredWarned = false;
   game.lateWarned = false;
@@ -509,6 +515,45 @@ function addMoney(amount, silent = false) {
       toast('🏆 YENİ REKOR! Kasabanın efsane dönercisi sensin!', 'ok');
     }
   }
+}
+
+/* ---------- Popülerlik (0-100) ---------- */
+const POP_MILESTONES = [
+  [40, '📣 Adın kasabada duyulmaya başladı! Daha çok müşteri gelecek.'],
+  [60, '📰 Kasaba gazetesi seni yazdı: "Eşekli Dönercinin Sırrı"!'],
+  [80, '📺 Yerel TV röportaj yaptı! Kuyruklar uzuyor.'],
+  [95, '👑 EFSANE DÖNERCİ! Kasabanın gururusun!'],
+];
+function popStars(p) {
+  const n = Math.max(1, Math.min(5, Math.round(p / 20)));
+  return '★'.repeat(n) + '☆'.repeat(5 - n);
+}
+function addPop(delta) {
+  if (!delta) return;
+  const before = game.pop;
+  game.pop = Math.max(0, Math.min(100, game.pop + delta));
+  const real = Math.round((game.pop - before) * 10) / 10;
+  if (!real) return;
+  refreshPop();
+  const el = document.createElement('span');
+  el.className = 'money-pop' + (real < 0 ? ' neg' : '');
+  el.textContent = `${real > 0 ? '+' : ''}${real} ⭐`;
+  ui.popPill.appendChild(el);
+  setTimeout(() => el.remove(), 1300);
+  for (const [th, text] of POP_MILESTONES) {
+    if (before < th && game.pop >= th && !game.popMilestones[th]) {
+      game.popMilestones[th] = true;
+      toast(text, 'ok');
+      sfx.morning();
+    }
+  }
+}
+function refreshPop() {
+  const p = Math.round(game.pop);
+  ui.popPill.firstChild.textContent = `⭐ ${p}`;
+  ui.popPill.title = popStars(p);
+  ui.popPill.classList.toggle('hot', p >= 60);
+  ui.popPill.classList.toggle('low', p < 20);
 }
 
 function refreshMenu() {
@@ -543,6 +588,8 @@ function saveGame() {
     totalCut: cutting.totalCut,
     stock: game.stock,
     upgrades: game.upgrades,
+    pop: game.pop,
+    popMilestones: game.popMilestones,
     look: game.look,
     day: game.day,
   };
@@ -658,6 +705,7 @@ function setMode(mode) {
   show(ui.joyZone, showJoy);
   show(ui.order, mode === 'cut');
   show(ui.cookMeter, mode === 'cut');
+  show(ui.toppingBar, mode === 'cut');
   controls.resetJoystick();
   controls.brakeHeld = false;
   actionsKey = '';
@@ -752,7 +800,13 @@ function serve() {
     toast('Önce Ekmek Arası ya da Dürüm hazırla! 🥖🌯', 'warn', 'noitem');
     return;
   }
-  customers.serve(front, cutting.takeItem());
+  let ayran = false;
+  if (cutting.withAyran && game.stock.ayran > 0) {
+    game.stock.ayran--;
+    ayran = true;
+  }
+  cutting.withAyran = false;
+  customers.serve(front, cutting.takeItem(), ayran);
 }
 
 function startTalk(npc) {
@@ -1021,6 +1075,10 @@ function finishSleep() {
     addMoney(-30, true);
     lines.push('👮 Bekçi seni eve taşıdı, çay parası istedi: <span class="neg">-30 TL</span>');
   }
+  // Popülerlik: her gün biraz unutulursun; dükkân hiç açılmadıysa daha çok
+  addPop(d.opened ? -2 : -6);
+  const pd = Math.round(game.pop - (d.pop0 ?? game.pop));
+  lines.push(`⭐ Popülerlik: <b>${Math.round(game.pop)}</b>/100 ${popStars(game.pop)} (${pd >= 0 ? '<span class="pos">+' + pd : '<span class="neg">' + pd}</span>)`);
   lines.push(`🏦 Kasa: <b>${fmt(game.money)} TL</b>`);
   ui.summaryTitle.textContent = `☀️ Günaydın! Gün ${dayNum()} başlıyor`;
   ui.summaryBody.innerHTML = lines.join('<br>');
@@ -1081,6 +1139,9 @@ function newGame() {
   setText(ui.money, '100');
   Object.assign(game.stock, START_STOCK);
   game.upgrades = {};
+  game.pop = 30;
+  game.popMilestones = {};
+  refreshPop();
   game.look = {};
   game.stockWarned = {};
   rebuildPlayer();
@@ -1119,6 +1180,13 @@ function continueGame() {
   game.day = s.day || null;
   if (!game.day) newDayStats();
   Object.assign(game.stock, START_STOCK, s.stock || {});
+  if (s.stock && s.stock.salata) {
+    for (const k of ['domates', 'sogan', 'marul']) game.stock[k] += s.stock.salata;
+    delete game.stock.salata;
+  }
+  game.pop = s.pop ?? 30;
+  game.popMilestones = s.popMilestones || {};
+  refreshPop();
   game.upgrades = s.upgrades || {};
   game.look = s.look || {};
   rebuildPlayer();
@@ -1169,7 +1237,8 @@ function pause() {
     `💰 Kasa: <b>${fmt(game.money)} TL</b> · 🏆 Rekor: <b>${fmt(game.high)} TL</b><br>` +
     `🥙 Servis: <b>${customers.served}</b> · 😍 Mükemmel: <b>${customers.perfect}</b> · 😤 Kaçan: <b>${customers.lost}</b><br>` +
     `🔪 Kesilen dilim: <b>${cutting.totalCut}</b><br>` +
-    `📦 Stok: 🥩 <b>${game.stock.meat}</b> · 🥖 <b>${game.stock.ekmek}</b> · 🫓 <b>${game.stock.lavas}</b> · 🥗 <b>${game.stock.salata}</b><br>` +
+    `⭐ Popülerlik: <b>${Math.round(game.pop)}</b>/100 ${popStars(game.pop)}<br>` +
+    `📦 Stok: ${Object.entries(STOCK_INFO).map(([k, v]) => `${v.icon}<b>${game.stock[k] ?? 0}</b>`).join(' · ')}<br>` +
     `🛠️ Yükseltmeler: <b>${Object.keys(game.upgrades).length}</b>/5 · Oyun otomatik kaydedilir.`;
   show(ui.pause, true);
 }
@@ -1435,7 +1504,7 @@ function updateWalk(dt) {
 }
 
 function customerRate() {
-  return baseRate() * (game.upgrades.tabela ? 1.3 : 1);
+  return baseRate() * (game.upgrades.tabela ? 1.3 : 1) * (0.6 + (game.pop / 100) * 0.9);
 }
 function baseRate() {
   if (!game.shopOpen) return 0;
@@ -1516,6 +1585,43 @@ function objective() {
   return { pos: city.shop.interactPoint, text: '🔓 Dükkânın kepengini aç (sarı oku takip et).' };
 }
 
+/* ---------- Kesim ekranı malzeme düğmeleri ---------- */
+function buildToppingBar() {
+  ui.toppingBar.innerHTML = '';
+  for (const t of TOPPINGS) {
+    const b = document.createElement('button');
+    b.className = 'top-chip';
+    b.dataset.id = t;
+    b.innerHTML = `<span class="ti">${STOCK_INFO[t].icon}</span><small></small>`;
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      cutting.toggleTopping(t);
+      updateToppingBar();
+    });
+    ui.toppingBar.appendChild(b);
+  }
+  const a = document.createElement('button');
+  a.className = 'top-chip ayran';
+  a.dataset.id = 'ayran';
+  a.innerHTML = '<span class="ti">🥛</span><small></small>';
+  a.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    cutting.toggleAyran();
+    updateToppingBar();
+  });
+  ui.toppingBar.appendChild(a);
+}
+function updateToppingBar() {
+  for (const b of ui.toppingBar.children) {
+    const id = b.dataset.id;
+    const on = id === 'ayran' ? cutting.withAyran : cutting.selected.has(id);
+    b.classList.toggle('on', on);
+    b.classList.toggle('empty', !game.stock[id]);
+    setText(b.querySelector('small'), String(game.stock[id] ?? 0));
+  }
+}
+buildToppingBar();
+
 let lastOrderKey = '';
 function updateHud() {
   const n = dayNight.night;
@@ -1534,12 +1640,13 @@ function updateHud() {
   if (cutting.item) carry += ` · ${ITEM_INFO[cutting.item.type].icon}${cutting.item.slices}`;
   setText(ui.carry, carry);
   const st = game.stock;
-  setText(ui.stockPill, `🥩${st.meat} 🥖${st.ekmek} 🫓${st.lavas}${st.salata ? ' 🥗' + st.salata : ''}`);
+  setText(ui.stockPill, `🥩${st.meat} 🥖${st.ekmek} 🫓${st.lavas} 🥛${st.ayran}`);
+  if (game.mode === 'cut') updateToppingBar();
   ui.stockPill.classList.toggle('low', st.meat < 6 || st.ekmek + st.lavas < 3);
 
   if (game.mode === 'cut') {
     const nx = customers.nextInfo();
-    const key = nx ? `${nx.order.type}|${nx.order.slices}|${nx.ready}` : 'none';
+    const key = nx ? `${nx.order.type}|${nx.order.slices}|${nx.ready}|${(nx.order.wants || []).join()}|${nx.order.hate}|${nx.order.ayran}` : 'none';
     if (key !== lastOrderKey) {
       lastOrderKey = key;
       if (nx) {
@@ -1547,7 +1654,8 @@ function updateHud() {
         ui.order.classList.remove('empty');
         ui.order.innerHTML =
           `<div class="oc-title">${nx.ready ? 'Sıradaki müşteri istiyor' : 'Müşteri tezgaha geliyor...'}</div>` +
-          `<div class="oc-main">${info.icon} ${info.label} · <span style="color:#9d0208">${nx.order.slices} dilim</span></div>` +
+          `<div class="oc-main">${info.icon} ${info.label} · <span style="color:#9d0208">${nx.order.slices} dilim</span>${nx.order.ayran ? ' · 🥛' : ''}</div>` +
+          `<div class="oc-tops">${(nx.order.wants || []).map((t) => TOP_ICON[t]).join(' ')}${nx.order.hate ? ` <span class="hate">🚫${TOP_ICON[nx.order.hate]}</span>` : ''}</div>` +
           `<div class="oc-bar"><i></i></div><div class="oc-tray"></div>`;
       } else {
         ui.order.classList.add('empty');

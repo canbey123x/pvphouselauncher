@@ -246,7 +246,7 @@ const NPC_DATA = [
       b: {
         text: 'Allah razı olsun. Cuma çıkışı cemaati sana yönlendiririm. Yalnız eşeği avluya bağlama, geçen hafta paspası yedi.',
         options: [
-          { label: 'Söz hocam, eşek artık disiplinli.', reply: 'İnşallah evladım. Al şu bahşişi, bereketli olsun.', effect: { money: 25, toast: '🤲 Hocadan dua + 25 TL bahşiş!' } },
+          { label: 'Söz hocam, eşek artık disiplinli.', reply: 'İnşallah evladım. Al şu bahşişi, bereketli olsun. Cemaate de söylerim.', effect: { money: 25, toast: '🤲 Hocadan dua + 25 TL bahşiş! ⭐+2', pop: 2 } },
           { label: 'Paspası değil hocam, ayakkabılığı yedi!', reply: 'Estağfurullah... O zaman ayakkabılık parası da senden! Şaka şaka. 😄' },
         ],
       },
@@ -278,7 +278,7 @@ const NPC_DATA = [
       b: {
         text: 'Benzer mi? Kasabada başka kilim eyerli, nazar boncuklu eşek mi var? Neyse... Seçim yaklaşıyor. Bedava dürüm verirsen bu dosya kapanır.',
         options: [
-          { label: 'Oy için dürüm mü? Olur muhtarım!', reply: 'Hah şöyle! Acısı bol olsun. (Muhtar mutlu, kasan biraz hafifledi.)', effect: { money: -20, toast: '🌯 Muhtara "gönüllü" dürüm: -20 TL' } },
+          { label: 'Oy için dürüm mü? Olur muhtarım!', reply: 'Hah şöyle! Acısı bol olsun. Kahvede herkese seni anlatacağım!', effect: { money: -20, toast: '🌯 Muhtara dürüm: -20 TL, ama muhtar seni övecek ⭐+3', pop: 3 } },
           { label: 'Ben dürüst esnafım muhtarım.', reply: 'Hıh! Not ettim seni. Ama dürüstlüğün hoşuma gitti, kimseye söyleme.' },
         ],
       },
@@ -443,13 +443,13 @@ const NPC_DATA = [
         text: 'Wonderful! İstanbul\'da arabalar, burada eşek! I love this town. Take this, for... döner bakhshish?',
         options: [
           { label: 'Bahşiş! Thank you very much!', reply: 'You are welcome, usta! Afiyet... olsun? Doğru mu?', effect: { money: 40, toast: '💷 Turist bahşişi: +40 TL' } },
-          { label: 'No no, misafirsin, sağ ol!', reply: 'Türk misafirperverliği... amazing! I will cry.', effect: { toast: '⭐ Kasabanın şöhreti arttı!' } },
+          { label: 'No no, misafirsin, sağ ol!', reply: 'Türk misafirperverliği... amazing! I will cry.', effect: { toast: '⭐ Kasabanın şöhreti arttı! Popülerlik +4', pop: 4 } },
         ],
       },
       c: {
         text: 'Haha! Very döner! I will tell all my friends in London: EsekDonercisi, five stars!',
         options: [
-          { label: 'Yorum yaz, beş yıldız ver!', reply: 'Of course! "Best donkey, best döner." Done!', effect: { toast: '⭐⭐⭐⭐⭐ İnternette yorum geldi!' } },
+          { label: 'Yorum yaz, beş yıldız ver!', reply: 'Of course! "Best donkey, best döner." Done!', effect: { toast: '⭐⭐⭐⭐⭐ İnternette yorum geldi! Popülerlik +6', pop: 6 } },
           { label: 'Londra\'ya şube açarız!', reply: 'Donkey on Thames! Brilliant idea!' },
         ],
       },
@@ -634,6 +634,7 @@ export class NPCManager {
     this.close(true);
     for (const n of this.list) {
       n.rewarded = false;
+      n.popGiven = false;
       n.talking = false;
       if (n.def.kind === 'walk') {
         const p = n.spot[0];
@@ -798,6 +799,10 @@ export class NPCManager {
         show = true;
       }
       if (opt.effect.toast && show) this.ctx.toast(opt.effect.toast, opt.effect.money < 0 ? 'warn' : 'ok');
+      if (opt.effect.pop && !npc.popGiven) {
+        npc.popGiven = true;
+        this.ctx.addPop?.(opt.effect.pop);
+      }
     }
     if (opt.next) this._showNode(opt.next);
     else if (opt.reply) this._type(opt.reply, [{ label: '👋 Hoşça kal', close: true }]);

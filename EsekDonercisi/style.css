@@ -735,3 +735,47 @@ button { font-family: inherit; cursor: pointer; }
   #cookMeter { top: auto; bottom: calc(12px + var(--safe-b)); left: calc(12px + var(--safe-l)); transform: none; width: min(40vw, 260px); }
   #hud[data-mode="cut"] #toasts { top: calc(170px + var(--safe-t)); }
 }
+
+/* ================= v5: malzeme düğmeleri + popülerlik ================= */
+.pill.pop { color: #ffe08a; }
+.pill.pop.hot { border-color: rgba(255, 207, 63, 0.9); box-shadow: 0 0 10px rgba(255, 207, 63, 0.5); }
+.pill.pop.low { color: #ff9a9a; }
+#toppingBar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(158px + var(--safe-b));
+  display: flex;
+  gap: 6px;
+  pointer-events: auto;
+  z-index: 3;
+}
+.top-chip {
+  position: relative;
+  width: 46px;
+  height: 50px;
+  border-radius: 14px;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  background: rgba(20, 10, 35, 0.78);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  padding: 0;
+}
+.top-chip .ti { font-size: 22px; line-height: 1; }
+.top-chip small { font-size: 11px; font-weight: 900; opacity: 0.85; }
+.top-chip.on { border-color: #2ec27e; background: rgba(46, 194, 126, 0.35); box-shadow: 0 0 10px rgba(46, 194, 126, 0.6); transform: translateY(-3px); }
+.top-chip.ayran.on { border-color: #6aa8ff; background: rgba(58, 134, 255, 0.35); box-shadow: 0 0 10px rgba(58, 134, 255, 0.6); }
+.top-chip.empty { opacity: 0.4; }
+#orderCard .oc-tops { font-size: 20px; margin: -2px 0 6px; letter-spacing: 2px; }
+#orderCard .oc-tops .hate { background: rgba(230, 57, 70, 0.15); border-radius: 8px; padding: 0 4px; }
+#cookMeter { top: calc(222px + var(--safe-t)); }
+#hud[data-mode="cut"] #toasts { top: calc(290px + var(--safe-t)); }
+@media (max-width: 360px) { .top-chip { width: 40px; height: 46px; } .top-chip .ti { font-size: 19px; } }
+@media (max-height: 520px) and (orientation: landscape) {
+  #toppingBar { left: calc(12px + var(--safe-l)); transform: none; bottom: calc(92px + var(--safe-b)); }
+  .top-chip { width: 40px; height: 44px; }
+}

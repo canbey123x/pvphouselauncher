@@ -1,7 +1,7 @@
 // EsekDonercisi service worker: oyun bir kez açıldıktan sonra internetsiz de çalışsın.
 // Kendi dosyalarımız: önce ağ (güncellemeler hemen gelsin), ağ yoksa önbellek.
 // CDN (three.js) ve yazı tipleri: önce önbellek.
-const CACHE = 'esekdonercisi-v4';
+const CACHE = 'esekdonercisi-v5';
 const CORE = [
   './',
   './index.html',

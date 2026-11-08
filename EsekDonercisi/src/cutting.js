@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { addBox, addMesh, mat, canvasTexture } from './city.js';
 
 export const MAX_SLICES = 8;
+const TOP_ICON = { domates: '🍅', sogan: '🧅', marul: '🥬', tursu: '🥒', acisos: '🌶️', mayonez: '🥫' };
 export const ITEM_INFO = {
   ekmek: { label: 'Ekmek Arası', icon: '🥖' },
   durum: { label: 'Dürüm', icon: '🌯' },
@@ -61,7 +62,9 @@ export class CuttingStation {
     this.active = false;
     this.slices = 0;
     this.sliceQ = [];            // her dilimin kalitesi: 'raw' | 'good' | 'burnt'
-    this.item = null;            // { type, slices, salad, raw, burnt }
+    this.item = null;            // { type, slices, toppings, raw, burnt }
+    this.selected = new Set();   // ürüne eklenecek malzemeler (domates, soğan...)
+    this.withAyran = false;      // servis ederken yanına ayran
     this.maxSlices = MAX_SLICES; // Büyük tepsi yükseltmesiyle 12
     this.swipeFactor = 1;        // Keskin bıçak yükseltmesiyle 0.6
     this.meatLevel = 1;          // şişteki et miktarı (görsel)
@@ -275,12 +278,18 @@ export class CuttingStation {
       return false;
     }
     stock[need]--;
-    const salad = stock.salata > 0;
-    if (salad) stock.salata--;
+    const toppings = [];
+    for (const t of this.selected) {
+      if (stock[t] > 0) {
+        stock[t]--;
+        toppings.push(t);
+      }
+    }
+    this.selected.clear();
     const n = this.slices;
     const raw = this.sliceQ.filter((q) => q === 'raw').length;
     const burnt = this.sliceQ.filter((q) => q === 'burnt').length;
-    this.item = { type, slices: n, salad, raw, burnt };
+    this.item = { type, slices: n, toppings, raw, burnt };
     this.slices = 0;
     this.sliceQ = [];
     // Tepsideki dilimler tahtaya uçar, ürün oluşur
@@ -289,7 +298,7 @@ export class CuttingStation {
       this.flying.push({ mesh: p, from: p.position.clone(), to: spot.clone().add(new THREE.Vector3(0, 0.08, 0)), t: 0, dur: 0.3, spin: 0, landY: 0, consume: true, startRot: 0 });
     }
     this.pile = [];
-    this.itemMesh = type === 'ekmek' ? buildBread(n, salad, this.sliceMats) : buildDurum(n, salad, this.sliceMats);
+    this.itemMesh = type === 'ekmek' ? buildBread(n, toppings, this.sliceMats) : buildDurum(n, toppings, this.sliceMats);
     this.itemMesh.position.copy(spot);
     this.itemMesh.scale.setScalar(0.01);
     this.itemGrow = 0;
@@ -297,8 +306,32 @@ export class CuttingStation {
     this.ctx.sfx.wrap();
     const info = ITEM_INFO[type];
     const qtxt = raw ? `, ${raw} çiğ dilim 🩸` : burnt ? `, ${burnt} yanık dilim 🔥` : '';
-    this.ctx.toast(`${info.icon} ${info.label} hazır (${n} dilim${salad ? ', salatalı 🥗' : ''}${qtxt}) → Servis Et!`, raw || burnt ? 'warn' : 'ok');
+    this.ctx.toast(`${info.icon} ${info.label} hazır (${n} dilim${toppings.length ? ' + ' + toppings.map((t) => TOP_ICON[t]).join('') : ''}${qtxt}) → Servis Et!`, raw || burnt ? 'warn' : 'ok');
     return true;
+  }
+
+  /** Malzeme seçimini aç/kapat (ürün sarılırken eklenir). */
+  toggleTopping(id) {
+    const stock = this.ctx.stock;
+    if (this.selected.has(id)) {
+      this.selected.delete(id);
+    } else {
+      if (!stock[id]) {
+        this.ctx.toast(`${TOP_ICON[id]} bitti! Manav ya da bakkaldan al.`, 'warn', 'no' + id);
+        return;
+      }
+      this.selected.add(id);
+    }
+    this.ctx.sfx.click();
+  }
+
+  toggleAyran() {
+    if (!this.withAyran && !this.ctx.stock.ayran) {
+      this.ctx.toast('🥛 Ayran bitti! Bakkal Nuri\'den al.', 'warn', 'noayran');
+      return;
+    }
+    this.withAyran = !this.withAyran;
+    this.ctx.sfx.click();
   }
 
   takeItem() {
@@ -383,24 +416,48 @@ function meatPieces(g, n, mats, x0, x1, y, z, spread = 0.05) {
   }
 }
 
-function veggies(g, x0, x1, y, z) {
-  for (let i = 0; i < 4; i++) {
-    const tom = addMesh(g, new THREE.CylinderGeometry(0.028, 0.028, 0.008, 12), mat(0xd62828, { roughness: 0.4 }), x0 + 0.03 + i * (x1 - x0 - 0.06) / 3, y, z + 0.035, false);
-    tom.rotation.x = Math.PI / 2 - 0.3;
+/** Seçilen malzemeleri ürünün içine yerleştir. */
+function toppingMeshes(g, tops, x0, x1, y, z, spread = 0.07) {
+  const has = (t) => tops.includes(t);
+  const xs = (i, n) => x0 + ((x1 - x0) * (i + 0.5)) / n;
+  if (has('marul')) {
+    for (let i = 0; i < 5; i++) {
+      const leaf = new THREE.SphereGeometry(0.034, 8, 6);
+      leaf.scale(1.5, 0.3, 1.1);
+      addMesh(g, leaf, mat(0x6cbf4a, { roughness: 0.6 }), xs(i, 5), y - 0.006, z - spread * 0.4, false).rotation.z = (i % 2 ? 0.3 : -0.3);
+    }
   }
-  for (let i = 0; i < 5; i++) {
-    const leaf = new THREE.SphereGeometry(0.03, 8, 6);
-    leaf.scale(1.4, 0.35, 1);
-    addMesh(g, leaf, mat(0x5fae47, { roughness: 0.6 }), x0 + 0.02 + i * (x1 - x0) / 5, y + 0.01, z - 0.03, false);
+  if (has('domates')) {
+    for (let i = 0; i < 4; i++) {
+      const tom = addMesh(g, new THREE.CylinderGeometry(0.028, 0.028, 0.008, 12), mat(0xd62828, { roughness: 0.35 }), xs(i, 4), y + 0.008, z + spread * 0.45, false);
+      tom.rotation.x = Math.PI / 2 - 0.35;
+    }
   }
-  for (let i = 0; i < 3; i++) {
-    const ring = addMesh(g, new THREE.TorusGeometry(0.022, 0.005, 4, 12), mat(0xf3e9f5), x0 + 0.05 + i * 0.08, y + 0.018, z, false);
-    ring.rotation.x = Math.PI / 2 - 0.4;
+  if (has('sogan')) {
+    for (let i = 0; i < 4; i++) {
+      const ring = addMesh(g, new THREE.TorusGeometry(0.022, 0.005, 4, 12), mat(0xe9d7ec), xs(i, 4), y + 0.02, z, false);
+      ring.rotation.x = Math.PI / 2 - 0.4;
+    }
   }
+  if (has('tursu')) {
+    for (let i = 0; i < 3; i++) {
+      const p = addMesh(g, new THREE.CylinderGeometry(0.02, 0.02, 0.008, 10), mat(0x8fa53a, { roughness: 0.5 }), xs(i, 3), y + 0.026, z - spread * 0.2, false);
+      p.rotation.x = Math.PI / 2 - 0.5;
+    }
+  }
+  const drizzle = (color, off) => {
+    for (let i = 0; i < 6; i++) {
+      const d = new THREE.SphereGeometry(0.012, 6, 4);
+      d.scale(1.6, 0.5, 1);
+      addMesh(g, d, mat(color, { roughness: 0.25 }), xs(i, 6) + off, y + 0.03, z + (i % 2 ? 0.01 : -0.01), false);
+    }
+  };
+  if (has('acisos')) drizzle(0xc1121f, 0.01);
+  if (has('mayonez')) drizzle(0xf6f0d8, -0.01);
 }
 
 /** Yarım ekmek arası: çıtır kabuk, ağzı açık, et + salata. */
-function buildBread(n, salad, mats) {
+function buildBread(n, tops, mats) {
   const g = new THREE.Group();
   const crust = mat(0xc07b3a, { roughness: 0.7 });
   const crumb = mat(0xf2deb8, { roughness: 0.95 });
@@ -414,7 +471,7 @@ function buildBread(n, salad, mats) {
   const inner = new THREE.BoxGeometry(0.3, 0.01, 0.1);
   addMesh(g, inner, crumb, 0, 0.068, 0, false);
   meatPieces(g, n, mats, -0.15, 0.15, 0.085, 0.0, 0.05);
-  if (salad) veggies(g, -0.15, 0.15, 0.105, 0.0);
+  toppingMeshes(g, tops, -0.15, 0.15, 0.105, 0.0);
   const lid = new THREE.Group();
   lid.position.set(0, 0.08, -0.06);
   lid.rotation.x = -0.45;
@@ -428,7 +485,7 @@ function buildBread(n, salad, mats) {
 }
 
 /** Dürüm: lavaşa sarılmış rulo, yarısı baskılı dürüm kağıdında, ucundan et ve salata görünür. */
-function buildDurum(n, salad, mats) {
+function buildDurum(n, tops, mats) {
   const g = new THREE.Group();
   const r = 0.05 + Math.min(n, 10) * 0.0025;
   const roll = new THREE.CylinderGeometry(r, r * 0.92, 0.3, 18);
@@ -453,12 +510,12 @@ function buildDurum(n, salad, mats) {
   const filling = new THREE.CircleGeometry(r * 0.8, 14);
   filling.rotateY(Math.PI / 2);
   addMesh(g, filling, mats.good, 0.151, r, 0, false);
-  if (salad) {
-    for (let i = 0; i < 4; i++) {
-      const leaf = new THREE.SphereGeometry(0.014, 6, 4);
-      addMesh(g, leaf, mat(i % 2 ? 0x5fae47 : 0xd62828), 0.155, r + (Math.random() - 0.5) * r, (Math.random() - 0.5) * r, false);
-    }
-  }
+  // uçtan taşan malzemeler
+  const tc = { domates: 0xd62828, sogan: 0xe9d7ec, marul: 0x6cbf4a, tursu: 0x8fa53a, acisos: 0xc1121f, mayonez: 0xf6f0d8 };
+  tops.forEach((t, i) => {
+    const a = (i / Math.max(1, tops.length)) * Math.PI * 2;
+    addMesh(g, new THREE.SphereGeometry(0.016, 6, 4), mat(tc[t], { roughness: 0.4 }), 0.155, r + Math.sin(a) * r * 0.5, Math.cos(a) * r * 0.5, false);
+  });
   g.rotation.y = -0.4;
   return g;
 }

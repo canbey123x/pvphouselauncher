@@ -7,6 +7,12 @@ import { ITEM_INFO } from './cutting.js';
 
 export const PRICES = { ekmek: 90, durum: 110 };
 export const PER_SLICE = 15;
+export const TOP_PRICE = 5;      // istenen her malzeme
+export const AYRAN_PRICE = 25;
+const TOPS = ['domates', 'sogan', 'marul', 'tursu', 'acisos', 'mayonez'];
+const TOP_ICON = { domates: '🍅', sogan: '🧅', marul: '🥬', tursu: '🥒', acisos: '🌶️', mayonez: '🥫' };
+const TOP_NAME = { domates: 'Domates', sogan: 'Soğan', marul: 'Marul', tursu: 'Turşu', acisos: 'Acı sos', mayonez: 'Mayonez' };
+export { TOP_ICON, TOP_NAME };
 
 const SHIRTS = [0xe63946, 0x457b9d, 0x2a9d8f, 0xf4a261, 0x8338ec, 0x06d6a0, 0xffb703, 0x3a86ff, 0xff006e, 0x6d597a];
 const PANTS = [0x2f3440, 0x1d3557, 0x3b3b3b, 0x5c4033, 0x264653];
@@ -49,12 +55,12 @@ function roundRect(g, x, y, w, h, r) {
 function makeBubble() {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
-  canvas.height = 160;
+  canvas.height = 200;
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-  sprite.scale.set(1.5, 0.94, 1);
-  sprite.position.y = 2.25;
+  sprite.scale.set(1.5, 1.17, 1);
+  sprite.position.y = 2.4;
   sprite.renderOrder = 10;
   return { canvas, g: canvas.getContext('2d'), tex, sprite, timer: 0, lastKey: '' };
 }
@@ -112,7 +118,15 @@ export class CustomerManager {
   }
 
   _randomOrder() {
-    return { type: Math.random() < 0.5 ? 'ekmek' : 'durum', slices: 2 + Math.floor(Math.random() * 4) };
+    const pool = [...TOPS].sort(() => Math.random() - 0.5);
+    const nWant = 1 + Math.floor(Math.random() * 3);
+    return {
+      type: Math.random() < 0.5 ? 'ekmek' : 'durum',
+      slices: 2 + Math.floor(Math.random() * 4),
+      wants: pool.slice(0, nWant),
+      hate: Math.random() < 0.35 ? pool[nWant] : null,
+      ayran: Math.random() < 0.4,
+    };
   }
 
   spawn() {
@@ -133,7 +147,7 @@ export class CustomerManager {
     const s = 0.92 + Math.random() * 0.14;
     person.group.scale.setScalar(s);
     const bubble = makeBubble();
-    bubble.sprite.position.y = 2.25 / s;
+    bubble.sprite.position.y = 2.4 / s;
     person.group.add(bubble.sprite);
     this.ctx.scene.add(person.group);
 
@@ -170,58 +184,81 @@ export class CustomerManager {
       this.lost++;
       this.ctx.sfx.bad();
       this.ctx.toast('😤 Bir müşteri beklemekten sıkılıp gitti!', 'bad');
+      this.ctx.addPop?.(-5);
     }
   }
 
-  /** Servis: ödeme hesapla, müşteriyi gönder. */
-  serve(c, item) {
+  /** Servis: siparişle karşılaştır, ödeme + bahşiş hesapla, popülerliği güncelle. */
+  serve(c, item, withAyran = false) {
     const o = c.order;
-    const base = PRICES[o.type] + PER_SLICE * o.slices;
+    const wants = o.wants || [];
+    const tops = item.toppings || [];
+    const pop = this.ctx.getPop ? this.ctx.getPop() : 30;
+    const base = PRICES[o.type] + PER_SLICE * o.slices + TOP_PRICE * wants.length;
     const ratio = Math.max(0, 1 - c.patience / c.maxPatience);
-    let pay;
-    let mood;
-    let msg;
-    if (item.type === o.type && item.slices === o.slices) {
-      const tip = Math.round(10 + ratio * 40);
-      pay = base + tip;
-      mood = 'love';
-      msg = `${pick(LINES.perfect)} (+${tip} TL bahşiş)`;
-      this.perfect++;
-    } else if (item.type === o.type && item.slices > o.slices) {
-      pay = base;
-      mood = 'happy';
-      msg = pick(LINES.extra);
-    } else if (item.type === o.type) {
-      pay = Math.round((PRICES[o.type] + PER_SLICE * item.slices) * 0.7);
-      mood = 'meh';
-      msg = pick(LINES.less);
-    } else {
-      pay = Math.round(base * 0.5);
-      mood = 'meh';
-      msg = pick(LINES.wrong);
-    }
-    // Pişme kalitesi: çiğ ya da yanık dilimler fiyatı düşürür, bahşişi yok eder
+    const issues = [];
+    let score = 1;
+    if (item.type !== o.type) { score -= 0.5; issues.push('wrong'); }
+    if (item.slices < o.slices) { score -= 0.1 + (0.3 * (o.slices - item.slices)) / o.slices; issues.push('less'); }
+    const missing = wants.filter((t) => !tops.includes(t));
+    if (missing.length) { score -= 0.1 * missing.length; issues.push('missing'); }
+    const hated = o.hate && tops.includes(o.hate);
+    if (hated) { score -= 0.3; issues.push('hate'); }
     const rawF = (item.raw || 0) / Math.max(1, item.slices);
     const burntF = (item.burnt || 0) / Math.max(1, item.slices);
-    if (rawF > 0 || burntF > 0) {
-      if (mood === 'love') this.perfect--;
-      pay = Math.round(Math.min(pay, base) * (1 - 0.5 * rawF - 0.35 * burntF));
-      if (rawF >= burntF) {
-        mood = 'meh';
-        msg = pick(LINES.raw);
+    if (rawF > 0) { score -= 0.5 * rawF; issues.push('raw'); }
+    if (burntF > 0) { score -= 0.35 * burntF; issues.push('burnt'); }
+    if (o.ayran && !withAyran) issues.push('noayran');
+    score = Math.max(0.2, Math.min(1, score));
+
+    let pay = Math.round(base * score);
+    let tip = 0;
+    const core = issues.filter((x) => x !== 'noayran');
+    if (!core.length) {
+      tip = Math.round((10 + ratio * 40) * (0.6 + pop / 100));
+      pay += tip;
+      this.perfect++;
+    }
+    let ayranTxt = '';
+    if (withAyran) {
+      if (o.ayran || Math.random() < 0.5) {
+        pay += AYRAN_PRICE;
+        ayranTxt = ` (+🥛${AYRAN_PRICE} TL)`;
       } else {
-        mood = 'meh';
-        msg = pick(LINES.burnt);
+        ayranTxt = ' (ayranı ikram ettin 🥛)';
       }
     }
-    if (item.salad) {
-      pay += 10;
-      msg += ' (+10 TL salata)';
+
+    // Ruh hali ve söz
+    let mood;
+    let msg;
+    const name = (t) => TOP_NAME[t].toLocaleLowerCase('tr-TR');
+    if (!core.length) {
+      mood = 'love';
+      msg = (item.slices > o.slices ? pick(LINES.extra) : pick(LINES.perfect)) + ` (+${tip} TL bahşiş)`;
+    } else {
+      mood = score >= 0.8 ? 'happy' : 'meh';
+      if (issues.includes('raw')) msg = pick(LINES.raw);
+      else if (issues.includes('burnt')) msg = pick(LINES.burnt);
+      else if (hated) msg = `Usta ${name(o.hate)} istemem demiştim! 😠`;
+      else if (issues.includes('wrong')) msg = pick(LINES.wrong);
+      else if (issues.includes('less')) msg = pick(LINES.less);
+      else msg = `${missing.map(name).join(', ')} yok mu usta? Neyse...`;
     }
+    if (issues.includes('noayran')) msg += ' Ayranımı da unuttun!';
+
+    // Popülerlik
+    let dp = mood === 'love' ? 3 : mood === 'happy' ? 1 : -2;
+    if (issues.includes('raw') || issues.includes('burnt')) dp -= 2;
+    if (hated) dp -= 1;
+    if (withAyran && o.ayran) dp += 1;
+    if (issues.includes('noayran')) dp -= 1;
+    this.ctx.addPop?.(dp);
+
     this.served++;
     this.ctx.addMoney(pay);
     this.ctx.sfx.coin();
-    this.ctx.toast(`"${msg}"`, mood === 'meh' ? 'warn' : 'ok');
+    this.ctx.toast(`"${msg}"${ayranTxt}`, mood === 'meh' ? 'warn' : 'ok');
     this.leave(c, mood);
     return pay;
   }
@@ -314,7 +351,7 @@ export class CustomerManager {
         c.bubble.timer = 0.3;
         this._drawBubble(c);
       }
-      c.bubble.sprite.position.y = 2.25 / c.person.group.scale.y + (c.mood ? Math.sin(c.phase * 0.5) * 0.05 : 0);
+      c.bubble.sprite.position.y = 2.4 / c.person.group.scale.y + (c.mood ? Math.sin(c.phase * 0.5) * 0.05 : 0);
     }
 
     for (let i = this.list.length - 1; i >= 0; i--) {
@@ -329,6 +366,7 @@ export class CustomerManager {
     const b = c.bubble;
     const ratio = Math.max(0, 1 - c.patience / c.maxPatience);
     const key = c.mood ? 'm' + c.mood : `${c.order.type}${c.order.slices}${Math.round(ratio * 20)}`;
+    const o = c.order;
     if (!force && key === b.lastKey) return;
     b.lastKey = key;
     const g = b.g;
@@ -366,17 +404,21 @@ export class CustomerManager {
       const info = ITEM_INFO[c.order.type];
       g.fillStyle = '#2a1a10';
       g.font = 'bold 34px "Nunito", sans-serif';
-      g.fillText(`${info.icon} ${info.label}`, W / 2, 40);
-      g.font = 'bold 28px "Nunito", sans-serif';
+      g.fillText(`${info.icon} ${info.label}`, W / 2, 36);
+      g.font = 'bold 26px "Nunito", sans-serif';
       g.fillStyle = '#9d0208';
-      g.fillText(`${c.order.slices} dilim`, W / 2, 76);
+      g.fillText(`${o.slices} dilim${o.ayran ? ' + 🥛' : ''}`, W / 2, 68);
+      g.font = '26px sans-serif';
+      g.fillStyle = '#2a1a10';
+      const tops = (o.wants || []).map((t) => TOP_ICON[t]).join(' ');
+      g.fillText(tops + (o.hate ? `  🚫${TOP_ICON[o.hate]}` : ''), W / 2, 102);
       // Sabır çubuğu
       g.fillStyle = 'rgba(0,0,0,.15)';
-      roundRect(g, 30, 96, W - 60, 14, 7);
+      roundRect(g, 30, 128, W - 60, 14, 7);
       g.fill();
       g.fillStyle = ratio > 0.5 ? '#2ec27e' : ratio > 0.25 ? '#f77f00' : '#e63946';
       if (ratio > 0.02) {
-        roundRect(g, 30, 96, (W - 60) * ratio, 14, 7);
+        roundRect(g, 30, 128, (W - 60) * ratio, 14, 7);
         g.fill();
       }
     }

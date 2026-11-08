@@ -107,7 +107,9 @@
       <li><b>🔓 Dükkân:</b> Sabah dükkânın önünde <i>Dükkânı Aç</i>, akşam <i>Dükkânı Kapat</i>. Kapalıyken müşteri gelmez; öğle (11-14) ve akşam (18-21) kalabalık olur.</li>
       <li><b>🌙 Gece & Ev:</b> Gece müşteri gelmez. Gül Sokak'taki evine git (sarı ok yolu gösterir), <i>Eve Gir</i>, yatakta <i>Uyu</i>. Sabah gün özeti çıkar.</li>
       <li><b>🔥 Pişirme:</b> Döner ocakta yavaş yavaş pişer. Pişme çubuğu yeşildeyken (kıvamında) kes! Çok hızlı kesersen alttaki çiğ katmana inersin; çok beklersen yüzey yanar. Çiğ ya da yanık dilim müşteriyi kızdırır, fiyat düşer.</li>
-      <li><b>📦 Stok:</b> Her dilim döner etinden, her ekmek arası 1 ekmekten, her dürüm 1 lavaştan düşer. Et <i>Kasap</i>'tan, ekmek ve lavaş <i>Fırın</i>'dan (acil durumda <i>Bakkal</i>'dan) alınır. <i>Manav</i>'dan salata alırsan her satış +10 TL getirir.</li>
+      <li><b>🍅 Malzemeler:</b> Müşteri siparişinde istediği malzemeler (🍅🧅🥬🥒🌶️🥫), istemediği (🚫) ve ayran (🥛) yazar. Kesim ekranının altındaki düğmelerle malzemeleri seç, sonra Ekmek Arası/Dürüm yap. Ayran düğmesi servis ederken yanına ayran verir (+25 TL).</li>
+      <li><b>⭐ Popülerlik:</b> Kusursuz servis, istenen malzemeler ve ayran popülerliği artırır; çiğ/yanık et, istenmeyen malzeme, kaçan müşteri ve kapalı dükkân düşürür. Popülerlik arttıkça daha çok müşteri ve daha yüksek bahşiş gelir.</li>
+      <li><b>📦 Stok:</b> Her dilim döner etinden, her ekmek arası 1 ekmekten, her dürüm 1 lavaştan düşer. Et <i>Kasap</i>'tan, ekmek ve lavaş <i>Fırın</i>'dan, sebzeler <i>Manav</i>'dan, soslar ve ayran <i>Bakkal</i>'dan alınır.</li>
       <li><b>🛒 Dükkânlar:</b> Tabelalı her dükkâna girebilirsin (kasabada her dükkândan bir tane var). Tezgaha yaklaş, <i>Alışveriş</i>'e bas. Lokanta, tatlıcı, çay ocağı, eczane ve hamam enerji verir. Berberde görünüşünü değiştirirsin. Nalburdan dükkân yükseltmeleri alınır: büyük tepsi, keskin bıçak, neon tabela, tabure ve eşeğe çelik nal.</li>
       <li><b>⚡ Enerji:</b> Zamanla azalır. Biterse sokakta bayılırsın! Evde çay içmek biraz enerji verir, uyku tamamen doldurur.</li>
       <li><b>🎥 Kamera:</b> Sürükle = döndür/eğ, iki parmak = yakınlaştır, 🎥 butonu = hazır açılar (Yakın / Normal / Uzak / Kuşbakışı).</li>
@@ -137,6 +139,7 @@
     </div>
     <div class="hud-sub">
       <div class="pill small energy" id="energyPill"><span class="e-ico">⚡</span><span class="e-bar"><i id="energyBar"></i></span></div>
+      <div class="pill small pop" id="popPill">⭐ 30</div>
       <div class="pill small" id="shopPill">🔒 Kapalı</div>
       <div class="pill small stock" id="stockPill">🥩30 🥖6 🫓6</div>
       <div class="pill small" id="queuePill">👥 0</div>
@@ -152,6 +155,7 @@
     <div id="hint" class="hidden"></div>
     <div id="toasts"></div>
 
+    <div id="toppingBar" class="hidden"></div>
     <div id="joyZone">
       <div id="joyBase"><div id="joyKnob"></div></div>
     </div>
