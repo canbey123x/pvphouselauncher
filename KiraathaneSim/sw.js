@@ -1,7 +1,7 @@
 // Eşek Kıraathanesi service worker: oyun bir kez açıldıktan sonra internetsiz de çalışsın.
 // Kendi dosyalarımız: önce ağ (güncellemeler hemen gelsin), ağ yoksa önbellek.
 // CDN (three.js) ve yazı tipleri: önce önbellek.
-const CACHE = 'esekkiraathane-v1';
+const CACHE = 'esekkiraathane-v2';
 const CORE = [
   './',
   './index.html',

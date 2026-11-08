@@ -9,11 +9,11 @@ const KEYS = [
   [0, 0x0b1026, 0.0, 0.32],
   [4.5, 0x101839, 0.0, 0.32],
   [5.5, 0x3b3a6e, 0.15, 0.4],
-  [6.3, 0xf4a37a, 1.1, 0.55],
-  [7.5, 0xa9d6f5, 2.6, 0.7],
-  [12, 0x9fd0f2, 3.1, 0.75],
-  [17, 0xa8d0ee, 2.7, 0.7],
-  [18.6, 0xff9a5c, 1.4, 0.55],
+  [6.3, 0xe39a68, 1.0, 0.5],
+  [7.5, 0xd2bd98, 2.2, 0.6],
+  [12, 0xcfc2a6, 2.6, 0.66],
+  [17, 0xd6bb8e, 2.3, 0.6],
+  [18.6, 0xe0924f, 1.3, 0.5],
   [19.5, 0x51417f, 0.3, 0.42],
   [20.5, 0x141a3d, 0.0, 0.34],
   [24, 0x0b1026, 0.0, 0.32],
@@ -158,14 +158,15 @@ export class DayNight {
 
     // Gök kubbesi renkleri: ufuk açık, tepe koyu ve daha doygun
     const u = this.uniforms;
-    u.horizon.value.copy(this.sky).lerp(cA.setRGB(1, 1, 1), 0.18 * (1 - n));
-    u.top.value.copy(this.sky).multiplyScalar(0.55 + 0.1 * n).lerp(cA.setRGB(0.05, 0.25, 0.75), 0.35 * (1 - n));
+    u.horizon.value.copy(this.sky).lerp(cA.setRGB(1, 0.92, 0.75), 0.12 * (1 - n));
+    u.top.value.copy(this.sky).multiplyScalar(0.55 + 0.1 * n).lerp(cA.setRGB(0.32, 0.36, 0.42), 0.25 * (1 - n));
     u.bottom.value.copy(u.horizon.value).multiplyScalar(0.55);
 
     this.scene.background = null;
     this.scene.fog.color.copy(u.horizon.value);
-    this.scene.fog.near = 70 - n * 25;
-    this.scene.fog.far = 230 - n * 60;
+    // altın sarısı pus: uzak binalar sise gömülür
+    this.scene.fog.near = 22 - n * 6;
+    this.scene.fog.far = 135 - n * 35;
 
     const sunDir = this.dir.set(Math.cos(angle), Math.sin(angle), 0.35).normalize();
     u.sunDir.value.copy(sunDir);

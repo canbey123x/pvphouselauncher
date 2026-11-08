@@ -1464,7 +1464,7 @@ function updateCamera(dt, look) {
     }
     if (game.mode === 'ocak') {
       cam.yaw = lerpAngle(cam.yaw, Math.atan2(player.pos.x - kira.ocakPoint.x, player.pos.z - (kira.ocakPoint.z - 1.2)), 1 - Math.exp(-dt * 6));
-      cam.fpPitch += (-0.42 - cam.fpPitch) * (1 - Math.exp(-dt * 6));
+      cam.fpPitch += (-0.16 - cam.fpPitch) * (1 - Math.exp(-dt * 6));
     }
     const bob = Math.sin(player.phase) * 0.025 * Math.min(1, player.moving * 2);
     desiredPos.set(player.pos.x, player.pos.y + 1.62 + bob, player.pos.z);
