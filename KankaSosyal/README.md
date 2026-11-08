@@ -35,11 +35,12 @@ Herkesin birbirini görmesi için ortak bir sunucu gerekir. Supabase'in ücretsi
 3. **Authentication > Sign In / Providers > Email**: *Confirm email* seçeneğini kapat
    (kapatmazsan herkes kayıttan sonra e-postasındaki bağlantıya tıklamalı).
 4. **Project Settings > API**: `Project URL` ve `anon public` anahtarını kopyala.
-5. İki yoldan biri:
-   - **Herkes için kalıcı:** GitHub'da `KankaSosyal/js/config.js` dosyasını düzenle, URL ve anahtarı yaz, kaydet.
-     GitHub Actions yeni APK'yı otomatik derler; arkadaşlarına o APK'yı gönder.
-   - **Hızlı:** uygulamada giriş ekranındaki *sunucu bağla* (ya da Ayarlar > Sunucu) kısmına URL ve anahtarı yapıştır.
-     Her arkadaşın kendi telefonunda bir kez yapması gerekir.
+5. Uygulamayı sunucuya bağla (üçü de olur):
+   - **Otomatik (önerilen):** GitHub'da `KankaSosyal/server.json` dosyasına URL ve publishable/anon anahtarı yaz, kaydet.
+     Uygulama her açılışta bu dosyayı okur; herkes kendiliğinden bağlanır, yeni APK gerekmez.
+     (Yönetim paneli > **Sunucu** bölümünde hazır içerik ve düzenleme bağlantısı var.)
+   - **Davet kodu:** Yönetim paneli > Sunucu'daki `KANKA-...` kodunu arkadaşına gönder; giriş ekranındaki kutuya yapıştırıp *Bağlan* der.
+   - **Gömülü:** `KankaSosyal/js/config.js` dosyasına yaz; yeni APK'ya gömülür.
 6. Uygulamada ilk **kaydolan** kişi yönetici olur. Sonra arkadaşların kaydolur.
 
 `anon public` anahtarı uygulamaya gömülebilir; veriler `schema.sql` içindeki satır güvenliği (RLS) kurallarıyla korunur.

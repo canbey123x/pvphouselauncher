@@ -15,6 +15,7 @@ const SECTIONS = [
   ['comments', 'comment', 'Yorumlar'],
   ['stories', 'circle', 'Hikâyeler'],
   ['ann', 'megaphone', 'Duyurular'],
+  ['server', 'globe', 'Sunucu'],
 ];
 
 export async function renderAdmin(app, ctx) {
@@ -25,7 +26,7 @@ export async function renderAdmin(app, ctx) {
   app.innerHTML = `${topbar(`${ic('shield', 22)} Yönetim paneli`, true)}
     <nav class="admin-nav">${SECTIONS.map(([k, icon, t]) => `<a href="#/admin/${k}" class="${section === k ? 'on' : ''}">${icon === 'tick' ? TICK : ic(icon)}${t}${badge[k] ? `<span class="n">${badge[k]}</span>` : ''}</a>`).join('')}</nav><div id="adm"></div>`;
   const box = $('#adm');
-  const fn = { dash, users, verify, reports, posts, comments, stories, ann }[section] || dash;
+  const fn = { dash, users, verify, reports, posts, comments, stories, ann, server }[section] || dash;
   await fn(box, ctx, st);
   hydrate(box);
 }
@@ -283,5 +284,61 @@ async function ann(box, ctx) {
       await A.deleteAnnouncement(del.dataset.del);
       ctx.reroute();
     }
+  };
+}
+
+/* ---------- Sunucu: herkesi aynı sunucuya bağla ---------- */
+const EDIT_URL = 'https://github.com/canbey123x/pvphouselauncher/edit/ccr-111fa307-9zbgth/KankaSosyal/server.json';
+async function server(box) {
+  const cfg = A.serverConfig();
+  const code = A.makeInvite(cfg);
+  const local = A.db.mode === 'local';
+  box.innerHTML = `<div class="create">
+    <div class="modebadge" style="text-align:left">${local ? `${ic('device', 14)}<b>Bu cihaz sunucuya bağlı değil.</b> Önce aşağıdan adres ve anahtarı girip bağlan.` : `${ic('globe', 14)}<b>Bağlı sunucu:</b><br>${esc(cfg.url)}`}</div>
+
+    <div class="section-t" style="padding:6px 0 0">1. Otomatik bağlanma (herkes için)</div>
+    <p class="small muted" style="margin:0">Uygulama her açılışta GitHub'daki <b>server.json</b> dosyasını okur ve oradaki sunucuya kendiliğinden bağlanır. Bir kez doldurman yeter; yeni APK gerekmez, sunucu değişirse herkes otomatik geçer.</p>
+    <div class="card" style="font-family:monospace;font-size:12px;white-space:pre-wrap;word-break:break-all" id="json">{
+  "url": "${esc(cfg?.url || 'https://xxxx.supabase.co')}",
+  "key": "${esc(cfg?.key || 'sb_publishable_...')}"
+}</div>
+    <button class="btn block gray" id="cpJson">${ic('link')} Bu içeriği kopyala</button>
+    <a class="btn block" href="${EDIT_URL}" target="_blank" rel="noopener">${ic('pen')} server.json'u GitHub'da düzenle</a>
+    <p class="small muted" style="margin:0">Açılan sayfada içeriği sil, kopyaladığını yapıştır, <b>Commit changes</b> de. Birkaç dakika içinde herkes bağlanır.</p>
+
+    <div class="section-t" style="padding:12px 0 0">2. Davet kodu (hemen bağlamak için)</div>
+    ${code ? `<div class="card" style="font-family:monospace;font-size:12px;word-break:break-all" id="code">${esc(code)}</div>
+    <button class="btn block" id="cpCode">${ic('link')} Davet kodunu kopyala</button>
+    <p class="small muted" style="margin:0">Kodu arkadaşına gönder. Giriş ekranındaki "davet kodu" kutusuna yapıştırıp <b>Bağlan</b> der.</p>` : '<p class="small muted">Önce bir sunucuya bağlan.</p>'}
+
+    <div class="section-t" style="padding:12px 0 0">3. Sunucuyu değiştir</div>
+    <input class="field" id="su" placeholder="Supabase URL (https://xxxx.supabase.co)" value="${esc(cfg?.url || '')}">
+    <input class="field" id="sk" placeholder="publishable / anon anahtar (secret DEĞİL)" value="${esc(cfg?.key || '')}">
+    <button class="btn block gray" id="sv">Bu cihazı bağla ve davet kodu üret</button>
+    <p class="small muted" style="margin:0">Asla <b>secret / service_role</b> anahtarını girme.</p></div>`;
+  const copy = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Kopyalandı');
+    } catch {
+      const t = document.createElement('textarea');
+      t.value = text;
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand('copy');
+      t.remove();
+      toast('Kopyalandı');
+    }
+  };
+  $('#cpJson', box).onclick = () => copy($('#json', box).textContent);
+  if ($('#cpCode', box)) $('#cpCode', box).onclick = () => copy(code);
+  $('#sv', box).onclick = () => {
+    const url = $('#su', box).value.trim().replace(/\/$/, '');
+    const key = $('#sk', box).value.trim();
+    if (!/^https:\/\/.+/.test(url) || key.length < 20) return toast('URL ya da anahtar hatalı', true);
+    if (/^sb_secret_/.test(key)) return toast('Bu secret anahtar! Publishable anahtarı gir.', true);
+    A.setServerConfig({ url, key });
+    location.hash = '#/login';
+    location.reload();
   };
 }

@@ -12,22 +12,71 @@ export const STORY_MS = 24 * 3600 * 1000;
 export let db = null;
 const profileCache = new Map();
 
-export function serverConfig() {
+const REMOTE_KEY = 'kanka.remote';
+/** Herkesin otomatik bağlandığı ortak ayar dosyası (GitHub'da). Değişince yeni APK gerekmez. */
+export const REMOTE_URL = 'https://raw.githubusercontent.com/canbey123x/pvphouselauncher/ccr-111fa307-9zbgth/KankaSosyal/server.json';
+
+const valid = (s) => s && /^https:\/\/\S+$/.test(s.url || '') && (s.key || '').length >= 20 && !/^sb_secret_/.test(s.key);
+function readLS(k) {
   try {
-    const s = JSON.parse(localStorage.getItem(SERVER_KEY) || 'null');
-    if (s && s.url && s.key) return s;
+    return JSON.parse(localStorage.getItem(k) || 'null');
   } catch {
-    /* yok */
+    return null;
   }
-  if (SUPABASE_URL && SUPABASE_ANON_KEY) return { url: SUPABASE_URL, key: SUPABASE_ANON_KEY };
+}
+
+/** Uzak ayar dosyasını oku (en fazla 4 sn), başarılıysa sakla. */
+async function fetchRemote() {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 4000);
+    const r = await fetch(REMOTE_URL + '?t=' + Date.now(), { signal: ctl.signal, cache: 'no-store' });
+    clearTimeout(t);
+    if (!r.ok) return;
+    const j = await r.json();
+    if (valid(j)) localStorage.setItem(REMOTE_KEY, JSON.stringify({ url: j.url.trim().replace(/\/$/, ''), key: j.key.trim() }));
+    else localStorage.removeItem(REMOTE_KEY);
+  } catch {
+    /* internet yok: son bilinen ayar kullanılır */
+  }
+}
+
+/** Öncelik: davet kodu / elle girilen > ortak ayar dosyası > uygulamaya gömülü (config.js). */
+export function serverConfig() {
+  const manual = readLS(SERVER_KEY);
+  if (valid(manual)) return { ...manual, source: 'manual' };
+  const remote = readLS(REMOTE_KEY);
+  if (valid(remote)) return { ...remote, source: 'remote' };
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) return { url: SUPABASE_URL, key: SUPABASE_ANON_KEY, source: 'builtin' };
   return null;
 }
 export function setServerConfig(cfg) {
-  if (cfg) localStorage.setItem(SERVER_KEY, JSON.stringify(cfg));
+  if (cfg) localStorage.setItem(SERVER_KEY, JSON.stringify({ url: cfg.url, key: cfg.key }));
   else localStorage.removeItem(SERVER_KEY);
 }
 
+/* ---------- Davet kodu: sunucu adresi + herkese açık anahtar ---------- */
+export function makeInvite(cfg = serverConfig()) {
+  if (!cfg) return '';
+  const b = btoa(unescape(encodeURIComponent(JSON.stringify({ u: cfg.url, k: cfg.key }))));
+  return 'KANKA-' + b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+export function parseInvite(code) {
+  try {
+    let b = String(code).trim().replace(/^KANKA-/i, '').replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+    while (b.length % 4) b += '=';
+    const j = JSON.parse(decodeURIComponent(escape(atob(b))));
+    const cfg = { url: String(j.u || '').trim().replace(/\/$/, ''), key: String(j.k || '').trim() };
+    return valid(cfg) ? cfg : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function initDb() {
+  // ilk açılışta ayar yoksa ortak dosyayı bekle; varsa arka planda tazele
+  if (!serverConfig()) await fetchRemote();
+  else fetchRemote();
   const cfg = serverConfig();
   if (cfg) {
     try {
