@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- İnce belli çay bardağı ikonu: yeşil zemin, tabak, tavşan kanı çay -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#E9C46A" android:pathData="M54,54m-31,0a31,31 0,1 1,62 0a31,31 0,1 1,-62 0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M30,76 L78,76 L74,82 L34,82 Z" />
+    <path android:fillColor="#F4F7FA" android:pathData="M40,30 L68,30 L62,52 L66,74 L42,74 L46,52 Z" />
+    <path android:fillColor="#B3261E" android:pathData="M42.5,38 L65.5,38 L60.5,52 L64,71 L44,71 L47.5,52 Z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.45" android:pathData="M45,40 L49,40 L46.5,52 L48,68 L45.5,68 L44,52 Z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.8" android:pathData="M48,24 Q45,20 48,16 Q51,12 48,8 L50,8 Q53,12 50,16 Q47,20 50,24 Z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.8" android:pathData="M58,24 Q55,20 58,16 Q61,12 58,8 L60,8 Q63,12 60,16 Q57,20 60,24 Z" />
+</vector>

@@ -1,0 +1,64 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Web oyununun kök klasörü (KiraathaneSim/) — APK içine assets/www olarak kopyalanır.
+def webRoot = file('../..')
+def threeLocal = file('../vendor/three.module.js')
+def webOut = layout.buildDirectory.dir('generated/webassets')
+
+android {
+    namespace 'com.esekkiraathane.game'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.esekkiraathane.game'
+        minSdk 26
+        targetSdk 34
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int)
+        versionName '1.0.' + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs += webOut.get().asFile
+        }
+    }
+}
+
+// index.html, style.css ve src/ klasörünü APK'ya kopyala.
+// three.js yerel olarak indirildiyse (CI bunu yapar) CDN yerine onu kullan → oyun internetsiz çalışır.
+tasks.register('copyWebAssets', Copy) {
+    into webOut.get().dir('www')
+    from(webRoot) {
+        include 'index.html', 'style.css', 'src/**', 'manifest.webmanifest', 'icons/**'
+    }
+    if (threeLocal.exists()) {
+        from(threeLocal.parentFile) {
+            include 'three.module.js'
+            into 'vendor'
+        }
+        filesMatching('index.html') {
+            filter { String line ->
+                line.replace('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js', './vendor/three.module.js')
+            }
+        }
+    }
+}
+preBuild.dependsOn 'copyWebAssets'
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.11.0'
+}
