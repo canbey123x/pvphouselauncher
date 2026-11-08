@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EsekMarketi ikonu: sarı güneş önünde eşek kafası ve kırmızı alışveriş sepeti -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFD54F" android:pathData="M54,54m-31,0a31,31 0,1 1,62 0a31,31 0,1 1,-62 0" />
+    <path android:fillColor="#8C8279" android:pathData="M40,22h6l2,22h-8z M60,22h6v22h-8z M38,40h30v26h-30z" />
+    <path android:fillColor="#E8C0B8" android:pathData="M42,26h3l1,16h-4z M61,26h3v16h-4z" />
+    <path android:fillColor="#D8D0C4" android:pathData="M40,62h26v14h-26z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M42,48h5v5h-5z M59,48h5v5h-5z" />
+    <path android:fillColor="#141414" android:pathData="M44,49h3v4h-3z M61,49h3v4h-3z M44,68h4v3h-4z M58,68h4v3h-4z" />
+    <path android:fillColor="#3B322C" android:pathData="M48,38h10v5h-10z" />
+    <path android:fillColor="#961414" android:pathData="M28,74h52v4h-52z" />
+    <path android:fillColor="#C62828" android:pathData="M30,78h48l-5,14h-38z" />
+    <path android:fillColor="#F0C8C8" android:pathData="M40,80h3v10h-3z M48,80h3v10h-3z M56,80h3v10h-3z M64,80h3v10h-3z" />
+</vector>

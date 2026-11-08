@@ -1,36 +1,51 @@
-# ShopSim 3D
+# 🐴 EsekMarketi
 
-A walking simulator set in an Indian supermarket, built with Three.js in plain JavaScript. You get a shopping list, find each item across eight store sections, compare prices and check out.
+Eşekli, mobil uyumlu **market işletme oyunu**. Raflarını doldur, fiyatlarını belirle, kasada müşterileri karşıla. Siparişlerini kasabanın en çalışkan eşeği arabasıyla depona getirir.
 
-**Play it in the browser:** https://ishu-dev.github.io/shop-sim-3d/
+> **Temel proje:** Bu oyun [ShopSim 3D](https://github.com/Ishu-dev/shop-sim-3d) (Copyright © 2026 Ishu Chaudhary, MIT lisansı) üzerine kuruldu. Orijinal kod bu repoda ayrı bir commit olarak değiştirilmeden içe aktarıldı (`EsekMarketi: import ShopSim 3D ...`). Sonraki commit'ler onu market işletme oyununa dönüştürdü.
+>
+> ShopSim 3D'den alınanlar: market binası ve duvar yerleşimi, raf modeli, karakter modeli, 5 kamera modu (izometrik, üçüncü şahıs, kuşbakışı, serbest, birinci şahıs), WebAudio ses sistemi, mini harita ve fiyat etiketleri. Three.js r128 (MIT) `three.min.js` olarak gömülüdür.
 
-| Isometric camera | Third-person camera |
-|---|---|
-| ![Isometric view](docs/iso.png) | ![Third-person view](docs/third_person.png) |
+## 🎮 Oynanış
 
-## What's in it
-- A store of about 60 by 44 units with Produce, Bakery, Dairy, Snacks, Beverages, Frozen, Household and Jewellery sections, each with colour-coded floors and signs
-- Shelves stocked with priced products; press F on an item for a buying tip (the diamond ring asks you to check the 4 Cs)
-- An animated low-poly shopper and five cameras: isometric, third-person, top-down, free orbit and first-person
-- A minimap and an arrow that points to the next item on your list
-- A checkout counter with a queue of NPC shoppers and a cashier, plus coins to collect
+- **8 reyon, 24 ürün:** Manav (elma, portakal, muz), Fırın (ekmek, simit, poğaça), Süt Ürünleri (süt, ayran, beyaz peynir), İçecek, Atıştırmalık, Kahvaltılık (zeytin, bal, reçel), Bakliyat (pirinç, mercimek, makarna), Temizlik.
+- **Stok:** Her ürünün raf stoğu (24 adet) ve depo stoğu ayrı tutulur. Müşteriler raftan alır; raf boşalırsa üzülürler.
+- **📦 Sipariş tableti:** Koli (12 adet) sipariş et ve satış fiyatlarını ayarla. Pahalı fiyatı müşteri almaz, ucuz fiyat kârını düşürür.
+- **🐴 Eşek arabası:** Siparişleri arka kapıdan depoya getirir, kolileri tek tek indirir. Gelince eşeği sevmeyi unutma 🥕
+- **🧺 Rafa dizme:** Depodaki paletten koliyi al, doğru reyonun rafına götür ve diz.
+- **🧾 Kasa:** Müşteriler sıraya girer. Kasaya geç, ürünleri tek tek okut, ödemeyi al. Çok bekletirsen müşteri kızıp gider. İstersen kasiyer işe alırsın.
+- **⭐ Popülerlik:** Mutlu müşteri popülerliği artırır, popülerlik de daha çok müşteri getirir. Boş raf, pahalı fiyat ve bekleyen kuyruk düşürür.
+- **🔓 Lisanslar ve geliştirmeler:** Atıştırmalık, Kahvaltılık, Bakliyat ve Temizlik reyonlarını lisans alarak açarsın. Ayrıca kasiyer, hızlı eşek ve mahalle reklamı alınabilir.
+- **📅 İş günü:** Market 08:00–22:00 arası açıktır. Gün sonunda ciro, sipariş, kira, maaş ve net kâr raporu çıkar.
+- **💾 Kayıt:** Oyun kendiliğinden kaydedilir; menüden *Devam Et* ile kaldığın yerden sürersin.
 
-About 1,300 lines in `js/game.js`. No build step, no framework, no network calls; Three.js is vendored as `three.min.js`.
+## 🕹️ Kontroller
 
-## Controls
+| Eylem | Dokunmatik | Klavye |
+|---|---|---|
+| Yürü | Sol alttaki joystick | WASD / ok tuşları (Shift = koş) |
+| Eylem (koli al, rafa diz, kasaya geç, okut, eşeği sev) | Yeşil büyük buton | E / Boşluk |
+| Koliyi depoya geri gönder / kasadan çık | Turuncu buton | Q |
+| Sipariş tableti | 📦 Sipariş | O |
+| Kamera | Alttaki kamera butonları, sürükleme | C, sürükleme, tekerlek |
+| Mini harita | — | M |
 
-| Key | Action |
-|---|---|
-| W A S D / arrows | Move, relative to the camera |
-| Shift | Sprint |
-| E | Pick up a product, use the checkout |
-| F | Inspect a product up close |
-| C or the on-screen buttons | Change camera |
-| Mouse drag / scroll | Orbit and zoom (free camera) |
-| M | Minimap |
-| Tab | Shopping list |
+## 📁 Yapı
 
-## Run locally
-Open `index.html` in a browser. It works from the file system with no server.
+```
+EsekMarketi/
+├── index.html            # Arayüz: HUD, joystick, sipariş tableti, gün sonu raporu
+├── js/game.js            # Oyun: market, raflar, depo, eşek, müşteriler, kasa, ekonomi
+├── three.min.js          # Three.js r128 (gömülü, internetsiz çalışır)
+├── manifest.webmanifest  # Ana ekrana eklenebilir web uygulaması
+├── sw.js                 # Çevrimdışı önbellek
+├── icons/                # Uygulama ikonları
+├── android/              # APK için WebView sarmalayıcısı
+└── LICENSE               # MIT (orijinal ShopSim 3D lisansı + değişiklik notu)
+```
 
-Three.js is MIT-licensed; its licence travels inside `three.min.js`.
+## 🚀 Çalıştırma
+
+- **Tarayıcı:** `index.html` dosyasını doğrudan açabilirsin, ya da `python3 -m http.server` ile sun.
+- **Android:** Repodaki `.github/workflows/esekmarketi-apk.yml`, `EsekMarketi/` her değiştiğinde APK'yı derler ve **Releases → esekmarketi-latest** altına `EsekMarketi.apk` olarak koyar.
+- **iPhone:** Siteyi HTTPS üzerinden yayınla, Safari'de aç → Paylaş → *Ana Ekrana Ekle*.

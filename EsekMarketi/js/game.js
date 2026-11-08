@@ -1,100 +1,106 @@
 'use strict';
 /* ============================================================
-   ShopSim 3D — game.js
-   Retail shop walking sim: cameras, prices, inspection,
-   push cart, audio, NPCs, checkout.
+   EsekMarketi — game.js
+   Market işletme simülasyonu: raf stoğu, depo, eşek arabasıyla
+   sipariş teslimatı, fiyatlar, müşteriler, kasa, popülerlik.
+
+   Temel: "ShopSim 3D" — Copyright (c) 2026 Ishu Chaudhary, MIT
+   (https://github.com/Ishu-dev/shop-sim-3d). Market binası, raf ve
+   duvar yapısı, karakter modeli, 5 kamera modu, ses sistemi ve mini
+   harita oradan uyarlandı; oyun mantığı EsekMarketi için yeniden yazıldı.
    ============================================================ */
 
 // ------------------------------------------------------------
-// CONFIG
+// AYARLAR
 // ------------------------------------------------------------
 const STORE_W = 72, STORE_D = 52;
 const WALL_H = 5.5, WALL_T = 0.6;
-const PLAYER_R = 0.45, WALK = 5.2, SPRINT = 1.75;
+const PLAYER_R = 0.45, WALK = 5.2, SPRINT = 1.6;
+const KOLI = 12;             // bir kolideki adet
+const SHELF_CAP = 24;        // raf bölmesi kapasitesi
+const PALLET_CAP = 8 * KOLI; // depoda ürün başına en fazla 8 koli
+const OPEN_H = 8, CLOSE_H = 22;
+const MIN_PER_SEC = 2;       // 1 gerçek saniye = 2 oyun dakikası
+const RENT = 150, WAGE = 120;
+const SAVE_KEY = 'esekmarketi.save.v1';
 
 const colliders = [];
-const products  = [];   // every interactable product mesh
-const coins     = [];
-const tweens    = [];
-const npcs      = [];
+const tweens = [];
+const fmtTL = (n) => (n < 0 ? '-₺' : '₺') + Math.abs(Math.round(n)).toLocaleString('tr-TR');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rnd = (a) => a[Math.floor(Math.random() * a.length)];
 
 // ------------------------------------------------------------
-// RENDERER / SCENE
+// RENDERER / SAHNE
 // ------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.getElementById('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x11141f);
-scene.fog = new THREE.Fog(0x11141f, 90, 220);
+scene.background = new THREE.Color(0x8fc6ea);
+scene.fog = new THREE.Fog(0x8fc6ea, 110, 260);
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-scene.add(new THREE.HemisphereLight(0xbfd9ff, 0x33302a, 0.5));
-const sun = new THREE.DirectionalLight(0xfff3d6, 0.9);
+scene.add(new THREE.HemisphereLight(0xdff0ff, 0x4a5a3a, 0.55));
+const sun = new THREE.DirectionalLight(0xfff3d6, 0.85);
 sun.position.set(35, 55, 25);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -50, right: 50, top: 40, bottom: -40, near: 10, far: 140 });
+Object.assign(sun.shadow.camera, { left: -60, right: 75, top: 45, bottom: -45, near: 10, far: 160 });
 scene.add(sun);
 
 // ------------------------------------------------------------
-// DEPARTMENTS + PRODUCT CATALOG (with prices, ₹)
+// REYONLAR + ÜRÜN KATALOĞU (₺)
 // ------------------------------------------------------------
 const DEPTS = {
-  Produce:   { color: 0x43a047, css: '#43a047', items: [
-    ['Apple',      '#e53935', 'sphere', 140], ['Orange', '#fb8c00', 'sphere', 90], ['Banana', '#fdd835', 'box', 55]] },
-  Bakery:    { color: 0xffa000, css: '#ffa000', items: [
-    ['Bread',      '#8d6e63', 'box', 45], ['Baguette', '#d7a86e', 'box', 60], ['Croissant', '#b5834a', 'box', 80]] },
-  Dairy:     { color: 0x039be5, css: '#039be5', items: [
-    ['Milk',       '#fafafa', 'box', 32], ['Yogurt', '#f48fb1', 'box', 25], ['Cheese', '#fbc02d', 'box', 110]] },
-  Beverages: { color: 0xd84315, css: '#d84315', items: [
-    ['Cola',       '#4e342e', 'cyl', 40], ['Juice', '#ffa726', 'cyl', 75], ['Water', '#4fc3f7', 'cyl', 20]] },
-  Snacks:    { color: 0x8e24aa, css: '#8e24aa', items: [
-    ['Chips',      '#d32f2f', 'box', 35], ['Cookies', '#5d4037', 'box', 50], ['Chocolate', '#6d4c41', 'box', 65]] },
-  Frozen:    { color: 0x00acc1, css: '#00acc1', items: [
-    ['IceCream',   '#80deea', 'box', 85], ['Pizza', '#ef5350', 'box', 150], ['Peas', '#43a047', 'box', 70]] },
-  Household: { color: 0x5e35b1, css: '#5e35b1', items: [
-    ['Soap',       '#26c6da', 'box', 30], ['Detergent', '#7cb342', 'box', 95], ['PaperTowels', '#aed581', 'box', 48]] },
-  Jewellery: { color: 0xffd700, css: '#c9a227', items: [
-    ['GoldChain', '#ffd54f', 'torus', 45000], ['DiamondRing', '#e0f7fa', 'gem', 80000], ['Bangles', '#ffab91', 'torus', 22000], ['Jhumkas', '#ffd180', 'cone', 15000], ['Gemstone', '#7c4dff', 'gem', 30000]] },
-  Checkout:  { color: 0x4caf50, css: '#4caf50', items: [] },
+  manav:        { name: 'Manav',         css: '#43a047', license: 0 },
+  firin:        { name: 'Fırın',         css: '#ef8f00', license: 0 },
+  sut:          { name: 'Süt Ürünleri',  css: '#039be5', license: 0 },
+  icecek:       { name: 'İçecek',        css: '#d84315', license: 0 },
+  atistirmalik: { name: 'Atıştırmalık',  css: '#8e24aa', license: 400 },
+  kahvalti:     { name: 'Kahvaltılık',   css: '#c62828', license: 600 },
+  bakliyat:     { name: 'Bakliyat',      css: '#6d4c41', license: 800 },
+  temizlik:     { name: 'Temizlik',      css: '#5e35b1', license: 1000 },
 };
 
-const PRODUCT_DESC = {
-  Apple: 'Crisp and sweet. Sold per kg — aroma is the freshness test.',
-  Orange: 'Juicy Nagpur-style. Heavy for its size = more juice.',
-  Banana: 'Everyday fuel. Buy slightly green for a longer shelf life.',
-  Bread: 'Soft sandwich loaf. Check the bake date on the clip.',
-  Baguette: 'Crusty French classic. Best eaten the same day.',
-  Croissant: 'All-butter, flaky layers. Bakery counter favourite.',
-  Milk: 'Toned pouch milk. Cold chain matters — grab it last.',
-  Yogurt: 'Set curd, chilled. Firm wobble means good culture.',
-  Cheese: 'Processed block. Sealed pack keeps it moist.',
-  Cola: 'Chilled fizzy drink. Impulse zone near the counter.',
-  Juice: 'Mixed-fruit juice. Look for "no added sugar" on the back.',
-  Water: '1L bottled water. The cheapest thing in the store.',
-  Chips: 'Salted potato wafers. Nitrogen-flushed bag = crisp.',
-  Cookies: 'Butter-baked. Check the margin tag — high-visibility shelf!',
-  Chocolate: 'Milk chocolate bar. Placed at eye level on purpose.',
-  IceCream: 'Vanilla tub. Frozen aisle — pick up last.',
-  Pizza: 'Frozen margherita. Oven in 12 minutes.',
-  Peas: 'Frozen green peas. IQF: individually quick frozen.',
-  Soap: 'Glycerin bath bar. Essentials live deep in the store.',
-  Detergent: 'Machine-wash powder. Heavy — bring the cart here.',
-  PaperTowels: '2-ply kitchen roll. Bulk packs save money.',
-  GoldChain: '22K hallmarked chain. Price tracks the daily gold rate — haggle politely.',
-  DiamondRing: 'Check the 4 Cs: cut, colour, clarity, carat. Always ask for the certificate.',
-  Bangles: 'Traditional set of two. Wedding season = best offers.',
-  Jhumkas: 'Classic dome-shaped earrings. Lightweight hooks, heavy look.',
-  Gemstone: 'Loose certified stone. Brilliance test: sparkle under the spotlight.',
-};
+// [id, ad, reyon, renk, şekil, alış (adet), önerilen satış (adet)]
+const CATALOG = [
+  ['elma', 'Elma', 'manav', '#e53935', 'sphere', 6, 10],
+  ['portakal', 'Portakal', 'manav', '#fb8c00', 'sphere', 5, 9],
+  ['muz', 'Muz', 'manav', '#fdd835', 'banana', 9, 15],
+  ['ekmek', 'Ekmek', 'firin', '#b5834a', 'loaf', 4, 8],
+  ['simit', 'Simit', 'firin', '#a0662f', 'ring', 5, 10],
+  ['pogaca', 'Poğaça', 'firin', '#e0b070', 'bun', 6, 12],
+  ['sut', 'Süt', 'sut', '#fafafa', 'carton', 14, 22],
+  ['ayran', 'Ayran', 'sut', '#e3f2fd', 'cup', 5, 9],
+  ['peynir', 'Beyaz Peynir', 'sut', '#f5f0dc', 'block', 40, 65],
+  ['kola', 'Kola', 'icecek', '#4e342e', 'can', 12, 20],
+  ['meyvesuyu', 'Meyve Suyu', 'icecek', '#ffa726', 'carton', 10, 18],
+  ['su', 'Su', 'icecek', '#4fc3f7', 'bottle', 3, 6],
+  ['cips', 'Cips', 'atistirmalik', '#d32f2f', 'bag', 12, 22],
+  ['biskuvi', 'Bisküvi', 'atistirmalik', '#795548', 'box', 8, 15],
+  ['cikolata', 'Çikolata', 'atistirmalik', '#5d4037', 'bar', 10, 19],
+  ['zeytin', 'Zeytin', 'kahvalti', '#33691e', 'jar', 30, 50],
+  ['bal', 'Bal', 'kahvalti', '#ffb300', 'jar', 60, 95],
+  ['recel', 'Reçel', 'kahvalti', '#ad1457', 'jar', 25, 42],
+  ['pirinc', 'Pirinç', 'bakliyat', '#f5f5f5', 'sack', 35, 55],
+  ['mercimek', 'Mercimek', 'bakliyat', '#ef6c00', 'sack', 30, 48],
+  ['makarna', 'Makarna', 'bakliyat', '#fbc02d', 'box', 9, 16],
+  ['sabun', 'Sabun', 'temizlik', '#26c6da', 'block', 8, 15],
+  ['deterjan', 'Deterjan', 'temizlik', '#7cb342', 'box', 60, 95],
+  ['kagithavlu', 'Kağıt Havlu', 'temizlik', '#eceff1', 'roll', 25, 40],
+];
+const P = {};
+for (const [id, name, dept, color, shape, cost, base] of CATALOG) {
+  P[id] = { id, name, dept, color, shape, cost, base, price: base, shelf: 0, depo: 0 };
+}
 
 // ------------------------------------------------------------
-// HELPERS
+// YARDIMCILAR (ShopSim 3D'den)
 // ------------------------------------------------------------
 function lambert(c) { return new THREE.MeshLambertMaterial({ color: c }); }
 
@@ -110,29 +116,42 @@ function makeTextTexture(text, bg, fg = '#ffffff', w = 512, h = 128) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d');
   g.fillStyle = bg; g.fillRect(0, 0, w, h);
-  g.fillStyle = fg; g.font = `bold ${h * 0.52}px system-ui, sans-serif`;
+  g.fillStyle = fg;
+  let size = Math.floor(h * 0.52);
+  g.font = `bold ${size}px system-ui, sans-serif`;
+  while (g.measureText(text).width > w - 24 && size > 10) { size -= 2; g.font = `bold ${size}px system-ui, sans-serif`; }
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(text, w / 2, h / 2 + 2);
   const t = new THREE.CanvasTexture(c); t.anisotropy = 4;
   return t;
 }
 
-function addCollider(cx, cz, w, d, shelf = false) {
-  colliders.push({ minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2, shelf });
+function addCollider(cx, cz, w, d, kind = 'wall') {
+  const c = { minX: cx - w / 2, maxX: cx + w / 2, minZ: cz - d / 2, maxZ: cz + d / 2, kind };
+  colliders.push(c);
+  return c;
 }
 
 // ------------------------------------------------------------
-// FLOOR + GROUND
+// ZEMİN: dış alan, otopark, market içi
 // ------------------------------------------------------------
 {
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), lambert(0x1a1d29));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(420, 420), lambert(0x6f9a4a));
   ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true;
   scene.add(ground);
+  // Önde cadde ve otopark, doğuda eşek yolu
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(220, 12), lambert(0x4a4b52));
+  road.rotation.x = -Math.PI / 2; road.position.set(10, -0.01, 42); road.receiveShadow = true; scene.add(road);
+  const walk = new THREE.Mesh(new THREE.PlaneGeometry(90, 9), lambert(0xcfc6b6));
+  walk.rotation.x = -Math.PI / 2; walk.position.set(10, -0.005, 31.5); walk.receiveShadow = true; scene.add(walk);
+  const dirt = new THREE.Mesh(new THREE.PlaneGeometry(50, 5), lambert(0xb79a6a));
+  dirt.rotation.x = -Math.PI / 2; dirt.position.set(88, -0.005, 2); dirt.receiveShadow = true; scene.add(dirt);
+  for (let x = -90; x < 110; x += 6) box(3, 0.02, 0.3, 0xf4f1e8, x, 0.0, 42, null, false);
 
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const g = c.getContext('2d');
-  g.fillStyle = '#e9e6de'; g.fillRect(0, 0, 256, 256);
-  g.fillStyle = '#dcd8cd'; g.fillRect(0, 0, 128, 128); g.fillRect(128, 128, 128, 128);
+  g.fillStyle = '#ece9e1'; g.fillRect(0, 0, 256, 256);
+  g.fillStyle = '#dedad0'; g.fillRect(0, 0, 128, 128); g.fillRect(128, 128, 128, 128);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(18, 13);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(STORE_W, STORE_D), new THREE.MeshLambertMaterial({ map: tex }));
@@ -141,367 +160,312 @@ function addCollider(cx, cz, w, d, shelf = false) {
 }
 
 // ------------------------------------------------------------
-// ZONES
-// ------------------------------------------------------------
-const zones = [
-  { d: 'Produce',   x: -23, z: 16,  w: 22, dpt: 14 },
-  { d: 'Checkout',  x: 0,   z: 21,  w: 16, dpt: 8  },
-  { d: 'Bakery',    x: 24,  z: 14,  w: 20, dpt: 16 },
-  { d: 'Dairy',     x: -31, z: -9,  w: 9,  dpt: 24 },
-  { d: 'Frozen',    x: -14, z: -21, w: 22, dpt: 9  },
-  { d: 'Household', x: 14,  z: -21, w: 22, dpt: 9  },
-  { d: 'Beverages', x: 31,  z: -9,  w: 9,  dpt: 24 },
-  { d: 'Snacks',    x: 0,   z: -4,  w: 32, dpt: 22 },
-  { d: 'Jewellery', x: 52,  z: 2,   w: 24, dpt: 24 },
-];
-for (const z of zones) {
-  const dep = DEPTS[z.d];
-  const patch = new THREE.Mesh(
-    new THREE.PlaneGeometry(z.w, z.dpt),
-    new THREE.MeshLambertMaterial({ color: dep.color, transparent: true, opacity: 0.16 })
-  );
-  patch.rotation.x = -Math.PI / 2;
-  patch.position.set(z.x, 0.015, z.z);
-  patch.receiveShadow = true;
-  scene.add(patch);
-
-  if (z.d !== 'Jewellery') {   // boutique gets its own signage inside the annex
-    const lbl = new THREE.Mesh(
-      new THREE.PlaneGeometry(6, 3),
-      new THREE.MeshBasicMaterial({ map: makeTextTexture(z.d.toUpperCase(), dep.css, '#fff', 512, 256) })
-    );
-    lbl.rotation.x = -Math.PI / 2;
-    lbl.position.set(z.x, 0.02, z.z);
-    scene.add(lbl);
-
-    const sign = new THREE.Mesh(
-      new THREE.PlaneGeometry(9, 2.1),
-      new THREE.MeshBasicMaterial({ map: makeTextTexture(z.d.toUpperCase(), dep.css), side: THREE.DoubleSide })
-    );
-    sign.position.set(z.x, 4.6, z.z);
-    scene.add(sign);
-    box(9.4, 0.1, 0.1, 0x333333, z.x, 5.7, z.z);
-  }
-}
-
-// ------------------------------------------------------------
-// WALLS
+// DUVARLAR (ShopSim 3D yerleşimi: güneyde giriş, doğuda depo kapısı)
 // ------------------------------------------------------------
 function wall(cx, cz, w, d) {
-  box(w, WALL_H, d, 0xe8e4da, cx, WALL_H / 2, cz);
+  box(w, WALL_H, d, 0xf1ece0, cx, WALL_H / 2, cz);
   addCollider(cx, cz, w, d);
 }
 wall(0, -STORE_D / 2, STORE_W, WALL_T);
 wall(-STORE_W / 2, 0, WALL_T, STORE_D);
-wall(STORE_W / 2, -12, WALL_T, 28);   // east wall with a gap (z 2..8) → jewellery courtyard
+wall(STORE_W / 2, -12, WALL_T, 28);   // doğu duvarı, z 2..8 arası depo kapısı
 wall(STORE_W / 2, 17, WALL_T, 18);
 wall(-20, STORE_D / 2, 32, WALL_T);
 wall(20, STORE_D / 2, 32, WALL_T);
-const glassMat = new THREE.MeshLambertMaterial({ color: 0x9fd6ff, transparent: true, opacity: 0.35 });
+const glassMat = new THREE.MeshLambertMaterial({ color: 0x9fd6ff, transparent: true, opacity: 0.3 });
 for (const gx of [-2, 2]) {
   const gl = new THREE.Mesh(new THREE.BoxGeometry(3.6, 4.5, 0.1), glassMat);
   gl.position.set(gx, 2.25, STORE_D / 2); scene.add(gl);
 }
-// east doorway glass + courtyard path to the boutique
-const eastGlass = new THREE.Mesh(new THREE.BoxGeometry(0.1, 4.5, 6), glassMat);
-eastGlass.position.set(STORE_W / 2, 2.25, 5); scene.add(eastGlass);
-const courtPath = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 6.6), lambert(0xd9c48a));
-courtPath.rotation.x = -Math.PI / 2; courtPath.position.set(38.1, 0.02, 5);
-courtPath.receiveShadow = true; scene.add(courtPath);
+// Dış tabela
 {
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(22, 3.4),
+    new THREE.MeshBasicMaterial({ map: makeTextTexture('🐴 EŞEK MARKETİ', '#c62828', '#ffd54f', 1024, 160) }));
+  sign.position.set(0, 7.2, STORE_D / 2 + 0.4); scene.add(sign);
+  box(23, 3.8, 0.4, 0x8e1b1b, 0, 7.2, STORE_D / 2 + 0.15);
   const mat = new THREE.Mesh(new THREE.PlaneGeometry(7, 2.4),
-    new THREE.MeshBasicMaterial({ map: makeTextTexture('WELCOME', '#4caf50', '#fff') }));
+    new THREE.MeshBasicMaterial({ map: makeTextTexture('HOŞ GELDİNİZ', '#2e7d32', '#fff') }));
   mat.rotation.x = -Math.PI / 2; mat.position.set(0, 0.03, STORE_D / 2 - 2.2);
   scene.add(mat);
 }
 
 // ------------------------------------------------------------
-// SHELVES + PRODUCTS
+// RAFLAR + ÜRÜNLER (her bölme = bir ürün, InstancedMesh ile)
 // ------------------------------------------------------------
-function randProductMesh(depName) {
-  const dep = DEPTS[depName];
-  const [name, color, shape, price] = dep.items[Math.floor(Math.random() * dep.items.length)];
-  let geo;
-  if (shape === 'sphere') geo = new THREE.SphereGeometry(0.3, 14, 12);
-  else if (shape === 'cyl') geo = new THREE.CylinderGeometry(0.22, 0.22, 0.6, 14);
-  else geo = new THREE.BoxGeometry(0.46 + Math.random() * 0.24, 0.44 + Math.random() * 0.28, 0.5);
-  const m = new THREE.Mesh(geo, lambert(new THREE.Color(color).offsetHSL(0, 0, (Math.random() - 0.5) * 0.08)));
-  m.castShadow = true;
-  m.userData = { name, dept: depName, price, mrp: Math.round(price * (1.05 + Math.random() * 0.3) / 5) * 5 };
-  return m;
+const ROWS = [-17, -10, -3, 4];
+const SHELF_LEN = 30;
+const CORR_X = [-19, 19];              // raflar arası çapraz koridorlar
+const SIDE_DEPT = {
+  '-17n': 'temizlik', '-17s': 'bakliyat',
+  '-10n': 'kahvalti', '-10s': 'atistirmalik',
+  '-3n': 'icecek', '-3s': 'sut',
+  '4n': 'firin', '4s': 'manav',
+};
+
+const SHAPES = {};
+function shapeGeo(shape) {
+  if (SHAPES[shape]) return SHAPES[shape];
+  let g;
+  switch (shape) {
+    case 'sphere': g = new THREE.SphereGeometry(0.13, 12, 10); g.translate(0, 0.13, 0); break;
+    case 'banana': g = new THREE.BoxGeometry(0.3, 0.08, 0.1); g.translate(0, 0.04, 0); break;
+    case 'loaf': g = new THREE.BoxGeometry(0.32, 0.16, 0.18); g.translate(0, 0.08, 0); break;
+    case 'ring': g = new THREE.TorusGeometry(0.11, 0.04, 8, 16); g.translate(0, 0.15, 0); break;
+    case 'bun': g = new THREE.SphereGeometry(0.12, 10, 8); g.scale(1, 0.6, 1); g.translate(0, 0.07, 0); break;
+    case 'carton': g = new THREE.BoxGeometry(0.14, 0.28, 0.14); g.translate(0, 0.14, 0); break;
+    case 'cup': g = new THREE.CylinderGeometry(0.07, 0.06, 0.15, 12); g.translate(0, 0.075, 0); break;
+    case 'block': g = new THREE.BoxGeometry(0.22, 0.1, 0.16); g.translate(0, 0.05, 0); break;
+    case 'can': g = new THREE.CylinderGeometry(0.07, 0.07, 0.2, 12); g.translate(0, 0.1, 0); break;
+    case 'bottle': g = new THREE.CylinderGeometry(0.06, 0.07, 0.32, 10); g.translate(0, 0.16, 0); break;
+    case 'bag': g = new THREE.BoxGeometry(0.26, 0.3, 0.1); g.translate(0, 0.15, 0); break;
+    case 'bar': g = new THREE.BoxGeometry(0.22, 0.05, 0.1); g.translate(0, 0.025, 0); break;
+    case 'jar': g = new THREE.CylinderGeometry(0.08, 0.08, 0.17, 12); g.translate(0, 0.085, 0); break;
+    case 'sack': g = new THREE.BoxGeometry(0.22, 0.28, 0.14); g.translate(0, 0.14, 0); break;
+    case 'roll': g = new THREE.CylinderGeometry(0.1, 0.1, 0.27, 12); g.translate(0, 0.135, 0); break;
+    default: g = new THREE.BoxGeometry(0.24, 0.3, 0.08); g.translate(0, 0.15, 0);
+  }
+  SHAPES[shape] = g;
+  return g;
 }
 
-function makePriceTag(p) {
-  // small canvas texture: ₹ price under a yellow header
+function priceTagTexture(p) {
   const c = document.createElement('canvas'); c.width = 128; c.height = 64;
   const g = c.getContext('2d');
   g.fillStyle = '#ffd54f'; g.fillRect(0, 0, 128, 20);
-  g.fillStyle = '#333'; g.font = 'bold 15px system-ui'; g.textAlign = 'center';
-  g.fillText(p.name.toUpperCase(), 64, 15);
+  g.fillStyle = '#333'; g.font = 'bold 14px system-ui'; g.textAlign = 'center';
+  g.fillText(p.name.toLocaleUpperCase('tr-TR'), 64, 15);
   g.fillStyle = '#fff'; g.fillRect(0, 20, 128, 44);
-  g.fillStyle = '#c62828'; g.font = 'bold 26px system-ui';
-  g.fillText('₹' + p.price, 64, 52);
+  g.fillStyle = p.price > p.base * 1.25 ? '#c62828' : p.price < p.base ? '#2e7d32' : '#222';
+  g.font = 'bold 28px system-ui';
+  g.fillText('₺' + p.price, 64, 52);
   const t = new THREE.CanvasTexture(c); t.anisotropy = 4;
-  const tag = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.6, 0.3),
-    new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide })
-  );
-  return tag;
+  return t;
 }
 
-function addShelf(cx, cz, rotY, depName, len) {
+const lockSigns = {};   // reyon → kilit tabelası
+function buildShelfRow(zr) {
   const grp = new THREE.Group();
-  grp.position.set(cx, 0, cz); grp.rotation.y = rotY;
+  grp.position.set(0, 0, zr);
   const frameC = 0x607d8b;
+  const len = SHELF_LEN;
   box(0.18, 3, 1.5, frameC, -len / 2, 1.5, 0, grp);
   box(0.18, 3, 1.5, frameC, len / 2, 1.5, 0, grp);
   box(len, 3, 0.14, frameC, 0, 1.5, 0, grp);
   for (const y of [0.85, 1.65, 2.45]) box(len, 0.1, 1.4, 0xeceff1, 0, y, 0, grp, false);
   box(len, 0.12, 1.5, frameC, 0, 3.0, 0, grp);
-  const strip = new THREE.Mesh(new THREE.PlaneGeometry(len * 0.7, 0.8),
-    new THREE.MeshBasicMaterial({ map: makeTextTexture(depName.toUpperCase(), DEPTS[depName].css), side: THREE.DoubleSide }));
-  strip.position.y = 3.6; grp.add(strip);
-
-  for (const side of [-0.45, 0.45]) {
-    for (const y of [0.9, 1.7, 2.5]) {
-      const n = Math.floor(len / 0.95);
-      for (let i = 0; i < n; i++) {
-        if (Math.random() < 0.12) continue;
-        const p = randProductMesh(depName);
-        p.position.set(-len / 2 + 0.7 + i * 0.95 + (Math.random() - 0.5) * 0.15, y + 0.27, side);
-        p.rotation.y = (Math.random() - 0.5) * 0.4;
-        grp.add(p);
-        products.push(p);
-      }
-    }
-  }
-  // price tag rail along the shelf edge (front side)
-  const tagN = Math.floor(len / 3);
-  for (let i = 0; i < tagN; i++) {
-    const sample = randProductMesh(depName);
-    const tag = makePriceTag(sample.userData);
-    tag.position.set(-len / 2 + 1.5 + i * 3, 0.72, 0.78);
-    grp.add(tag);
-  }
   scene.add(grp);
-  const w = rotY === 0 ? len + 0.4 : 1.7;
-  const d = rotY === 0 ? 1.7 : len + 0.4;
-  addCollider(cx, cz, w, d, true);
-}
+  addCollider(0, zr, len + 0.4, 1.7, 'shelf');
 
-// center aisles
-addShelf(0, -12, 0, 'Snacks', 26);
-addShelf(0, -6,  0, 'Beverages', 26);
-addShelf(0, 0,   0, 'Dairy', 26);
-addShelf(0, 6,   0, 'Snacks', 26);
-addShelf(-32.5, -12, Math.PI / 2, 'Dairy', 14);
-addShelf(-32.5, 2,   Math.PI / 2, 'Dairy', 10);
-addShelf(32.5, -12,  Math.PI / 2, 'Beverages', 14);
-addShelf(32.5, 2,    Math.PI / 2, 'Beverages', 10);
-addShelf(-14, -23, 0, 'Frozen', 18);
-addShelf(14, -23, 0, 'Household', 18);
-addShelf(26, 8, 0, 'Bakery', 12);
+  for (const side of ['n', 's']) {
+    const dk = SIDE_DEPT[`${zr}${side}`];
+    const dep = DEPTS[dk];
+    const sz = side === 'n' ? -1 : 1;
+    // reyon tabelası (o tarafa bakar)
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(len * 0.6, 0.8),
+      new THREE.MeshBasicMaterial({ map: makeTextTexture(dep.name.toLocaleUpperCase('tr-TR'), dep.css) }));
+    strip.position.set(0, 3.6, zr + sz * 0.08);
+    if (sz < 0) strip.rotation.y = Math.PI;
+    scene.add(strip);
+    // kilit tabelası
+    const lock = new THREE.Mesh(new THREE.PlaneGeometry(len - 1, 1.2),
+      new THREE.MeshBasicMaterial({ map: makeTextTexture(`🔒 ${dep.name.toLocaleUpperCase('tr-TR')} — LİSANS ${fmtTL(dep.license)}`, 'rgba(30,30,40,.85)', '#ffd54f', 1024, 96), transparent: true }));
+    lock.position.set(0, 1.75, zr + sz * 0.8);
+    if (sz < 0) lock.rotation.y = Math.PI;
+    scene.add(lock);
+    lockSigns[dk] = lock;
 
-// ------------------------------------------------------------
-// PRODUCE BINS
-// ------------------------------------------------------------
-const binPos = [[-30, 12], [-23, 12], [-16, 12], [-30, 19], [-23, 19], [-16, 19]];
-const fruit = { 0: ['Apple', '#e53935', 'sphere', 140], 1: ['Orange', '#fb8c00', 'sphere', 90], 2: ['Banana', '#fdd835', 'box', 55] };
-binPos.forEach(([bx, bz], idx) => {
-  box(4.2, 1.1, 3.2, 0x5d7a5d, bx, 0.55, bz);
-  addCollider(bx, bz, 4.2, 3.2, true);
-  const kind = fruit[idx % 3];
-  for (let i = 0; i < 9; i++) {
-    let m;
-    if (kind[2] === 'sphere') {
-      m = new THREE.Mesh(new THREE.SphereGeometry(0.28, 14, 12), lambert(kind[1]));
-      m.position.set(bx + (Math.random() - 0.5) * 3.2, 1.4 + Math.random() * 0.18, bz + (Math.random() - 0.5) * 2.2);
-    } else {
-      m = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.16, 0.46), lambert(kind[1]));
-      m.position.set(bx + (Math.random() - 0.5) * 3.2, 1.25 + Math.random() * 0.15, bz + (Math.random() - 0.5) * 2.2);
-      m.rotation.y = Math.random() * Math.PI;
-    }
-    m.castShadow = true;
-    m.userData = { name: kind[0], dept: 'Produce', price: kind[3], mrp: Math.round(kind[3] * 1.2 / 5) * 5 };
-    scene.add(m);
-    products.push(m);
-  }
-  // bin price sign
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8),
-    new THREE.MeshBasicMaterial({ map: makeTextTexture('₹' + kind[3] + '/kg', '#fffde7', '#333'), side: THREE.DoubleSide }));
-  sign.position.set(bx, 1.9, bz + 1.65);
-  scene.add(sign);
-});
-
-// ------------------------------------------------------------
-// JEWELLERY BOUTIQUE — east annex (exit through the east door)
-// ------------------------------------------------------------
-let sparkles = null, sparkleMat = null, necklace = null;
-{
-  const JX = 52, JZ = 2;
-  const goldTrim = 0xc9a227;
-
-  // marble floor
-  const jc = document.createElement('canvas'); jc.width = jc.height = 256;
-  const jg = jc.getContext('2d');
-  jg.fillStyle = '#f5efe2'; jg.fillRect(0, 0, 256, 256);
-  jg.strokeStyle = '#e3d3a8'; jg.lineWidth = 2;
-  for (let i = 0; i <= 256; i += 32) {
-    jg.beginPath(); jg.moveTo(i, 0); jg.lineTo(i, 256); jg.stroke();
-    jg.beginPath(); jg.moveTo(0, i); jg.lineTo(256, i); jg.stroke();
-  }
-  const jtex = new THREE.CanvasTexture(jc);
-  jtex.wrapS = jtex.wrapT = THREE.RepeatWrapping; jtex.repeat.set(6, 6);
-  const jfloor = new THREE.Mesh(new THREE.PlaneGeometry(24, 24), new THREE.MeshLambertMaterial({ map: jtex }));
-  jfloor.rotation.x = -Math.PI / 2; jfloor.position.set(JX, 0.01, JZ);
-  jfloor.receiveShadow = true; scene.add(jfloor);
-
-  // cream walls with a gold cornice
-  const jwallC = 0xf3e9d6;
-  function jwall(cx, cz, w, d) {
-    box(w, 5, d, jwallC, cx, 2.5, cz);
-    box(w, 0.22, d, goldTrim, cx, 5.05, cz);
-    addCollider(cx, cz, w, d);
-  }
-  jwall(JX, -10, 24.6, 0.6);
-  jwall(JX, 14, 24.6, 0.6);
-  jwall(64, JZ, 0.6, 24.6);
-  jwall(40, -3.5, 0.6, 13);          // west wall, door gap z 3..7
-  jwall(40, 10.5, 0.6, 7);
-  const jGlass = new THREE.Mesh(new THREE.BoxGeometry(0.1, 4.5, 4), glassMat);
-  jGlass.position.set(40, 2.25, 5); scene.add(jGlass);
-
-  // glass roof — see-through so the overhead cameras still show the interior
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(25.2, 0.12, 25.2),
-    new THREE.MeshPhongMaterial({ color: 0xcfefff, transparent: true, opacity: 0.14 }));
-  roof.position.set(JX, 5.3, JZ); scene.add(roof);
-  box(25.2, 0.18, 0.5, goldTrim, JX, 5.3, JZ - 8, null, false);
-  box(25.2, 0.18, 0.5, goldTrim, JX, 5.3, JZ + 8, null, false);
-
-  // sign above the door, facing the supermarket
-  const jSign = new THREE.Mesh(new THREE.PlaneGeometry(8, 2),
-    new THREE.MeshBasicMaterial({ map: makeTextTexture('✦ JEWELLERY ✦', '#7b1fa2', '#ffd700'), side: THREE.DoubleSide }));
-  jSign.rotation.y = -Math.PI / 2;
-  jSign.position.set(39.6, 4.2, 5);
-  scene.add(jSign);
-
-  // chandelier
-  const chand = new THREE.Group(); chand.position.set(JX, 4.4, JZ);
-  const goldMat = new THREE.MeshPhongMaterial({ color: 0xffd54f, shininess: 110, specular: 0xffffff });
-  const cr1 = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.08, 10, 28), goldMat); cr1.rotation.x = Math.PI / 2; chand.add(cr1);
-  const cr2 = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.07, 10, 24), goldMat); cr2.rotation.x = Math.PI / 2; cr2.position.y = 0.4; chand.add(cr2);
-  for (let i = 0; i < 8; i++) {
-    const a = i / 8 * Math.PI * 2;
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: 0xfff3c4 }));
-    bulb.position.set(Math.cos(a) * 1.1, -0.15, Math.sin(a) * 1.1);
-    chand.add(bulb);
-  }
-  box(0.06, 1.1, 0.06, 0x8d6e63, 0, 0.75, 0, chand);
-  scene.add(chand);
-  const chandLight = new THREE.PointLight(0xffe0b2, 0.95, 36);
-  chandLight.position.set(JX, 4.1, JZ); scene.add(chandLight);
-
-  // centre showcase: velvet pedestal, glass dome, rotating gold chain
-  const ped = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.9, 1.0, 24), lambert(0x7b1fa2));
-  ped.position.set(JX, 0.5, JZ); ped.castShadow = ped.receiveShadow = true; scene.add(ped);
-  box(3.2, 0.08, 3.2, goldTrim, JX, 1.04, JZ);
-  addCollider(JX, JZ, 3.6, 3.6, true);
-  const domeMat = new THREE.MeshPhongMaterial({ color: 0xffffff, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
-  const dome = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.15, 1.5, 20, 1, true), domeMat);
-  dome.position.set(JX, 1.8, JZ); scene.add(dome);
-  const domeTop = new THREE.Mesh(new THREE.SphereGeometry(1.15, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), domeMat);
-  domeTop.position.set(JX, 2.55, JZ); scene.add(domeTop);
-  necklace = new THREE.Mesh(new THREE.TorusKnotGeometry(0.55, 0.13, 64, 10), goldMat);
-  necklace.position.set(JX, 1.8, JZ); necklace.castShadow = true;
-  necklace.userData = { name: 'GoldChain', dept: 'Jewellery', price: 45000, mrp: 52000 };
-  scene.add(necklace); products.push(necklace);
-
-  // glass display counters
-  function displayCase(cx, cz, defs) {
-    const grp = new THREE.Group(); grp.position.set(cx, 0, cz); scene.add(grp);
-    box(4.4, 0.9, 1.4, 0x5d4037, 0, 0.45, 0, grp);
-    box(4.4, 0.1, 1.4, goldTrim, 0, 0.95, 0, grp);
-    const gl = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.7, 1.2),
-      new THREE.MeshPhongMaterial({ color: 0xcfefff, transparent: true, opacity: 0.22 }));
-    gl.position.set(0, 1.35, 0); grp.add(gl);
-    addCollider(cx, cz, 4.6, 1.6, true);
-    defs.forEach((def, i) => {
-      const [name, color, shape, price, mrp] = def;
-      let m;
-      if (shape === 'torus') m = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.07, 10, 20), new THREE.MeshPhongMaterial({ color, shininess: 120, specular: 0xffffff }));
-      else if (shape === 'gem') m = new THREE.Mesh(new THREE.OctahedronGeometry(0.24, 0), new THREE.MeshPhongMaterial({ color, shininess: 160, specular: 0xffffff, emissive: color, emissiveIntensity: 0.3 }));
-      else m = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.32, 10), new THREE.MeshPhongMaterial({ color, shininess: 120, specular: 0xffffff }));
-      m.position.set(-1.5 + i * 1.0, 1.25, 0);
-      m.castShadow = true;
-      m.userData = { name, dept: 'Jewellery', price, mrp };
-      grp.add(m); products.push(m);
-      const tag = makePriceTag(m.userData);
-      tag.scale.set(0.8, 0.8, 1); tag.position.set(m.position.x, 1.0, 0.76);
-      grp.add(tag);
+    const prods = CATALOG.filter((c) => c[2] === dk).map((c) => P[c[0]]);
+    prods.forEach((p, i) => {
+      const xc = -10 + i * 10;
+      const mesh = new THREE.InstancedMesh(shapeGeo(p.shape), lambert(p.color), SHELF_CAP);
+      const m4 = new THREE.Matrix4();
+      const rotY = sz < 0 ? Math.PI : 0;
+      let k = 0;
+      for (const y of [0.9, 1.7, 2.5]) {
+        for (let col = 0; col < 8; col++) {
+          const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY + (Math.random() - 0.5) * 0.3);
+          m4.compose(new THREE.Vector3(xc - 4.2 + col * 1.2, y, zr + sz * 0.42), q, new THREE.Vector3(1.6, 1.6, 1.6));
+          mesh.setMatrixAt(k++, m4);
+        }
+      }
+      mesh.castShadow = true;
+      mesh.count = 0;
+      scene.add(mesh);
+      const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45), new THREE.MeshBasicMaterial({ map: priceTagTexture(p) }));
+      tag.position.set(xc, 0.62, zr + sz * 0.79);
+      if (sz < 0) tag.rotation.y = Math.PI;
+      scene.add(tag);
+      p.shelfMesh = mesh;
+      p.tag = tag;
+      p.stand = new THREE.Vector3(xc, 0, zr + sz * 3.5);  // koridordaki durma noktası (müşteri)
+      p.front = new THREE.Vector3(xc, 0, zr + sz * 1.6);  // rafın hemen önü (doldurma)
+      p.side = sz;
     });
   }
-  displayCase(JX - 4, -7.5, [
-    ['DiamondRing', '#e0f7fa', 'gem', 80000, 92000],
-    ['Bangles', '#ffab91', 'torus', 22000, 25000],
-    ['Jhumkas', '#ffd180', 'cone', 15000, 17500],
-  ]);
-  displayCase(JX + 4, 11.5, [
-    ['Gemstone', '#7c4dff', 'gem', 30000, 34000],
-    ['Bangles', '#ffab91', 'torus', 22000, 25000],
-    ['DiamondRing', '#e0f7fa', 'gem', 80000, 92000],
-  ]);
+}
+ROWS.forEach(buildShelfRow);
 
-  // the jeweller
-  const jeweller = makeCharacter(0x7b1fa2, 0x4a148c);
-  jeweller.group.position.set(JX + 3.4, 0, JZ);
-  jeweller.group.rotation.y = -Math.PI / 2;
-  npcs.push({ ch: jeweller, mode: 'idle' });
-
-  // sparkle dust
-  const sPos = [];
-  for (let i = 0; i < 70; i++) sPos.push(JX + (Math.random() - 0.5) * 22, 0.5 + Math.random() * 4, JZ + (Math.random() - 0.5) * 22);
-  const sparkleGeo = new THREE.BufferGeometry();
-  sparkleGeo.setAttribute('position', new THREE.Float32BufferAttribute(sPos, 3));
-  sparkleMat = new THREE.PointsMaterial({ color: 0xffe082, size: 0.1, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
-  sparkles = new THREE.Points(sparkleGeo, sparkleMat);
-  scene.add(sparkles);
+function refreshShelf(p) {
+  p.shelfMesh.count = clamp(p.shelf, 0, SHELF_CAP);
+}
+function refreshTag(p) {
+  p.tag.material.map.dispose();
+  p.tag.material.map = priceTagTexture(p);
+  p.tag.material.needsUpdate = true;
 }
 
-// freezers
-for (const fx of [-22, -14, -6]) {
-  box(6, 1.7, 2.4, 0xffffff, fx, 0.85, -23.8);
-  box(5.6, 0.12, 2.0, 0xb3e5fc, fx, 1.75, -23.8);
-  addCollider(fx, -23.8, 6, 2.4);
+// Duvar dekoru: buzdolapları ve manav kasaları (görsel)
+for (const fz of [-14, -6, 2]) {
+  box(1.2, 2.6, 6, 0xffffff, 34.6, 1.3, fz);
+  box(0.05, 2.2, 5.6, 0x9fd6ff, 33.98, 1.4, fz, null, false);
+  addCollider(34.6, fz, 1.2, 6);
+}
+for (const fz of [-14, -6, 2]) {
+  box(1.6, 0.9, 5, 0x8d6e63, -34.4, 0.45, fz);
+  addCollider(-34.4, fz, 1.6, 5);
+  for (let i = 0; i < 10; i++) {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), lambert(rnd(['#e53935', '#fb8c00', '#fdd835', '#7cb342'])));
+    s.position.set(-34.4 + (Math.random() - 0.5) * 1.1, 1.05, fz + (Math.random() - 0.5) * 4.2);
+    s.castShadow = true; scene.add(s);
+  }
 }
 
 // ------------------------------------------------------------
-// CHECKOUT COUNTER
+// DEPO — doğu ek bina (ShopSim 3D'deki butik alanı); arkada eşek kapısı
 // ------------------------------------------------------------
-const CHECKOUT = new THREE.Vector3(0, 0, 20.5);
+const DEPO = { x: 52, z: 2 };
+const pallets = [];
 {
-  box(9, 1.1, 1.5, 0x37474f, 0, 0.55, 20.5);
-  box(0.9, 0.7, 0.9, 0x263238, 3.4, 1.45, 20.5);
-  const belt = box(4.5, 0.08, 1.1, 0x111111, -1.5, 1.14, 20.5, null, false);
-  belt.receiveShadow = true;
-  addCollider(0, 20.5, 9, 1.5);
-  const s = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2),
-    new THREE.MeshBasicMaterial({ map: makeTextTexture('1', '#4caf50'), side: THREE.DoubleSide }));
-  s.position.set(0, 3.4, 20.5); scene.add(s);
-  box(0.08, 2, 0.08, 0x333333, 0, 2.2, 20.5);
+  const JX = DEPO.x, JZ = DEPO.z;
+  const cfloor = new THREE.Mesh(new THREE.PlaneGeometry(24, 24), lambert(0xb7b3aa));
+  cfloor.rotation.x = -Math.PI / 2; cfloor.position.set(JX, 0.01, JZ);
+  cfloor.receiveShadow = true; scene.add(cfloor);
+  const courtPath = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 6.6), lambert(0xb7b3aa));
+  courtPath.rotation.x = -Math.PI / 2; courtPath.position.set(38.1, 0.02, 5);
+  courtPath.receiveShadow = true; scene.add(courtPath);
+
+  function dwall(cx, cz, w, d) {
+    box(w, 5, d, 0xd8d2c4, cx, 2.5, cz);
+    box(w, 0.22, d, 0x6d4c41, cx, 5.05, cz);
+    addCollider(cx, cz, w, d);
+  }
+  dwall(JX, -10, 24.6, 0.6);
+  dwall(JX, 14, 24.6, 0.6);
+  dwall(64, -5, 0.6, 10.6);           // doğu duvarı, z 0.3..3.7 arası eşek kapısı
+  dwall(64, 9, 0.6, 10.6);
+  dwall(40, -3.5, 0.6, 13);           // batı duvarı, z 3..7 market kapısı
+  dwall(40, 10.5, 0.6, 7);
+  // Koridorun iki yanı
+  box(4, 5, 0.6, 0xd8d2c4, 38, 2.5, 1.7); addCollider(38, 1.7, 4, 0.6);
+  box(4, 5, 0.6, 0xd8d2c4, 38, 2.5, 8.3); addCollider(38, 8.3, 4, 0.6);
+
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(25.2, 0.12, 25.2),
+    new THREE.MeshPhongMaterial({ color: 0xcfefff, transparent: true, opacity: 0.12 }));
+  roof.position.set(JX, 5.3, JZ); scene.add(roof);
+
+  const dSign = new THREE.Mesh(new THREE.PlaneGeometry(6, 1.6),
+    new THREE.MeshBasicMaterial({ map: makeTextTexture('📦 DEPO', '#5d4037', '#ffd54f'), side: THREE.DoubleSide }));
+  dSign.rotation.y = -Math.PI / 2;
+  dSign.position.set(STORE_W / 2 - 0.4, 4.4, 5);
+  scene.add(dSign);
+  const backSign = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.2),
+    new THREE.MeshBasicMaterial({ map: makeTextTexture('🐴 TESLİMAT', '#2e7d32', '#fff'), side: THREE.DoubleSide }));
+  backSign.rotation.y = -Math.PI / 2;
+  backSign.position.set(63.6, 4.2, 2);
+  scene.add(backSign);
+
+  const lamp = new THREE.PointLight(0xfff0d0, 0.6, 30);
+  lamp.position.set(JX, 4.5, JZ); scene.add(lamp);
+
+  // Paletler: 6 sütun × 4 sıra, ürün başına bir palet
+  const boxTexCache = {};
+  const boxMat = (p) => {
+    if (boxTexCache[p.id]) return boxTexCache[p.id];
+    const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+    const g = c.getContext('2d');
+    g.fillStyle = '#c69c6d'; g.fillRect(0, 0, 128, 128);
+    g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(0, 58, 128, 12);
+    g.fillStyle = p.color; g.fillRect(10, 14, 108, 34);
+    g.fillStyle = '#222'; g.font = 'bold 20px system-ui'; g.textAlign = 'center';
+    g.fillText(p.name.toLocaleUpperCase('tr-TR'), 64, 96);
+    g.font = 'bold 14px system-ui'; g.fillText(`${KOLI} ADET`, 64, 116);
+    const t = new THREE.CanvasTexture(c);
+    boxTexCache[p.id] = new THREE.MeshLambertMaterial({ map: t });
+    return boxTexCache[p.id];
+  };
+  const boxGeo = new THREE.BoxGeometry(0.8, 0.6, 0.8);
+  let idx = 0;
+  for (const [id] of CATALOG) {
+    const p = P[id];
+    const c = idx % 6, r = Math.floor(idx / 6);
+    const px = 43.2 + c * 3.6, pz = -7.2 + r * 4.4;
+    box(1.5, 0.14, 1.5, 0xa1887f, px, 0.07, pz);
+    addCollider(px, pz, 1.5, 1.5, 'pallet');
+    const inst = new THREE.InstancedMesh(boxGeo, boxMat(p), 8);
+    const m4 = new THREE.Matrix4();
+    let k = 0;
+    for (let lvl = 0; lvl < 2; lvl++) for (let q = 0; q < 4; q++) {
+      m4.makeTranslation(px - 0.4 + (q % 2) * 0.8, 0.44 + lvl * 0.6, pz - 0.4 + Math.floor(q / 2) * 0.8);
+      inst.setMatrixAt(k++, m4);
+    }
+    inst.castShadow = true; inst.count = 0;
+    scene.add(inst);
+    const lc = document.createElement('canvas'); lc.width = 256; lc.height = 64;
+    const lg = lc.getContext('2d');
+    lg.fillStyle = DEPTS[p.dept].css; lg.fillRect(0, 0, 256, 64);
+    lg.fillStyle = '#fff'; lg.font = 'bold 30px system-ui'; lg.textAlign = 'center'; lg.textBaseline = 'middle';
+    lg.fillText(p.name, 128, 34);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(lc), depthTest: true }));
+    label.scale.set(1.3, 0.33, 1);
+    label.position.set(px, 2.75, pz);
+    scene.add(label);
+    p.pallet = { x: px, z: pz, mesh: inst, label, boxMat: boxMat(p) };
+    pallets.push(p);
+    idx++;
+  }
+}
+function refreshPallet(p) {
+  p.pallet.mesh.count = clamp(Math.ceil(p.depo / KOLI), 0, 8);
 }
 
 // ------------------------------------------------------------
-// CHARACTERS
+// KASA (ShopSim 3D kasasından; bant artık müşteri→kasiyer yönünde)
 // ------------------------------------------------------------
-function makeCharacter(shirtC, pantsC = 0x2c3e50, skinC = 0xffd9b3) {
+const REG = { x: 0, z: 17.5 };                 // tezgah merkezi
+const CASHIER_SPOT = new THREE.Vector3(1.7, 0, 18.4);
+const LANE_X = -1.7;                            // müşterilerin sıra hattı
+const PAY_SPOT = new THREE.Vector3(LANE_X, 0, 17.6);
+let beltItems = [];
+{
+  box(1.4, 1.1, 5.2, 0x37474f, REG.x, 0.55, REG.z);
+  const belt = box(1.0, 0.06, 4.4, 0x111111, REG.x, 1.13, REG.z - 0.3, null, false);
+  belt.receiveShadow = true;
+  box(0.7, 0.6, 0.6, 0x263238, REG.x + 0.2, 1.4, REG.z + 2.1);   // yazar kasa
+  box(0.5, 0.3, 0.05, 0x2ecc71, REG.x + 0.2, 1.75, REG.z + 1.82, null, false);
+  box(0.5, 0.08, 0.5, 0x90a4ae, REG.x, 1.17, REG.z + 1.3);         // okuyucu cam
+  addCollider(REG.x, REG.z, 1.4, 5.2);
+  const s = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2),
+    new THREE.MeshBasicMaterial({ map: makeTextTexture('KASA 1', '#2e7d32'), side: THREE.DoubleSide }));
+  s.position.set(REG.x, 3.4, REG.z - 2.4); scene.add(s);
+  box(0.08, 2, 0.08, 0x333333, REG.x, 2.2, REG.z - 2.4);
+}
+
+// ------------------------------------------------------------
+// KARAKTERLER (ShopSim 3D modeli + önlük/şapka)
+// ------------------------------------------------------------
+function makeCharacter(shirtC, pantsC = 0x2c3e50, skinC = 0xffd9b3, opts = {}) {
   const g = new THREE.Group();
   const parts = {};
   parts.body = box(0.7, 0.85, 0.4, shirtC, 0, 1.25, 0, g);
+  if (opts.apron) box(0.6, 0.9, 0.05, 0xffffff, 0, 1.15, 0.22, g);
   parts.head = new THREE.Group(); parts.head.position.set(0, 1.95, 0);
   box(0.45, 0.45, 0.42, skinC, 0, 0, 0, parts.head);
-  box(0.47, 0.16, 0.44, 0x3a2a1a, 0, 0.22, -0.02, parts.head);
+  box(0.47, 0.16, 0.44, opts.hair ?? 0x3a2a1a, 0, 0.22, -0.02, parts.head);
   box(0.08, 0.08, 0.05, 0x222222, 0.11, 0.02, 0.22, parts.head);
   box(0.08, 0.08, 0.05, 0x222222, -0.11, 0.02, 0.22, parts.head);
+  if (opts.mustache) box(0.22, 0.05, 0.04, 0x2a1a10, 0, -0.1, 0.22, parts.head);
+  if (opts.cap) { box(0.5, 0.1, 0.5, opts.cap, 0, 0.3, 0, parts.head); box(0.4, 0.04, 0.2, opts.cap, 0, 0.26, 0.3, parts.head); }
+  if (opts.scarf) { box(0.52, 0.5, 0.48, opts.scarf, 0, 0.06, -0.03, parts.head); box(0.3, 0.32, 0.02, skinC, 0, -0.01, 0.22, parts.head); }
   g.add(parts.head);
   function limb(w, len, c, x, y) {
     const piv = new THREE.Group(); piv.position.set(x, y, 0);
@@ -512,7 +476,7 @@ function makeCharacter(shirtC, pantsC = 0x2c3e50, skinC = 0xffd9b3) {
   parts.rArm = limb(0.2, 0.75, shirtC, 0.45, 1.62);
   parts.lLeg = limb(0.24, 0.85, pantsC, -0.18, 0.85);
   parts.rLeg = limb(0.24, 0.85, pantsC, 0.18, 0.85);
-  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   scene.add(g);
   return { group: g, parts, phase: 0 };
 }
@@ -528,94 +492,99 @@ function animateCharacter(ch, dt, moving, speed) {
   ch.group.position.y = moving ? Math.abs(Math.cos(ch.phase)) * 0.06 : 0;
 }
 
-// player
-const player = makeCharacter(0x26a69a, 0x34495e);
-player.group.position.set(0, 0, 24);
+// Oyuncu: market sahibi (yeşil gömlek, beyaz önlük, bıyık)
+const player = makeCharacter(0x2e7d32, 0x34495e, 0xf0c08f, { apron: true, mustache: true });
+player.group.position.set(6, 0, 11);
 player.group.rotation.y = Math.PI;
 
-// cashier + queue
-const cashier = makeCharacter(0xe53935, 0x263238);
-cashier.group.position.set(0, 0, 22.2); cashier.group.rotation.y = Math.PI;
-const queue1 = makeCharacter(0xba68c8); queue1.group.position.set(-2.6, 0, 18.4); queue1.group.rotation.y = Math.PI / 2;
-const queue2 = makeCharacter(0xffb74d); queue2.group.position.set(-2.6, 0, 16.6); queue2.group.rotation.y = Math.PI / 2;
-npcs.push({ ch: cashier, mode: 'idle' }, { ch: queue1, mode: 'idle' }, { ch: queue2, mode: 'idle' });
+// Elde taşınan koli
+const carryBox = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.8), lambert(0xc69c6d));
+carryBox.position.set(0, 1.25, 0.55);
+carryBox.castShadow = true;
+carryBox.visible = false;
+player.group.add(carryBox);
+let carrying = null;   // { id, units }
 
-function makeWanderer(color, wps, start, dept) {
-  const ch = makeCharacter(color);
-  ch.group.position.set(start[0], 0, start[1]);
-  return { ch, mode: 'walk', wps, wi: 0, speed: 1.3 + Math.random() * 0.5,
-           dwell: 0, dept, basket: 0 };
-}
-npcs.push(makeWanderer(0x4fc3f7, [[-10, -9], [10, -9], [10, 3], [-10, 3]], [-10, -9], 'Dairy'));
-npcs.push(makeWanderer(0xf06292, [[8, -15], [-8, -15], [-8, 9], [8, 9]], [8, -15], 'Beverages'));
+// Kasiyer (işe alınınca görünür)
+const cashierNpc = makeCharacter(0xe53935, 0x263238, 0xe9b47f, { cap: 0xe53935 });
+cashierNpc.group.position.copy(CASHIER_SPOT);
+cashierNpc.group.rotation.y = -Math.PI / 2;
+cashierNpc.group.visible = false;
 
 // ------------------------------------------------------------
-// PUSH CART
+// EŞEK + ARABA (siparişleri getirir)
 // ------------------------------------------------------------
-const cart = new THREE.Group();
-{
-  const basket = box(1.0, 0.55, 0.75, 0xb0bec5, 0, 0.62, 0, cart);
-  basket.material.transparent = true; basket.material.opacity = 0.45;
-  box(0.08, 0.62, 0.08, 0x78909c, -0.42, 0.31, -0.31, cart);
-  box(0.08, 0.62, 0.08, 0x78909c, 0.42, 0.31, -0.31, cart);
-  box(0.08, 0.62, 0.08, 0x78909c, -0.42, 0.31, 0.31, cart);
-  box(0.08, 0.62, 0.08, 0x78909c, 0.42, 0.31, 0.31, cart);
-  box(0.9, 0.08, 0.08, 0x455a64, 0, 0.95, -0.36, cart);   // handle
-  for (const [wx, wz] of [[-0.38, -0.3], [0.38, -0.3], [-0.38, 0.3], [0.38, 0.3]]) {
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 10), lambert(0x263238));
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(wx, 0.09, wz);
-    wheel.castShadow = true;
-    cart.add(wheel);
+const DONKEY_FAR = new THREE.Vector3(112, 0, 2);
+const DONKEY_DOCK = new THREE.Vector3(67.6, 0, 2);
+const donkey = (() => {
+  const g = new THREE.Group();
+  const fur = 0x8c8279, pale = 0xd8d0c4, dark = 0x3b322c;
+  const body = new THREE.Group(); g.add(body);
+  box(0.75, 0.7, 1.5, fur, 0, 1.05, 0, body);
+  box(0.66, 0.2, 1.3, pale, 0, 0.72, 0, body, false);
+  box(0.06, 0.03, 1.3, dark, 0, 1.41, 0, body, false);
+  const neck = new THREE.Group(); neck.position.set(0, 1.25, 0.62); body.add(neck);
+  box(0.36, 0.74, 0.4, fur, 0, 0.3, 0.12, neck).rotation.x = 0.55;
+  box(0.1, 0.66, 0.14, dark, 0, 0.4, -0.06, neck, false).rotation.x = 0.55;
+  const head = new THREE.Group(); head.position.set(0, 0.66, 0.36); neck.add(head);
+  box(0.42, 0.42, 0.62, fur, 0, 0, 0.12, head);
+  box(0.4, 0.32, 0.28, pale, 0, -0.07, 0.5, head);
+  box(0.1, 0.06, 0.04, 0x111111, 0, -0.03, 0.65, head, false);
+  for (const s of [-1, 1]) {
+    box(0.04, 0.12, 0.12, 0x111111, s * 0.215, 0.08, 0.22, head, false);
+    const ear = new THREE.Group(); ear.position.set(s * 0.12, 0.2, 0); ear.rotation.z = -s * 0.3; head.add(ear);
+    box(0.11, 0.55, 0.07, fur, 0, 0.27, 0, ear);
+    box(0.06, 0.4, 0.02, 0xe8c0b8, 0, 0.27, 0.04, ear, false);
   }
-  cart.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  scene.add(cart);
-}
-const cartItems = [];   // visual piles in cart
-let hasCart = false;
+  const legs = [];
+  for (const [lx, lz] of [[-0.24, 0.55], [0.24, 0.55], [-0.24, -0.55], [0.24, -0.55]]) {
+    const leg = new THREE.Group(); leg.position.set(lx, 0.82, lz); g.add(leg);
+    box(0.16, 0.72, 0.16, fur, 0, -0.36, 0, leg);
+    box(0.18, 0.1, 0.2, 0x2a2420, 0, -0.77, 0.01, leg);
+    legs.push(leg);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 1.25, -0.75); body.add(tail);
+  box(0.06, 0.55, 0.06, fur, 0, -0.28, 0, tail);
+  box(0.14, 0.2, 0.14, dark, 0, -0.6, 0, tail);
+  // kilim eyer + nazar
+  box(0.8, 0.07, 0.65, 0xb3262e, 0, 1.43, -0.05, body);
+  box(0.82, 0.03, 0.1, 0xffd54f, 0, 1.47, 0.15, body, false);
+  box(0.12, 0.12, 0.03, 0x1d5fd1, 0, 1.15, 0.98, body, false);
+  // Araba: iki tekerlek, sandık, oklar
+  const cart = new THREE.Group(); cart.position.set(0, 0, -2.3); g.add(cart);
+  box(1.6, 0.12, 1.9, 0x8d6e63, 0, 0.75, 0, cart);
+  box(1.6, 0.45, 0.08, 0x6d4c41, 0, 1.03, 0.95, cart);
+  box(1.6, 0.45, 0.08, 0x6d4c41, 0, 1.03, -0.95, cart);
+  box(0.08, 0.45, 1.9, 0x6d4c41, 0.8, 1.03, 0, cart);
+  box(0.08, 0.45, 1.9, 0x6d4c41, -0.8, 1.03, 0, cart);
+  for (const s of [-1, 1]) {
+    box(0.06, 0.06, 2.1, 0x6d4c41, s * 0.55, 0.85, 1.6, cart);
+    const w = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.1, 16), lambert(0x4e342e));
+    w.rotation.z = Math.PI / 2; w.position.set(s * 0.9, 0.45, 0); w.castShadow = true; cart.add(w);
+  }
+  const cartBoxes = [];
+  for (let i = 0; i < 6; i++) {
+    const b = box(0.55, 0.42, 0.55, 0xc69c6d, -0.4 + (i % 2) * 0.8, 1.05 + Math.floor(i / 4) * 0.42, -0.6 + (Math.floor(i / 2) % 2) * 0.9 + (i >= 4 ? 0.3 : 0), cart);
+    cartBoxes.push(b);
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  g.rotation.y = -Math.PI / 2;  // batıya (markete) doğru bakar
+  g.position.copy(DONKEY_FAR);
+  g.visible = false;
+  scene.add(g);
+  return { group: g, body, neck, head, legs, tail, cartBoxes, phase: 0, t: 0, bray: 0 };
+})();
 
 // ------------------------------------------------------------
-// COINS
-// ------------------------------------------------------------
-for (let i = 0; i < 24; i++) {
-  let x, z, tries = 0;
-  do {
-    x = (Math.random() - 0.5) * (STORE_W - 6);
-    z = (Math.random() - 0.5) * (STORE_D - 6);
-    tries++;
-  } while (tries < 40 && colliders.some(c => x > c.minX - 0.8 && x < c.maxX + 0.8 && z > c.minZ - 0.8 && z < c.maxZ + 0.8));
-  const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.08, 18), lambert(0xffd54f));
-  coin.rotation.x = Math.PI / 2;
-  coin.position.set(x, 0.8, z);
-  coin.castShadow = true;
-  scene.add(coin);
-  coins.push({ mesh: coin, got: false });
-}
-
-// ------------------------------------------------------------
-// BEACON
-// ------------------------------------------------------------
-const beacon = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.45, 0.45, 11, 16, 1, true),
-  new THREE.MeshBasicMaterial({ color: 0xffd54f, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false })
-);
-scene.add(beacon);
-const ring = new THREE.Mesh(
-  new THREE.RingGeometry(0.8, 1.05, 32),
-  new THREE.MeshBasicMaterial({ color: 0xffd54f, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false })
-);
-ring.rotation.x = -Math.PI / 2;
-scene.add(ring);
-
-// ------------------------------------------------------------
-// AUDIO (WebAudio, no assets)
+// SES (WebAudio, dosya yok) — ShopSim 3D AudioSys + yeni sesler
 // ------------------------------------------------------------
 const AudioSys = {
   ctx: null,
-  init() { if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } },
-  blip(freq, dur = 0.12, type = 'sine', vol = 0.25, slide = 0) {
-    if (!this.ctx) return;
-    const t = this.ctx.currentTime;
+  on: true,
+  init() { if (!this.ctx) { try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); },
+  blip(freq, dur = 0.12, type = 'sine', vol = 0.25, slide = 0, delay = 0) {
+    if (!this.ctx || !this.on) return;
+    const t = this.ctx.currentTime + delay;
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), t + dur);
@@ -624,93 +593,174 @@ const AudioSys = {
     o.connect(g); g.connect(this.ctx.destination);
     o.start(t); o.stop(t + dur + 0.05);
   },
-  pickup() { this.blip(660, 0.1, 'triangle', 0.3, 330); },
-  coin()   { this.blip(1180, 0.09, 'square', 0.12); setTimeout(() => this.blip(1560, 0.12, 'square', 0.12), 70); },
-  cart()   { this.blip(300, 0.15, 'sine', 0.25, 120); },
-  checkout() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.blip(f, 0.18, 'triangle', 0.25), i * 110)); },
-  nope()   { this.blip(180, 0.15, 'sawtooth', 0.15); },
+  pickup() { this.blip(660, 0.1, 'triangle', 0.25, 330); },
+  place() { this.blip(420, 0.08, 'triangle', 0.2, -120); },
+  scan() { this.blip(1850, 0.07, 'square', 0.08); },
+  cash() { [523, 659, 784, 1046].forEach((f, i) => this.blip(f, 0.16, 'triangle', 0.2, 0, i * 0.09)); },
+  nope() { this.blip(180, 0.15, 'sawtooth', 0.14); },
+  bray() { for (let i = 0; i < 2; i++) { this.blip(820, 0.28, 'sawtooth', 0.07, -260, i * 0.62); this.blip(340, 0.32, 'sawtooth', 0.08, -100, i * 0.62 + 0.3); } },
+  bell() { this.blip(1320, 0.4, 'sine', 0.12); this.blip(1980, 0.3, 'sine', 0.06, 0, 0.05); },
 };
-document.getElementById('startBtn').addEventListener('click', () => AudioSys.init(), { once: true });
 
 // ------------------------------------------------------------
-// GAME STATE
+// OYUN DURUMU
 // ------------------------------------------------------------
-let started = false, won = false, timerOn = false;
-let elapsed = 0, coinCount = 0;
-let shoppingList = [];
-let inspecting = null;      // product currently in close-up
-let inspectReturn = null;   // camera state before inspection
+const game = {
+  started: false,
+  money: 600,
+  pop: 40,
+  day: 1,
+  minutes: OPEN_H * 60,
+  unlocked: { manav: true, firin: true, sut: true, icecek: true },
+  upgrades: {},          // kasiyer, hizliEsek, reklam
+  dayStats: null,
+  dayOver: false,
+  register: false,       // oyuncu kasada mı
+  spawnT: 3,
+  saveT: 0,
+  orderCart: {},         // sipariş tabletindeki sepet: id → koli
+};
+const deliveries = [];   // eşek kuyruğu: { items: { id: koli } }
+const donkeyState = { mode: 'away', timer: 0, order: null, unload: 0 };
 
-const listEl = document.getElementById('listItems');
-const objectiveEl = document.getElementById('objective');
-const cartHudEl = document.getElementById('cartHud');
-
-function buildShoppingList() {
-  const pool = [];
-  for (const d in DEPTS) for (const it of DEPTS[d].items) pool.push({ name: it[0], dept: d, price: it[3] });
-  pool.sort(() => Math.random() - 0.5);
-  const picks = pool.slice(0, 5);
-  if (!picks.some(p => p.dept === 'Jewellery')) {
-    const jp = pool.filter(p => p.dept === 'Jewellery');
-    picks[Math.floor(Math.random() * picks.length)] = jp[Math.floor(Math.random() * jp.length)];
-  }
-  shoppingList = picks.map(p => {
-    const candidates = products.filter(m => m.userData.name === p.name);
-    const mesh = candidates[Math.floor(Math.random() * candidates.length)];
-    return { ...p, mesh, done: false };
-  });
-  renderList();
+function newDayStats() {
+  game.dayStats = { revenue: 0, orders: 0, licenses: 0, served: 0, lost: 0, missing: 0, pricey: 0, pop0: game.pop };
 }
-buildShoppingList();
-
-function renderList() {
-  listEl.innerHTML = shoppingList.map(it =>
-    `<li class="${it.done ? 'done' : 'pending'}"><span class="tick">${it.done ? '✔' : '○'}</span>${it.name} <small style="opacity:.6">(${it.dept})</small><span class="pr">₹${it.price}</span></li>`
-  ).join('');
-  const next = shoppingList.find(i => !i.done);
-  objectiveEl.textContent = next ? `➜ Next: ${next.name} — ${next.dept}` : '➜ Head to CHECKOUT!';
-}
+newDayStats();
 
 let toastTimer = null;
-function toast(msg) {
+function toast(msg, ms = 2400) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function addMoney(v) {
+  game.money += v;
+  if (v > 0 && game.dayStats) game.dayStats.revenue += v;
+  updateHud();
+  const el = document.createElement('div');
+  el.className = 'pop-num' + (v < 0 ? ' neg' : '');
+  el.textContent = (v > 0 ? '+' : '') + fmtTL(v);
+  document.getElementById('moneyBox').appendChild(el);
+  setTimeout(() => el.remove(), 1200);
+}
+
+function addPop(v) {
+  game.pop = clamp(game.pop + v, 0, 100);
+  updateHud();
 }
 
 // ------------------------------------------------------------
-// INPUT
+// KAYIT
+// ------------------------------------------------------------
+function saveGame() {
+  const data = {
+    v: 1, money: game.money, pop: game.pop, day: game.day, minutes: game.minutes,
+    unlocked: game.unlocked, upgrades: game.upgrades,
+    stock: Object.fromEntries(Object.values(P).map((p) => [p.id, [p.shelf, p.depo, p.price]])),
+    pending: deliveries.map((d) => d.items).concat(donkeyState.order ? [donkeyState.order.items] : []),
+  };
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) { /* gizli sekme */ }
+}
+function loadGame() {
+  try {
+    const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (!d || d.v !== 1) return false;
+    Object.assign(game, { money: d.money, pop: d.pop, day: d.day, minutes: d.minutes, unlocked: d.unlocked || game.unlocked, upgrades: d.upgrades || {} });
+    for (const [id, [s, dep, pr]] of Object.entries(d.stock || {})) {
+      if (!P[id]) continue;
+      P[id].shelf = s; P[id].depo = dep; P[id].price = pr;
+    }
+    // Yolda kalan siparişler eşek beklemeden depoya eklenir
+    for (const items of d.pending || []) for (const [id, k] of Object.entries(items)) if (P[id]) P[id].depo = Math.min(PALLET_CAP * 2, P[id].depo + k * KOLI);
+    return true;
+  } catch (e) { return false; }
+}
+function newGameState() {
+  Object.assign(game, { money: 600, pop: 40, day: 1, minutes: OPEN_H * 60, unlocked: { manav: true, firin: true, sut: true, icecek: true }, upgrades: {} });
+  for (const p of Object.values(P)) {
+    p.price = p.base;
+    const open = game.unlocked[p.dept];
+    p.shelf = open ? 12 : 0;
+    p.depo = open ? KOLI : 0;
+  }
+}
+function applyWorld() {
+  for (const p of Object.values(P)) { refreshShelf(p); refreshPallet(p); refreshTag(p); }
+  for (const k of Object.keys(DEPTS)) lockSigns[k].visible = !game.unlocked[k];
+  cashierNpc.group.visible = !!game.upgrades.kasiyer;
+  updateHud();
+}
+
+// ------------------------------------------------------------
+// GİRİŞ: klavye + dokunmatik joystick
 // ------------------------------------------------------------
 const keys = {};
-let listVisible = true, minimapVisible = true;
+let minimapVisible = innerWidth > 700;
+document.getElementById('minimapWrap').style.display = minimapVisible ? 'block' : 'none';
 
-addEventListener('keydown', e => {
+addEventListener('keydown', (e) => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Tab'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
-  if (!started) return;
-  if (e.code === 'KeyC' && !inspecting) cycleCamera();
-  if (e.code === 'KeyE') tryInteract();
-  if (e.code === 'KeyF') { if (inspecting) exitInspect(true); else enterInspect(); }
+  if (!game.started || e.repeat) return;
+  if (isPanelOpen()) { if (e.code === 'Escape' || e.code === 'KeyO') closeOrderPanel(); return; }
+  if (e.code === 'KeyC') cycleCamera();
+  if (e.code === 'KeyE' || e.code === 'Space') primaryAction();
+  if (e.code === 'KeyQ') secondaryAction();
+  if (e.code === 'KeyO') openOrderPanel();
   if (e.code === 'KeyM') { minimapVisible = !minimapVisible; document.getElementById('minimapWrap').style.display = minimapVisible ? 'block' : 'none'; }
-  if (e.code === 'Tab') { listVisible = !listVisible; document.getElementById('listPanel').style.display = listVisible ? 'block' : 'none'; }
-  if (!timerOn && (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD' || e.code.startsWith('Arrow'))) timerOn = true;
 });
-addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+const joy = { x: 0, y: 0, id: null };
+{
+  const zone = document.getElementById('joyZone');
+  const base = document.getElementById('joyBase');
+  const knob = document.getElementById('joyKnob');
+  const upd = (e) => {
+    const r = base.getBoundingClientRect();
+    const max = r.width / 2;
+    let dx = e.clientX - (r.left + max), dy = e.clientY - (r.top + max);
+    const l = Math.hypot(dx, dy);
+    if (l > max) { dx = dx / l * max; dy = dy / l * max; }
+    knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    joy.x = dx / max; joy.y = -dy / max;
+    if (Math.hypot(joy.x, joy.y) < 0.12) { joy.x = 0; joy.y = 0; }
+  };
+  const end = (e) => {
+    if (e.pointerId !== joy.id) return;
+    joy.id = null; joy.x = 0; joy.y = 0;
+    knob.style.transform = 'translate(-50%, -50%)';
+  };
+  zone.addEventListener('pointerdown', (e) => { if (joy.id !== null) return; joy.id = e.pointerId; try { zone.setPointerCapture(e.pointerId); } catch (_) {} upd(e); e.preventDefault(); });
+  zone.addEventListener('pointermove', (e) => { if (e.pointerId === joy.id) { upd(e); e.preventDefault(); } });
+  zone.addEventListener('pointerup', end);
+  zone.addEventListener('pointercancel', end);
+}
+document.getElementById('btnAct').addEventListener('pointerdown', (e) => { e.preventDefault(); primaryAction(); });
+document.getElementById('btnAlt').addEventListener('pointerdown', (e) => { e.preventDefault(); secondaryAction(); });
+document.getElementById('btnOrder').addEventListener('click', () => openOrderPanel());
+document.getElementById('btnSound').addEventListener('click', () => {
+  AudioSys.on = !AudioSys.on;
+  document.getElementById('btnSound').textContent = AudioSys.on ? '🔊' : '🔇';
+});
 
 // ------------------------------------------------------------
-// CAMERAS: 0 iso, 1 third-person, 2 top-down, 3 free orbit, 4 first-person
+// KAMERALAR: 0 izometrik, 1 üçüncü şahıs, 2 kuşbakışı, 3 serbest, 4 birinci şahıs (ShopSim 3D)
 // ------------------------------------------------------------
-const persp = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 300);
-const perspFree = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 300);
-const persp1st = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 300);
-const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 300);
+const persp = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 400);
+const perspFree = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 400);
+const persp1st = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 400);
+const regCam = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 100);
+const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
 let camera = ortho;
 
-const CAM_NAMES = ['Isometric', 'Third-Person', 'Top-Down', 'Free Orbit', 'First-Person'];
+const CAM_NAMES = ['İzometrik', 'Üçüncü Şahıs', 'Kuşbakışı', 'Serbest', 'Birinci Şahıs'];
 let camMode = 0;
-let orbitYaw = 0, orbitPitch = 0.42, orbitDist = 9;
-let orthoZoom = 24;
+let orbitYaw = 0, orbitPitch = 0.5, orbitDist = 10;
+let orthoZoom = innerWidth < innerHeight ? 16 : 20;
 const ISO_YAW = Math.PI / 4, ISO_ELEV = 0.6155;
 
 const cameraLabelEl = document.getElementById('cameraLabel');
@@ -719,378 +769,682 @@ function setCamera(mode) {
   camMode = mode;
   camera = mode === 0 || mode === 2 ? ortho : mode === 1 ? persp : mode === 3 ? perspFree : persp1st;
   cameraLabelEl.textContent = CAM_NAMES[mode];
-  camBtns.forEach(b => b.classList.toggle('active', +b.dataset.cam === mode));
-  if (mode === 1) { orbitYaw = 0; orbitPitch = 0.42; }
-  // first-person: hide player body
+  camBtns.forEach((b) => b.classList.toggle('active', +b.dataset.cam === mode));
+  if (mode === 1) { orbitYaw = player.group.rotation.y + Math.PI; orbitPitch = 0.42; }
   player.group.visible = mode !== 4;
 }
 function cycleCamera() { setCamera((camMode + 1) % 5); }
-camBtns.forEach(b => b.addEventListener('click', () => setCamera(+b.dataset.cam)));
+camBtns.forEach((b) => b.addEventListener('click', () => setCamera(+b.dataset.cam)));
 
-let dragging = false, lastX = 0, lastY = 0;
-renderer.domElement.addEventListener('pointerdown', e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
-addEventListener('pointerup', () => { dragging = false; });
-addEventListener('pointermove', e => {
-  if (!dragging || !started) return;
+let dragging = false, dragId = null, lastX = 0, lastY = 0;
+renderer.domElement.addEventListener('pointerdown', (e) => { if (dragId !== null) return; dragging = true; dragId = e.pointerId; lastX = e.clientX; lastY = e.clientY; });
+addEventListener('pointerup', (e) => { if (e.pointerId === dragId) { dragging = false; dragId = null; } });
+addEventListener('pointercancel', (e) => { if (e.pointerId === dragId) { dragging = false; dragId = null; } });
+addEventListener('pointermove', (e) => {
+  if (!dragging || e.pointerId !== dragId || !game.started) return;
   if (camMode === 1 || camMode === 3) {
-    orbitYaw -= (e.clientX - lastX) * 0.005;
+    orbitYaw -= (e.clientX - lastX) * 0.006;
     orbitPitch = Math.min(1.45, Math.max(0.08, orbitPitch + (e.clientY - lastY) * 0.004));
-  } else if (camMode === 0) {
-    orthoZoom = Math.min(60, Math.max(10, orthoZoom + (e.clientY - lastY) * 0.05));
+  } else if (camMode === 0 || camMode === 2) {
+    orthoZoom = Math.min(45, Math.max(8, orthoZoom + (e.clientY - lastY) * 0.05));
   }
   lastX = e.clientX; lastY = e.clientY;
 });
-addEventListener('wheel', e => {
-  if (!started) return;
-  if (camMode === 0 || camMode === 2) orthoZoom = Math.min(60, Math.max(8, orthoZoom + e.deltaY * 0.02));
-  else orbitDist = Math.min(45, Math.max(4, orbitDist + e.deltaY * 0.012));
+addEventListener('wheel', (e) => {
+  if (!game.started) return;
+  if (camMode === 0 || camMode === 2) orthoZoom = Math.min(45, Math.max(8, orthoZoom + e.deltaY * 0.02));
+  else orbitDist = Math.min(40, Math.max(4, orbitDist + e.deltaY * 0.012));
 }, { passive: true });
 
 const _eyeTarget = new THREE.Vector3();
 function updateCamera() {
-  if (inspecting || inspectAnim.phase !== 'none') return;  // inspect cam overrides
   const p = player.group.position;
   const headY = p.y + 1.75;
-
-  if (camMode === 0) {
+  if (game.register) {
+    regCam.position.set(1.9, 2.3, 19.2);
+    regCam.lookAt(-0.7, 1.1, 16.4);
+    return;
+  }
+  if (camMode === 0 || camMode === 2) {
     _eyeTarget.set(p.x, p.y + 1.2, p.z);
-    const d = 60;
-    ortho.position.set(
-      _eyeTarget.x + Math.sin(ISO_YAW) * Math.cos(ISO_ELEV) * d,
-      _eyeTarget.y + Math.sin(ISO_ELEV) * d,
-      _eyeTarget.z + Math.cos(ISO_YAW) * Math.cos(ISO_ELEV) * d
-    );
-    ortho.lookAt(_eyeTarget);
-    const a = innerWidth / innerHeight;
-    ortho.left = -orthoZoom * a; ortho.right = orthoZoom * a;
-    ortho.top = orthoZoom; ortho.bottom = -orthoZoom;
-    ortho.updateProjectionMatrix();
-  } else if (camMode === 2) {
-    _eyeTarget.set(p.x, p.y + 1.2, p.z);
-    ortho.position.set(_eyeTarget.x, _eyeTarget.y + 80, _eyeTarget.z + 0.001);
+    if (camMode === 0) {
+      const d = 70;
+      ortho.position.set(_eyeTarget.x + Math.sin(ISO_YAW) * Math.cos(ISO_ELEV) * d, _eyeTarget.y + Math.sin(ISO_ELEV) * d, _eyeTarget.z + Math.cos(ISO_YAW) * Math.cos(ISO_ELEV) * d);
+    } else {
+      ortho.position.set(_eyeTarget.x, _eyeTarget.y + 90, _eyeTarget.z + 0.001);
+    }
     ortho.lookAt(_eyeTarget);
     const a = innerWidth / innerHeight;
     ortho.left = -orthoZoom * a; ortho.right = orthoZoom * a;
     ortho.top = orthoZoom; ortho.bottom = -orthoZoom;
     ortho.updateProjectionMatrix();
   } else if (camMode === 4) {
-    // first person: camera at head, looks where player faces
     persp1st.position.set(p.x, headY, p.z);
-    const look = new THREE.Vector3(p.x + Math.sin(player.group.rotation.y), headY, p.z + Math.cos(player.group.rotation.y));
-    persp1st.lookAt(look);
-    persp1st.updateProjectionMatrix();
+    persp1st.lookAt(p.x + Math.sin(player.group.rotation.y), headY - 0.15, p.z + Math.cos(player.group.rotation.y));
   } else {
     _eyeTarget.set(p.x, p.y + 1.2, p.z);
     const cam = camMode === 1 ? persp : perspFree;
     const cp = Math.cos(orbitPitch), sp = Math.sin(orbitPitch);
-    cam.position.set(
-      _eyeTarget.x + Math.sin(orbitYaw) * cp * orbitDist,
-      _eyeTarget.y + sp * orbitDist,
-      _eyeTarget.z + Math.cos(orbitYaw) * cp * orbitDist
-    );
+    cam.position.set(_eyeTarget.x + Math.sin(orbitYaw) * cp * orbitDist, _eyeTarget.y + sp * orbitDist, _eyeTarget.z + Math.cos(orbitYaw) * cp * orbitDist);
     cam.lookAt(_eyeTarget);
-    cam.updateProjectionMatrix();
   }
 }
 
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
-  for (const cam of [persp, perspFree, persp1st]) { cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
+  for (const cam of [persp, perspFree, persp1st, regCam]) { cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
 });
 
 // ------------------------------------------------------------
-// PRODUCT INSPECTION — smooth camera glide, framed close-up
+// MÜŞTERİLER — liste, reyon gezme, stok/fiyat kontrolü, kasa sırası
 // ------------------------------------------------------------
-const inspectCard = document.getElementById('inspectCard');
-const inspectCam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.01, 20);
-const inspectAnim = { phase: 'none', t: 0 };   // none | in | hold | out
-const INSPECT_DUR = 0.55;
-const _insFrom = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
-const _insTo   = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
-const _insSavedLocal = new THREE.Vector3();
+const customers = [];
+const SHIRTS = [0x4fc3f7, 0xf06292, 0xba68c8, 0xffb74d, 0x81c784, 0xe57373, 0x9575cd, 0x4db6ac, 0xfff176, 0x90a4ae];
+const ENTRY = new THREE.Vector3(4.6, 0, 30);
+const FRONT_Z = 7.5;
+const MOODS = { shop: '🛒', missing: '❓', pricey: '💸', happy: '😊', angry: '😡', wait: '⏳', sad: '😞' };
 
-function easeInOut(t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
-
-function frameProduct(target) {
-  const wp = new THREE.Vector3(); target.getWorldPosition(wp);
-  const sph = new THREE.Sphere();
-  new THREE.Box3().setFromObject(target).getBoundingSphere(sph);
-  const r = Math.max(sph.radius, 0.18);
-  // distance so the whole product fits comfortably in frame
-  const dist = Math.max((r / Math.tan(THREE.MathUtils.degToRad(inspectCam.fov / 2))) * 1.25, r + 0.35);
-  const eye = player.group.position.clone(); eye.y += 1.6;
-  const dir = eye.sub(wp); dir.y = Math.max(dir.y, 0.25); dir.normalize();
-  const pos = wp.clone().add(dir.multiplyScalar(dist));
-  pos.y = Math.max(pos.y, wp.y + r * 0.3);
-  return { pos, look: wp };
+function moodSprite() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const t = new THREE.CanvasTexture(c);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+  s.scale.set(0.8, 0.8, 1); s.position.y = 2.75; s.renderOrder = 10;
+  s.userData = { c, t, mood: '' };
+  return s;
+}
+function setMood(cu, mood) {
+  const s = cu.bubble;
+  if (s.userData.mood === mood) return;
+  s.userData.mood = mood;
+  const g = s.userData.c.getContext('2d');
+  g.clearRect(0, 0, 64, 64);
+  g.fillStyle = 'rgba(255,255,255,.92)';
+  g.beginPath(); g.arc(32, 30, 27, 0, Math.PI * 2); g.fill();
+  g.font = '34px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(MOODS[mood] || '', 32, 32);
+  s.userData.t.needsUpdate = true;
 }
 
-function enterInspect() {
-  if (inspectAnim.phase !== 'none' || inspecting) return;
-  const target = nearestProductAny(2.7);
-  if (!target) { toast('Get closer to a product to inspect it.'); AudioSys.nope(); return; }
-  inspecting = target;
-  const u = target.userData;
-  document.getElementById('insDept').textContent = u.dept + (u.dept === 'Jewellery' ? ' boutique' : ' aisle');
-  document.getElementById('insName').textContent = u.name;
-  document.getElementById('insPrice').textContent = '₹' + Math.round(u.price).toLocaleString('en-IN');
-  document.getElementById('insMrp').textContent = 'MRP ₹' + Math.round(u.mrp).toLocaleString('en-IN') + (u.mrp > u.price ? ' — you save ₹' + Math.round(u.mrp - u.price).toLocaleString('en-IN') : '');
-  document.getElementById('insDesc').textContent = PRODUCT_DESC[u.name] || 'A store staple.';
-  inspectCard.style.display = 'block';
-  AudioSys.blip(880, 0.08, 'sine', 0.15);
-
-  // start pose = wherever the active camera is right now
-  const src = camera === persp1st ? persp1st : camera;
-  _insFrom.pos.copy(src.position);
-  src.getWorldDirection(_insFrom.look);
-  _insFrom.look.multiplyScalar(5).add(src.position);
-  const fr = frameProduct(target);
-  _insTo.pos.copy(fr.pos); _insTo.look.copy(fr.look);
-  _insSavedLocal.copy(target.position);
-  inspectCam.position.copy(_insFrom.pos);
-  inspectCam.lookAt(_insFrom.look);
-  inspectAnim.phase = 'in'; inspectAnim.t = 0;
+/** Koridorlar üzerinden L/U rotası (raflar arası koridor z'leri + yan koridor x=±19). */
+function route(from, to) {
+  if (Math.abs(from.z - to.z) < 0.05) return [to.clone()];
+  const c = Math.abs(from.x - CORR_X[0]) + Math.abs(to.x - CORR_X[0]) < Math.abs(from.x - CORR_X[1]) + Math.abs(to.x - CORR_X[1]) ? CORR_X[0] : CORR_X[1];
+  return [new THREE.Vector3(c, 0, from.z), new THREE.Vector3(c, 0, to.z), to.clone()];
 }
 
-function exitInspect(putInCart = false) {
-  if (!inspecting || inspectAnim.phase === 'out') return;
-  if (putInCart) addToCart(inspecting);
-  inspectCard.style.display = 'none';
-  // glide back: start = current inspect view, end = the frozen main camera
-  const src = camera === persp1st ? persp1st : camera;
-  _insTo.pos.copy(src.position);
-  src.getWorldDirection(_insTo.look);
-  _insTo.look.multiplyScalar(5).add(src.position);
-  _insFrom.pos.copy(inspectCam.position);
-  inspecting.getWorldPosition(_insFrom.look);
-  inspecting.position.y = _insSavedLocal.y;   // stop the bob
-  inspectAnim.phase = 'out'; inspectAnim.t = 0;
+function spawnCustomer() {
+  const avail = Object.values(P).filter((p) => game.unlocked[p.dept]);
+  if (!avail.length) return;
+  const n = 1 + Math.floor(Math.random() * Math.min(4, avail.length));
+  const list = [...avail].sort(() => Math.random() - 0.5).slice(0, n);
+  // reyon sırasına göre diz (daha doğal gezinti): önden arkaya
+  list.sort((a, b) => b.stand.z - a.stand.z);
+  const ch = makeCharacter(rnd(SHIRTS), rnd([0x2c3e50, 0x37474f, 0x5d4037, 0x1a237e]), rnd([0xffd9b3, 0xf0c08f, 0xd9a066, 0xc68642]),
+    Math.random() < 0.3 ? { scarf: rnd([0x9b3a6b, 0x2a6f97, 0x6a994e]) } : { mustache: Math.random() < 0.5, hair: rnd([0x3a2a1a, 0x111111, 0x8d6e63, 0x999999]) });
+  ch.group.position.copy(ENTRY);
+  ch.group.rotation.y = Math.PI;
+  const bubble = moodSprite();
+  ch.group.add(bubble);
+  const cu = { ch, bubble, list, idx: 0, basket: [], state: 'enter', path: [new THREE.Vector3(ENTRY.x, 0, FRONT_Z)], dwell: 0, wait: 0, speed: 2.2 + Math.random() * 0.6, slot: -1, missing: 0, pricey: 0 };
+  setMood(cu, 'shop');
+  customers.push(cu);
 }
 
-function nearestProductAny(radius) {
-  const p = player.group.position;
-  let best = null, bestD = radius;
-  for (const m of products) {
-    if (!m.visible) continue;
-    const wp = new THREE.Vector3(); m.getWorldPosition(wp);
-    const d = Math.hypot(wp.x - p.x, wp.z - p.z);
-    if (d < bestD) { bestD = d; best = m; }
+function nextTarget(cu) {
+  const pos = cu.ch.group.position;
+  if (cu.idx < cu.list.length) {
+    const p = cu.list[cu.idx];
+    cu.path = route(pos, p.stand);
+    cu.state = 'walk';
+    return;
   }
-  return best;
+  if (cu.basket.length) {
+    cu.state = 'toQueue';
+    cu.path = route(pos, new THREE.Vector3(LANE_X, 0, FRONT_Z));
+    return;
+  }
+  leaveStore(cu, cu.missing || cu.pricey ? 'sad' : 'happy');
 }
 
-function updateInspect(dt) {
-  if (inspectAnim.phase === 'none') return;
-  if (inspectAnim.phase === 'in' || inspectAnim.phase === 'out') {
-    inspectAnim.t = Math.min(1, inspectAnim.t + dt / INSPECT_DUR);
-    const e = easeInOut(inspectAnim.t);
-    inspectCam.position.lerpVectors(_insFrom.pos, _insTo.pos, e);
-    _eyeTarget.lerpVectors(_insFrom.look, _insTo.look, e);
-    inspectCam.lookAt(_eyeTarget);
-    if (inspectAnim.t >= 1) {
-      if (inspectAnim.phase === 'in') inspectAnim.phase = 'hold';
-      else { inspectAnim.phase = 'none'; inspecting = null; }
+function leaveStore(cu, mood) {
+  cu.state = 'leave';
+  setMood(cu, mood);
+  const pos = cu.ch.group.position;
+  if (pos.z > FRONT_Z + 0.5) cu.path = [new THREE.Vector3(pos.x, 0, 22), new THREE.Vector3(LANE_X, 0, 24), new THREE.Vector3(LANE_X, 0, 34)];
+  else cu.path = route(pos, new THREE.Vector3(ENTRY.x, 0, FRONT_Z)).concat([new THREE.Vector3(ENTRY.x, 0, 34)]);
+}
+
+function queueList() { return customers.filter((c) => c.state === 'queue' || c.state === 'pay'); }
+function slotPos(i) { return new THREE.Vector3(LANE_X, 0, PAY_SPOT.z - i * 1.6); }
+
+function updateCustomers(dt) {
+  // sıra yerlerini güncelle
+  const q = queueList();
+  q.forEach((cu, i) => {
+    if (cu.slot !== i) {
+      cu.slot = i;
+      cu.path = [slotPos(i)];
     }
+  });
+  for (let i = customers.length - 1; i >= 0; i--) {
+    const cu = customers[i];
+    const g = cu.ch.group;
+    let moving = false;
+    if (cu.path.length) {
+      const t = cu.path[0];
+      const dx = t.x - g.position.x, dz = t.z - g.position.z;
+      const d = Math.hypot(dx, dz);
+      const step = cu.speed * dt;
+      if (d <= step) {
+        g.position.x = t.x; g.position.z = t.z;
+        cu.path.shift();
+      } else {
+        g.position.x += dx / d * step; g.position.z += dz / d * step;
+        let diff = Math.atan2(dx, dz) - g.rotation.y;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        g.rotation.y += diff * Math.min(1, dt * 10);
+        moving = true;
+      }
+    }
+    if (!cu.path.length) {
+      if (cu.state === 'enter') nextTarget(cu);
+      else if (cu.state === 'walk') { cu.state = 'browse'; cu.dwell = 1.1 + Math.random() * 0.8; }
+      else if (cu.state === 'toQueue') { cu.state = 'queue'; cu.wait = 0; setMood(cu, 'wait'); }
+      else if (cu.state === 'leave') { scene.remove(g); customers.splice(i, 1); continue; }
+      else if (cu.state === 'queue' && cu.slot === 0) beginPay(cu);
+    }
+    if (cu.state === 'browse') {
+      // rafa uzan
+      const p = cu.list[cu.idx];
+      g.rotation.y = p.side > 0 ? Math.PI : 0;   // rafa dön
+      cu.ch.parts.rArm.rotation.x = -1.3 + Math.sin(now * 6) * 0.15;
+      cu.dwell -= dt;
+      if (cu.dwell <= 0) {
+        cu.ch.parts.rArm.rotation.x = 0;
+        decideBuy(cu, p);
+        cu.idx++;
+        nextTarget(cu);
+      }
+    }
+    if (cu.state === 'queue' || cu.state === 'pay') {
+      cu.wait += dt;
+      const limit = 70 * (game.upgrades.kasiyer ? 1.3 : 1);
+      if (cu.wait > limit * 0.6) setMood(cu, 'angry');
+      if (cu.wait > limit) {
+        toast('😡 Bir müşteri kasada beklemekten sıkıldı ve alışverişi bırakıp gitti!');
+        AudioSys.nope();
+        if (payCu === cu) clearBelt();
+        cu.basket = [];
+        addPop(-4);
+        game.dayStats.lost++;
+        leaveStore(cu, 'angry');
+        cu.slot = -1;
+      }
+    }
+    animateCharacter(cu.ch, dt, moving, cu.speed);
+  }
+}
+
+/** Müşteri rafın önünde: stok ve fiyata bakarak alır ya da almaz. */
+function decideBuy(cu, p) {
+  if (p.shelf <= 0) {
+    cu.missing++;
+    game.dayStats.missing++;
+    setMood(cu, 'missing');
+    if (cu.missing <= 2) addPop(-1);
     return;
   }
-  // hold: gentle product spin + bob, camera stays framed
-  if (inspecting) {
-    inspecting.rotation.y += dt * 0.9;
-    inspecting.position.y = _insSavedLocal.y + Math.sin(now * 2.2) * 0.05;
-    const wp = new THREE.Vector3(); inspecting.getWorldPosition(wp);
-    inspectCam.lookAt(wp);
+  const ratio = p.price / p.base;
+  const prob = ratio <= 1 ? 1 : Math.max(0, 1 - (ratio - 1) * 1.6);
+  if (Math.random() > prob) {
+    cu.pricey++;
+    game.dayStats.pricey++;
+    setMood(cu, 'pricey');
+    addPop(-0.5);
+    return;
   }
+  const want = 1 + (Math.random() < 0.35 ? 1 : 0) + (ratio < 0.9 && Math.random() < 0.5 ? 1 : 0);
+  const take = Math.min(want, p.shelf);
+  p.shelf -= take;
+  refreshShelf(p);
+  for (let k = 0; k < take; k++) cu.basket.push(p);
+  setMood(cu, 'shop');
 }
 
 // ------------------------------------------------------------
-// CART
+// KASA: ürünleri bant üzerine koy, okut, ödeme al
 // ------------------------------------------------------------
-function addToCart(mesh) {
-  if (hasCart) {
-    // visual mini-copy inside cart basket
-    const mini = mesh.clone();
-    mini.scale.setScalar(0.55);
-    mini.position.set((cartItems.length % 3) * 0.28 - 0.28, 0.95 + Math.floor(cartItems.length / 3) * 0.22, (Math.random() - 0.5) * 0.3);
-    mini.rotation.y = Math.random() * Math.PI;
-    cart.add(mini);
-    cartItems.push(mini);
-    cartHudEl.textContent = `🛒 Cart: ${cartItems.length} item${cartItems.length > 1 ? 's' : ''}`;
+let payCu = null;        // kasadaki müşteri
+let scanIdx = 0, scanTotal = 0, autoScanT = 0;
+
+function beginPay(cu) {
+  if (payCu) return;
+  clearBelt();
+  payCu = cu;
+  cu.state = 'pay';
+  scanIdx = 0; scanTotal = 0;
+  cu.basket.forEach((p, i) => {
+    const m = new THREE.Mesh(shapeGeo(p.shape), lambert(p.color));
+    m.scale.setScalar(1.6);
+    m.position.set(REG.x + (i % 2 ? 0.18 : -0.18), 1.17, REG.z - 2.2 + Math.floor(i / 2) * 0.42);
+    m.castShadow = true;
+    scene.add(m);
+    beltItems.push(m);
+  });
+  setMood(cu, 'wait');
+  if (!game.upgrades.kasiyer && !game.register) toast('🛎️ Kasada müşteri var! Kasaya geç ve ürünleri okut.');
+  AudioSys.bell();
+}
+function clearBelt() {
+  for (const m of beltItems) scene.remove(m);
+  beltItems = [];
+  payCu = null;
+}
+
+function scanNext() {
+  if (!payCu) { toast('Kasada müşteri yok.'); return; }
+  if (scanIdx < payCu.basket.length) {
+    const p = payCu.basket[scanIdx];
+    const m = beltItems[scanIdx];
+    if (m) tweens.push({ mesh: m, age: 0, dur: 0.35, from: m.position.clone(), to: new THREE.Vector3(REG.x, 1.3, REG.z + 1.3), vanish: true });
+    scanTotal += p.price;
+    scanIdx++;
+    AudioSys.scan();
+    return;
   }
-  // mark list item done if it matches
-  const it = shoppingList.find(i => !i.done && i.name === mesh.userData.name);
-  if (it) {
-    it.done = true;
-    coinCount += 10;
-    renderList();
-    if (allDone()) toast('All items in the cart! Head to CHECKOUT 🧾');
-    else toast(`${mesh.userData.name} in cart! +10`);
+  // tüm ürünler okundu → ödeme
+  const cu = payCu;
+  addMoney(scanTotal);
+  AudioSys.cash();
+  const happy = cu.wait < 35 && !cu.missing && !cu.pricey;
+  addPop(happy ? 1.5 : 0.5);
+  game.dayStats.served++;
+  toast(`${rnd(['💳 Kartla', '💵 Nakit'])} ödendi: ${fmtTL(scanTotal)} ${happy ? '— "Çok güzel market, yine geleceğim!"' : ''}`);
+  clearBelt();
+  cu.slot = -1;
+  leaveStore(cu, happy ? 'happy' : 'sad');
+}
+
+// ------------------------------------------------------------
+// SİPARİŞ TABLETİ — koli siparişi, fiyat ayarı, lisans ve geliştirmeler
+// ------------------------------------------------------------
+const panel = document.getElementById('orderPanel');
+let panelTab = 'urun';
+function isPanelOpen() { return panel.style.display === 'flex'; }
+function openOrderPanel() { if (!game.started) return; AudioSys.init(); panel.style.display = 'flex'; renderPanel(); }
+function closeOrderPanel() { panel.style.display = 'none'; }
+document.getElementById('panelClose').addEventListener('click', closeOrderPanel);
+document.querySelectorAll('#panelTabs button').forEach((b) => b.addEventListener('click', () => { panelTab = b.dataset.tab; renderPanel(); }));
+
+const UPGRADES = [
+  { id: 'kasiyer', icon: '🧑‍💼', name: 'Kasiyer işe al', desc: `Kasayı o yönetir. Günlük maaş ${fmtTL(WAGE)}.`, price: 500 },
+  { id: 'hizliEsek', icon: '🥕', name: 'Eşeğe havuç diyeti', desc: 'Eşek siparişleri çok daha hızlı getirir.', price: 350 },
+  { id: 'reklam', icon: '📣', name: 'Mahalle reklamı', desc: 'Popülerlik +15, daha çok müşteri.', price: 400, once: true },
+];
+
+function orderTotal() {
+  let t = 0;
+  for (const [id, k] of Object.entries(game.orderCart)) t += k * KOLI * P[id].cost;
+  return t;
+}
+
+function renderPanel() {
+  document.querySelectorAll('#panelTabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === panelTab));
+  const body = document.getElementById('panelBody');
+  const foot = document.getElementById('panelFoot');
+  document.getElementById('panelMoney').textContent = fmtTL(game.money);
+  if (panelTab === 'urun') {
+    let html = '';
+    for (const dk of Object.keys(DEPTS)) {
+      if (!game.unlocked[dk]) continue;
+      html += `<div class="dept-h" style="border-color:${DEPTS[dk].css}">${DEPTS[dk].name}</div>`;
+      for (const p of Object.values(P).filter((x) => x.dept === dk)) {
+        const k = game.orderCart[p.id] || 0;
+        const margin = Math.round((p.price - p.cost) / p.price * 100);
+        html += `<div class="prow">
+          <div class="pinfo"><b>${p.name}</b><small>Raf ${p.shelf}/${SHELF_CAP} · Depo ${p.depo} · Alış ${fmtTL(p.cost)}</small></div>
+          <div class="pprice"><button data-pr="-" data-id="${p.id}">−</button><span class="${p.price > p.base * 1.25 ? 'hi' : p.price < p.base ? 'lo' : ''}">${fmtTL(p.price)}</span><button data-pr="+" data-id="${p.id}">+</button><small>%${margin} kâr</small></div>
+          <div class="pord"><button data-k="-" data-id="${p.id}">−</button><span>${k} koli</span><button data-k="+" data-id="${p.id}">+</button></div>
+        </div>`;
+      }
+    }
+    body.innerHTML = html;
+    const total = orderTotal();
+    const eta = game.upgrades.hizliEsek ? 'hızlı' : 'normal';
+    foot.innerHTML = `<div>🧺 Sipariş: <b>${fmtTL(total)}</b> <small>(1 koli = ${KOLI} adet, teslimat: 🐴 ${eta})</small></div>
+      <button id="orderGo" ${total <= 0 || total > game.money ? 'disabled' : ''}>🐴 Siparişi Ver</button>`;
+    document.getElementById('orderGo').addEventListener('click', placeOrder);
   } else {
-    toast(`${mesh.userData.name} (₹${mesh.userData.price}) added — not on your list though!`);
+    let html = '<div class="dept-h">🔓 Reyon lisansları</div>';
+    for (const [dk, d] of Object.entries(DEPTS)) {
+      if (!d.license) continue;
+      const owned = game.unlocked[dk];
+      html += `<div class="prow"><div class="pinfo"><b>${d.name}</b><small>${CATALOG.filter((c) => c[2] === dk).map((c) => c[1]).join(', ')}</small></div>
+        <div class="pord"><button class="buy" data-lic="${dk}" ${owned || game.money < d.license ? 'disabled' : ''}>${owned ? '✓ Açık' : fmtTL(d.license)}</button></div></div>`;
+    }
+    html += '<div class="dept-h">🛠️ Geliştirmeler</div>';
+    for (const u of UPGRADES) {
+      const owned = !!game.upgrades[u.id];
+      html += `<div class="prow"><div class="pinfo"><b>${u.icon} ${u.name}</b><small>${u.desc}</small></div>
+        <div class="pord"><button class="buy" data-up="${u.id}" ${owned || game.money < u.price ? 'disabled' : ''}>${owned ? '✓ Alındı' : fmtTL(u.price)}</button></div></div>`;
+    }
+    body.innerHTML = html;
+    foot.innerHTML = '<div><small>Lisans alınca reyon açılır; müşteriler oradan da alışveriş yapar. Rafı doldurmak için sipariş vermeyi unutma!</small></div>';
   }
-  AudioSys.cart();
+  body.querySelectorAll('button[data-pr]').forEach((b) => b.addEventListener('click', () => {
+    const p = P[b.dataset.id];
+    const step = Math.max(1, Math.round(p.base * 0.05));
+    p.price = clamp(p.price + (b.dataset.pr === '+' ? step : -step), Math.ceil(p.cost * 0.8), Math.round(p.base * 2.5));
+    refreshTag(p);
+    renderPanel();
+  }));
+  body.querySelectorAll('button[data-k]').forEach((b) => b.addEventListener('click', () => {
+    const id = b.dataset.id;
+    const cur = game.orderCart[id] || 0;
+    game.orderCart[id] = clamp(cur + (b.dataset.k === '+' ? 1 : -1), 0, 8);
+    if (!game.orderCart[id]) delete game.orderCart[id];
+    renderPanel();
+  }));
+  body.querySelectorAll('button[data-lic]').forEach((b) => b.addEventListener('click', () => {
+    const dk = b.dataset.lic;
+    const d = DEPTS[dk];
+    if (game.money < d.license) return;
+    addMoney(-d.license);
+    game.dayStats.licenses += d.license;
+    game.unlocked[dk] = true;
+    lockSigns[dk].visible = false;
+    AudioSys.cash();
+    toast(`🔓 ${d.name} reyonu açıldı! Şimdi ürün sipariş et.`);
+    panelTab = 'urun';
+    renderPanel();
+    saveGame();
+  }));
+  body.querySelectorAll('button[data-up]').forEach((b) => b.addEventListener('click', () => {
+    const u = UPGRADES.find((x) => x.id === b.dataset.up);
+    if (game.money < u.price || game.upgrades[u.id]) return;
+    addMoney(-u.price);
+    game.dayStats.licenses += u.price;
+    game.upgrades[u.id] = true;
+    if (u.id === 'reklam') addPop(15);
+    if (u.id === 'kasiyer') { cashierNpc.group.visible = true; if (game.register) leaveRegister(); }
+    AudioSys.cash();
+    toast(`${u.icon} ${u.name} — tamam!`);
+    renderPanel();
+    saveGame();
+  }));
 }
 
-// cart follows player
-function updateCart(dt) {
-  if (!hasCart) return;
-  const p = player.group.position;
-  const behind = new THREE.Vector3(p.x - Math.sin(player.group.rotation.y) * 1.1, 0, p.z - Math.cos(player.group.rotation.y) * 1.1);
-  cart.position.lerp(behind, Math.min(1, dt * 8));
-  let diff = player.group.rotation.y - cart.rotation.y;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  cart.rotation.y += diff * Math.min(1, dt * 8);
-  cart.rotation.z = Math.sin(now * 6) * (keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD ? 0.02 : 0);
+function placeOrder() {
+  const total = orderTotal();
+  if (total <= 0 || total > game.money) return;
+  addMoney(-total);
+  game.dayStats.orders += total;
+  deliveries.push({ items: { ...game.orderCart } });
+  game.orderCart = {};
+  AudioSys.cash();
+  toast(donkeyState.mode === 'away' ? '🐴 Sipariş verildi! Eşek arabası yola çıkıyor, depoya getirecek.' : '🐴 Sipariş sıraya alındı, eşek önceki teslimattan sonra getirecek.');
+  closeOrderPanel();
+  saveGame();
 }
-
-// grab cart near entrance
-function tryGrabCart() {
-  const p = player.group.position;
-  const CART_HOME = new THREE.Vector3(3.2, 0, 23.5);
-  if (!hasCart && Math.hypot(p.x - CART_HOME.x, p.z - CART_HOME.z) < 2.2) {
-    hasCart = true;
-    cart.visible = true;
-    toast('Cart grabbed! Items you buy will ride in it.');
-    AudioSys.cart();
-    return true;
-  }
-  return false;
-}
-cart.position.set(3.2, 0, 23.5);
 
 // ------------------------------------------------------------
-// INTERACTION
+// EŞEK TESLİMATI
 // ------------------------------------------------------------
-const promptEl = document.getElementById('prompt');
+function updateDonkey(dt) {
+  const d = donkey;
+  d.t += dt;
+  const s = donkeyState;
+  const speed = game.upgrades.hizliEsek ? 7 : 4;
+  let moving = false;
+  const moveTo = (target) => {
+    const g = d.group.position;
+    const dx = target.x - g.x;
+    const step = speed * dt;
+    if (Math.abs(dx) <= step) { g.x = target.x; return true; }
+    g.x += Math.sign(dx) * step;
+    d.group.rotation.y = dx < 0 ? -Math.PI / 2 : Math.PI / 2;
+    moving = true;
+    return false;
+  };
+  if (s.mode === 'away') {
+    d.group.visible = false;
+    if (deliveries.length) {
+      s.order = deliveries.shift();
+      s.mode = 'prep';
+      s.timer = game.upgrades.hizliEsek ? 2 : 6;
+    }
+  } else if (s.mode === 'prep') {
+    s.timer -= dt;
+    if (s.timer <= 0) {
+      s.mode = 'coming';
+      d.group.position.copy(DONKEY_FAR);
+      d.group.visible = true;
+      d.cartBoxes.forEach((b) => (b.visible = true));
+    }
+  } else if (s.mode === 'coming') {
+    if (moveTo(DONKEY_DOCK)) {
+      s.mode = 'unload';
+      s.queue = [];
+      for (const [id, k] of Object.entries(s.order.items)) for (let i = 0; i < k; i++) s.queue.push(id);
+      s.timer = 0.4;
+      d.bray = 1.2;
+      AudioSys.bray();
+      toast('🐴 Eşek arabası geldi! Koliler depoya indiriliyor.');
+    }
+  } else if (s.mode === 'unload') {
+    s.timer -= dt;
+    if (s.timer <= 0) {
+      s.timer = 0.22;
+      const id = s.queue.shift();
+      if (id) {
+        const p = P[id];
+        const m = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.8), p.pallet.boxMat);
+        m.position.set(DONKEY_DOCK.x + 2.3, 1.4, DONKEY_DOCK.z);
+        m.castShadow = true;
+        scene.add(m);
+        tweens.push({ mesh: m, age: 0, dur: 0.7, from: m.position.clone(), to: new THREE.Vector3(p.pallet.x, 1.0, p.pallet.z), vanish: true, done: () => { p.depo += KOLI; refreshPallet(p); } });
+        const nb = d.cartBoxes.filter((b) => b.visible);
+        if (nb.length && s.queue.length < nb.length) nb[nb.length - 1].visible = false;
+      } else {
+        d.cartBoxes.forEach((b) => (b.visible = false));
+        s.mode = 'rest';
+        s.timer = 5;
+        toast('📦 Teslimat tamam! Depodan koliyi alıp rafları doldur. (Eşeği sevmeyi unutma 🥕)');
+      }
+    }
+  } else if (s.mode === 'rest') {
+    s.timer -= dt;
+    if (s.timer <= 0) s.mode = 'leaving';
+  } else if (s.mode === 'leaving') {
+    if (moveTo(DONKEY_FAR)) { s.mode = 'away'; s.order = null; }
+  }
+  // animasyon
+  if (moving) d.phase += dt * 9;
+  const amp = moving ? 0.55 : 0;
+  d.legs.forEach((l, i) => (l.rotation.x = Math.sin(d.phase + (i === 0 || i === 3 ? 0 : Math.PI)) * amp));
+  d.body.position.y = moving ? Math.abs(Math.sin(d.phase)) * 0.05 : 0;
+  d.tail.rotation.z = Math.sin(d.t * 2.6) * 0.35;
+  if (d.bray > 0) { d.bray -= dt; d.head.rotation.x = -0.5 + Math.sin(d.t * 10) * 0.12; }
+  else d.head.rotation.x = Math.sin(d.t * 0.8) * 0.06 + (moving ? 0 : 0.15);
+}
 
-function nearestListedProduct() {
+function nearDonkey() {
+  const s = donkeyState;
+  if (!donkey.group.visible || (s.mode !== 'unload' && s.mode !== 'rest')) return false;
   const p = player.group.position;
-  let best = null, bestD = 2.7;
-  for (const it of shoppingList) {
-    if (it.done) continue;
-    const wp = new THREE.Vector3(); it.mesh.getWorldPosition(wp);
-    const d = Math.hypot(wp.x - p.x, wp.z - p.z);
-    if (d < bestD) { bestD = d; best = it; }
+  return Math.hypot(p.x - donkey.group.position.x, p.z - donkey.group.position.z) < 7;
+}
+
+// ------------------------------------------------------------
+// ETKİLEŞİM — koli al / rafa diz / depoya koy / kasa / eşek
+// ------------------------------------------------------------
+function nearestPallet(r = 1.9) {
+  const p = player.group.position;
+  let best = null, bd = r;
+  for (const x of pallets) {
+    const d = Math.hypot(x.pallet.x - p.x, x.pallet.z - p.z);
+    if (d < bd) { bd = d; best = x; }
   }
   return best;
 }
+function nearestShelfSpot() {
+  const p = player.group.position;
+  let best = null, bd = 99;
+  for (const x of Object.values(P)) {
+    const dx = Math.abs(x.front.x - p.x);
+    if (dx < 4.9 && Math.abs(x.front.z - p.z) < 1.3 && dx < bd) { bd = dx; best = x; }
+  }
+  return best;
+}
+function atRegister() {
+  const p = player.group.position;
+  return Math.hypot(p.x - CASHIER_SPOT.x, p.z - CASHIER_SPOT.z) < 1.8;
+}
 
-function tryInteract() {
-  if (won) return;
-  if (tryGrabCart()) return;
-  if (allDone()) {
-    const p = player.group.position;
-    if (Math.hypot(p.x - CHECKOUT.x, p.z - CHECKOUT.z) < 4.5) winGame();
-    else toast('Get to the checkout counter near the entrance!');
+function contextActions() {
+  // [ana eylem etiketi, yan eylem etiketi]
+  if (game.register) return [payCu ? (scanIdx < payCu.basket.length ? `📟 Okut (${scanIdx}/${payCu.basket.length})` : `💵 Ödemeyi Al ${fmtTL(scanTotal)}`) : '⏳ Müşteri bekleniyor', '🚪 Kasadan Çık'];
+  if (nearDonkey()) return ['🥕 Eşeği Sev', null];
+  if (atRegister() && !game.upgrades.kasiyer) return ['🧾 Kasaya Geç', null];
+  const pal = nearestPallet();
+  if (carrying) {
+    const sh = nearestShelfSpot();
+    if (sh && sh.id === carrying.id) return [`📥 Rafa Diz (${sh.shelf}/${SHELF_CAP})`, '📦 Koliyi Bırak'];
+    if (pal && pal.id === carrying.id) return ['↩️ Depoya Koy', null];
+    if (sh) return [`❌ Bu raf ${sh.name}`, '📦 Koliyi Bırak'];
+    return [null, '📦 Koliyi Bırak'];
+  }
+  if (pal) return [pal.depo > 0 ? `📦 ${pal.name} kolisi al (${pal.depo})` : `${pal.name}: depoda yok`, null];
+  const sh = nearestShelfSpot();
+  if (sh) return [`ℹ️ ${sh.name}: raf ${sh.shelf}/${SHELF_CAP}, ${fmtTL(sh.price)}`, null];
+  return [null, null];
+}
+
+function primaryAction() {
+  AudioSys.init();
+  if (!game.started || isPanelOpen()) return;
+  if (game.register) { scanNext(); return; }
+  if (nearDonkey()) {
+    donkey.bray = 1.2;
+    AudioSys.bray();
+    toast(rnd(['🐴 "Aiii-üüü!" Eşek çok mutlu! 💕', '🐴 Eşek havuç bekliyor gibi bakıyor 🥕', '🐴 Eşek kulaklarını oynattı, seni seviyor!']));
     return;
   }
-  const it = nearestListedProduct();
-  if (!it) { toast('Nothing to grab here — follow the beacon!'); AudioSys.nope(); return; }
-  if (it.dept === 'Jewellery' && !it.hagDone) {
-    it.hag = (it.hag || 0) + 1;
-    if (it.hag <= 3) {
-      it.price = Math.round(it.price * (1 - (0.08 + Math.random() * 0.07)) / 100) * 100;
-      renderList();
-      AudioSys.coin();
-      toast(`Jeweller: "For you, ₹${it.price.toLocaleString('en-IN')}!" — ${4 - it.hag} haggle${4 - it.hag === 1 ? '' : 's'} left`);
+  if (atRegister() && !game.upgrades.kasiyer) { enterRegister(); return; }
+  const pal = nearestPallet();
+  if (carrying) {
+    const sh = nearestShelfSpot();
+    if (sh && sh.id === carrying.id) {
+      if (!game.unlocked[sh.dept]) { toast('Bu reyon kilitli.'); return; }
+      const space = SHELF_CAP - sh.shelf;
+      if (space <= 0) { toast('Raf zaten dolu!'); AudioSys.nope(); return; }
+      const n = Math.min(space, carrying.units);
+      sh.shelf += n;
+      carrying.units -= n;
+      refreshShelf(sh);
+      AudioSys.place();
+      toast(`📥 ${n} ${sh.name} rafa dizildi.${carrying.units ? ` Kolide ${carrying.units} kaldı.` : ''}`);
+      if (carrying.units <= 0) setCarry(null);
       return;
     }
-    it.hagDone = true;
-    toast(`Deal! ${it.name} for ₹${it.price.toLocaleString('en-IN')} 🤝`);
+    if (pal && pal.id === carrying.id) {
+      pal.depo += carrying.units;
+      refreshPallet(pal);
+      setCarry(null);
+      AudioSys.place();
+      return;
+    }
+    if (sh) { toast(`Bu ${sh.name} rafı. Elindeki koli: ${P[carrying.id].name}.`); AudioSys.nope(); }
+    return;
   }
-  it.done = true;
-  coinCount += 10;
-  const wp = new THREE.Vector3(); it.mesh.getWorldPosition(wp);
-  tweens.push({ mesh: it.mesh, age: 0, dur: 0.6, fromY: wp.y });
-  if (hasCart) {
-    const mini = it.mesh.clone();
-    mini.scale.setScalar(0.55);
-    mini.position.set((cartItems.length % 3) * 0.28 - 0.28, 0.95 + Math.floor(cartItems.length / 3) * 0.22, (Math.random() - 0.5) * 0.3);
-    cart.add(mini);
-    cartItems.push(mini);
-    cartHudEl.textContent = `🛒 Cart: ${cartItems.length} item${cartItems.length > 1 ? 's' : ''}`;
+  if (pal) {
+    if (pal.depo <= 0) { toast(`${pal.name} depoda kalmadı. Sipariş ver! (📦 Sipariş)`); AudioSys.nope(); return; }
+    const n = Math.min(KOLI, pal.depo);
+    pal.depo -= n;
+    refreshPallet(pal);
+    setCarry({ id: pal.id, units: n });
+    AudioSys.pickup();
+    toast(`📦 ${pal.name} kolisi alındı (${n} adet). Şimdi ${DEPTS[pal.dept].name} reyonuna götür.`);
   }
-  renderList();
-  AudioSys.pickup();
-  if (allDone()) toast('All items found! Head to CHECKOUT 🧾');
-  else toast(`Got ${it.name}! +10`);
 }
 
-function allDone() { return shoppingList.every(i => i.done); }
+function secondaryAction() {
+  if (!game.started) return;
+  if (game.register) { leaveRegister(); return; }
+  if (carrying) {
+    // en yakın paletine geri koymak yerine yere bırakmak: depoya iade sayılır
+    const p = P[carrying.id];
+    p.depo += carrying.units;
+    refreshPallet(p);
+    toast(`📦 Koli depoya geri gönderildi (${p.name}).`);
+    setCarry(null);
+  }
+}
 
-function winGame() {
-  won = true; timerOn = false;
-  AudioSys.checkout();
-  // receipt with prices
-  const rows = shoppingList.map(it =>
-    `<div class="row"><span>${it.name} <small>(${it.dept})</small></span><span>₹${it.price}</span></div>`).join('');
-  const total = shoppingList.reduce((s, i) => s + i.price, 0);
-  const savings = shoppingList.reduce((s, i) => s + Math.max(0, (products.find(p => p.userData.name === i.name)?.userData.mrp || i.price) - i.price), 0);
-  const m = Math.floor(elapsed / 60), s = String(Math.floor(elapsed % 60)).padStart(2, '0');
-  document.getElementById('receipt').innerHTML =
-    `<h2>✨ SHOPSIM MARKET ✨</h2>${rows}
-     <div class="row total"><span>TOTAL</span><span>₹${total}</span></div>
-     <div class="row"><span>YOU SAVED</span><span>₹${savings}</span></div>
-     <div class="row total"><span>TIME</span><span>${m}:${s}</span></div>
-     <div class="row total"><span>COINS EARNED</span><span>🪙 ${coinCount}</span></div>
-     <div class="row total"><span>THANK YOU</span><span>Come again!</span></div>`;
-  document.getElementById('winOverlay').style.display = 'flex';
+function setCarry(c) {
+  carrying = c;
+  carryBox.visible = !!c;
+  if (c) carryBox.material = P[c.id].pallet.boxMat;
+  player.parts.lArm.rotation.x = c ? -1.2 : 0;
+  player.parts.rArm.rotation.x = c ? -1.2 : 0;
+}
+
+function enterRegister() {
+  if (carrying) { toast('Önce elindeki koliyi bırak (rafa diz ya da depoya koy).'); AudioSys.nope(); return; }
+  game.register = true;
+  player.group.visible = false;
+  player.group.position.copy(CASHIER_SPOT);
+  player.group.rotation.y = -Math.PI / 2;
+  toast('🧾 Kasadasın. Okut butonuyla (E) ürünleri tek tek okut, sonra ödemeyi al.');
+}
+function leaveRegister() {
+  game.register = false;
+  player.group.visible = camMode !== 4;
+  player.group.position.set(CASHIER_SPOT.x + 1.2, 0, CASHIER_SPOT.z);
 }
 
 // ------------------------------------------------------------
-// MINIMAP
+// MİNİ HARİTA (ShopSim 3D'den uyarlandı)
 // ------------------------------------------------------------
 const mmCanvas = document.getElementById('minimap');
 const mmCtx = mmCanvas.getContext('2d');
 const mmBase = document.createElement('canvas');
 mmBase.width = mmCanvas.width; mmBase.height = mmCanvas.height;
-
-const MM_W = 102, MM_D = 54;   // world extents shown on minimap (store + boutique)
-const MM_X0 = -STORE_W / 2, MM_Z0 = -STORE_D / 2;
-function mmXY(x, z) {
-  return [(x - MM_X0) / MM_W * mmBase.width, (z - MM_Z0) / MM_D * mmBase.height];
-}
-{
+const MM_W = 104, MM_D = 56;
+const MM_X0 = -STORE_W / 2 - 1, MM_Z0 = -STORE_D / 2 - 2;
+function mmXY(x, z) { return [(x - MM_X0) / MM_W * mmBase.width, (z - MM_Z0) / MM_D * mmBase.height]; }
+function drawMinimapBase() {
   const g = mmBase.getContext('2d');
   g.fillStyle = '#1b2030'; g.fillRect(0, 0, mmBase.width, mmBase.height);
-  for (const z of zones) {
-    const dep = DEPTS[z.d];
-    const [x, y] = mmXY(z.x - z.w / 2, z.z - z.dpt / 2);
-    g.fillStyle = dep.css + '33';
-    g.fillRect(x, y, z.w / STORE_W * mmBase.width, z.dpt / STORE_D * mmBase.height);
-  }
-  g.fillStyle = '#8b95a8';
   for (const c of colliders) {
-    if (!c.shelf) continue;
+    g.fillStyle = c.kind === 'shelf' ? '#8b95a8' : c.kind === 'pallet' ? '#a1887f' : '#4a5468';
     const [x, y] = mmXY(c.minX, c.minZ);
-    g.fillRect(x, y, (c.maxX - c.minX) / STORE_W * mmBase.width, (c.maxZ - c.minZ) / STORE_D * mmBase.height);
+    g.fillRect(x, y, Math.max(1, (c.maxX - c.minX) / MM_W * mmBase.width), Math.max(1, (c.maxZ - c.minZ) / MM_D * mmBase.height));
   }
-  const [cx, cy] = mmXY(CHECKOUT.x, CHECKOUT.z);
-  g.fillStyle = '#4caf50'; g.fillRect(cx - 8, cy - 3, 16, 6);
-  // boutique floor tint already comes from the zones loop
-  g.strokeStyle = '#5a6478'; g.lineWidth = 2;
-  const [wx, wy] = mmXY(-STORE_W / 2, -STORE_D / 2);
-  g.strokeRect(wx, wy, STORE_W / MM_W * mmBase.width, STORE_D / MM_D * mmBase.height);
-  // boutique outline
-  g.strokeStyle = '#c9a227';
-  const [jx, jy] = mmXY(40, -10);
-  g.strokeRect(jx, jy, 24 / MM_W * mmBase.width, 24 / MM_D * mmBase.height);
+  const [cx, cy] = mmXY(REG.x, REG.z);
+  g.fillStyle = '#4caf50'; g.fillRect(cx - 3, cy - 8, 6, 16);
 }
-
 function drawMinimap() {
   const g = mmCtx;
   g.clearRect(0, 0, mmCanvas.width, mmCanvas.height);
   g.drawImage(mmBase, 0, 0);
-  const p = player.group.position;
-  const tgt = currentTargetPos();
+  for (const cu of customers) {
+    const [x, y] = mmXY(cu.ch.group.position.x, cu.ch.group.position.z);
+    g.fillStyle = cu.bubble.userData.mood === 'angry' ? '#ff5252' : '#4fc3f7';
+    g.fillRect(x - 1.5, y - 1.5, 3, 3);
+  }
+  if (donkey.group.visible) {
+    const [x, y] = mmXY(Math.min(donkey.group.position.x, 66), donkey.group.position.z);
+    g.font = '12px sans-serif'; g.fillText('🐴', x - 6, y + 4);
+  }
+  const tgt = currentTarget();
   if (tgt) {
     const [tx, ty] = mmXY(tgt.x, tgt.z);
     g.fillStyle = '#ffd54f';
-    g.beginPath(); g.arc(tx, ty, 4 + Math.sin(now * 5) * 1.2, 0, Math.PI * 2); g.fill();
-    const [px, py] = mmXY(p.x, p.z);
-    g.strokeStyle = 'rgba(255,213,79,.5)'; g.setLineDash([3, 3]);
-    g.beginPath(); g.moveTo(px, py); g.lineTo(tx, ty); g.stroke(); g.setLineDash([]);
+    g.beginPath(); g.arc(tx, ty, 3.5 + Math.sin(now * 5), 0, Math.PI * 2); g.fill();
   }
+  const p = player.group.position;
   const [px, py] = mmXY(p.x, p.z);
   g.save(); g.translate(px, py); g.rotate(-player.group.rotation.y + Math.PI);
   g.fillStyle = '#7CFC98';
@@ -1098,16 +1452,24 @@ function drawMinimap() {
   g.restore();
 }
 
-function currentTargetPos() {
-  if (allDone()) return CHECKOUT;
-  const next = shoppingList.find(i => !i.done);
-  if (!next) return null;
-  const wp = new THREE.Vector3(); next.mesh.getWorldPosition(wp);
-  return wp;
+/** Yol gösterici hedef: elde koli → o ürünün rafı; kasada müşteri → kasa; boş raf + depoda stok → palet. */
+function currentTarget() {
+  if (game.register) return null;
+  if (carrying) {
+    return P[carrying.id].front;
+  }
+  if (payCu && !game.upgrades.kasiyer) return CASHIER_SPOT;
+  let best = null;
+  for (const p of Object.values(P)) {
+    if (!game.unlocked[p.dept] || p.depo <= 0) continue;
+    if (p.shelf <= 6 && (!best || p.shelf < best.shelf)) best = p;
+  }
+  if (best) return new THREE.Vector3(best.pallet.x, 0, best.pallet.z);
+  return null;
 }
 
 // ------------------------------------------------------------
-// MOVEMENT
+// HAREKET (ShopSim 3D + joystick)
 // ------------------------------------------------------------
 function blocked(x, z) {
   for (const c of colliders) {
@@ -1119,6 +1481,7 @@ function blocked(x, z) {
 const fwdV = new THREE.Vector3(), rightV = new THREE.Vector3(), moveV = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
 
 function updatePlayer(dt) {
+  if (game.register) { animateCharacter(player, dt, false, 0); return; }
   camera.getWorldDirection(fwdV); fwdV.y = 0;
   if (fwdV.lengthSq() < 1e-6) fwdV.set(0, 0, -1);
   fwdV.normalize();
@@ -1129,18 +1492,20 @@ function updatePlayer(dt) {
   if (keys.KeyS || keys.ArrowDown) moveV.sub(fwdV);
   if (keys.KeyD || keys.ArrowRight) moveV.add(rightV);
   if (keys.KeyA || keys.ArrowLeft) moveV.sub(rightV);
+  moveV.addScaledVector(fwdV, joy.y).addScaledVector(rightV, joy.x);
 
-  const moving = moveV.lengthSq() > 0;
+  const mag = Math.min(1, moveV.length());
+  const moving = mag > 0.05;
   if (moving) {
     moveV.normalize();
-    const speed = WALK * (keys.ShiftLeft || keys.ShiftRight ? SPRINT : 1);
+    const speed = WALK * mag * (keys.ShiftLeft || keys.ShiftRight ? SPRINT : 1) * (carrying ? 0.85 : 1);
     const p = player.group.position;
     const nx = p.x + moveV.x * speed * dt;
     const nz = p.z + moveV.z * speed * dt;
     if (!blocked(nx, p.z)) p.x = nx;
     if (!blocked(p.x, nz)) p.z = nz;
-    p.x = Math.min(62.5, Math.max(-STORE_W / 2 + 1, p.x));
-    p.z = Math.min(STORE_D / 2 - 1, Math.max(-STORE_D / 2 + 1, p.z));
+    p.x = Math.min(63.2, Math.max(-STORE_W / 2 + 1, p.x));
+    p.z = Math.min(STORE_D / 2 + 6, Math.max(-STORE_D / 2 + 1, p.z));
     const targetRot = Math.atan2(moveV.x, moveV.z);
     let diff = targetRot - player.group.rotation.y;
     while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1148,61 +1513,112 @@ function updatePlayer(dt) {
     player.group.rotation.y += diff * Math.min(1, dt * 12);
   }
   animateCharacter(player, dt, moving, WALK);
+  if (carrying) { player.parts.lArm.rotation.x = -1.2; player.parts.rArm.rotation.x = -1.2; }
 }
 
 // ------------------------------------------------------------
-// NPCs — browse, dwell, reach for shelves
+// HUD
 // ------------------------------------------------------------
-function updateNPCs(dt, t) {
-  for (const n of npcs) {
-    if (n.mode === 'idle') {
-      n.ch.parts.body.rotation.z = Math.sin(t * 1.5 + n.ch.phase) * 0.02;
-      animateCharacter(n.ch, dt, false, 0);
-      continue;
+const el = (id) => document.getElementById(id);
+function clockStr() {
+  const m = Math.floor(game.minutes);
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+function updateHud() {
+  el('moneyVal').textContent = fmtTL(game.money);
+  el('popVal').textContent = `⭐ ${Math.round(game.pop)}`;
+  el('clockVal').textContent = `🕗 ${clockStr()} · Gün ${game.day}`;
+  el('queueVal').textContent = `👥 ${queueList().length}`;
+  el('carryVal').textContent = carrying ? `📦 ${P[carrying.id].name} kolisi: ${carrying.units} adet` : '';
+  el('carryVal').style.display = carrying ? 'block' : 'none';
+  el('donkeyVal').textContent = donkeyState.mode === 'away' && !deliveries.length ? '' : donkeyState.mode === 'prep' ? '🐴 Eşek yükleniyor...' : donkeyState.mode === 'coming' ? '🐴 Eşek yolda!' : donkeyState.mode === 'unload' ? '🐴 Koliler iniyor' : donkeyState.mode === 'rest' ? '🐴 Eşek dinleniyor' : deliveries.length ? `🐴 ${deliveries.length} sipariş sırada` : '';
+  const low = Object.values(P).filter((p) => game.unlocked[p.dept] && p.shelf <= 4);
+  el('lowVal').textContent = low.length ? `⚠️ Azalan raf: ${low.slice(0, 3).map((p) => p.name).join(', ')}${low.length > 3 ? '…' : ''}` : '';
+}
+
+const promptEl = el('prompt');
+let lastAct = '';
+function updateActions() {
+  const [a, b] = contextActions();
+  const act = el('btnAct'), alt = el('btnAlt');
+  if (a !== lastAct) {
+    lastAct = a;
+    act.textContent = a || 'E';
+    act.classList.toggle('dim', !a);
+  }
+  alt.style.display = b ? 'block' : 'none';
+  if (b) alt.textContent = b;
+  promptEl.style.display = a && !matchMedia('(pointer: coarse)').matches ? 'block' : 'none';
+  if (a) promptEl.textContent = (matchMedia('(pointer: coarse)').matches ? '' : 'E: ') + a;
+}
+
+// ------------------------------------------------------------
+// GÜN DÖNGÜSÜ
+// ------------------------------------------------------------
+function updateDay(dt) {
+  if (game.dayOver) return;
+  game.minutes += dt * MIN_PER_SEC;
+  const h = game.minutes / 60;
+  if (h < CLOSE_H) {
+    game.spawnT -= dt;
+    if (game.spawnT <= 0) {
+      const interval = 15 - game.pop * 0.1;
+      game.spawnT = interval * (0.6 + Math.random() * 0.8);
+      if (customers.length < 14) spawnCustomer();
     }
-    if (n.mode === 'dwell') {
-      n.dwell -= dt;
-      // reach animation toward shelf
-      n.ch.parts.rArm.rotation.x = -1.2 + Math.sin(t * 6) * 0.15;
-      animateCharacter(n.ch, dt, false, 0);
-      if (n.dwell <= 0) {
-        n.ch.parts.rArm.rotation.x = 0;
-        n.basket++;
-        n.mode = 'walk';
-      }
-      continue;
-    }
-    const wp = n.wps[n.wi];
-    const g = n.ch.group;
-    const dx = wp[0] - g.position.x, dz = wp[1] - g.position.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < 0.4) {
-      // arrived: browse 70% of the time
-      if (Math.random() < 0.7) {
-        n.mode = 'dwell';
-        n.dwell = 1.5 + Math.random() * 2.5;
-      } else {
-        n.wi = (n.wi + 1) % n.wps.length;
-      }
-    } else {
-      const ux = dx / dist, uz = dz / dist;
-      g.position.x += ux * n.speed * dt;
-      g.position.z += uz * n.speed * dt;
-      const tr = Math.atan2(ux, uz);
-      let diff = tr - g.rotation.y;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      g.rotation.y += diff * Math.min(1, dt * 8);
-      animateCharacter(n.ch, dt, true, n.speed);
-    }
+  } else if (!customers.length) {
+    endDay();
+  } else if (Math.floor(game.minutes) % 30 === 0) {
+    el('lowVal').textContent = '🔒 Market kapandı, son müşteriler çıkıyor...';
   }
 }
 
+function endDay() {
+  game.dayOver = true;
+  if (game.register) leaveRegister();
+  const s = game.dayStats;
+  const wage = game.upgrades.kasiyer ? WAGE : 0;
+  const cost = s.orders + s.licenses + RENT + wage;
+  game.money -= RENT + wage;
+  const net = s.revenue - cost;
+  const dp = Math.round(game.pop - s.pop0);
+  el('dayReport').innerHTML = `<h2>📅 Gün ${game.day} bitti</h2>
+    <div class="row"><span>💰 Satış (ciro)</span><b>${fmtTL(s.revenue)}</b></div>
+    <div class="row"><span>📦 Siparişler</span><b class="neg">-${fmtTL(s.orders)}</b></div>
+    ${s.licenses ? `<div class="row"><span>🔓 Lisans & geliştirme</span><b class="neg">-${fmtTL(s.licenses)}</b></div>` : ''}
+    <div class="row"><span>🏠 Kira + elektrik</span><b class="neg">-${fmtTL(RENT)}</b></div>
+    ${wage ? `<div class="row"><span>🧑‍💼 Kasiyer maaşı</span><b class="neg">-${fmtTL(wage)}</b></div>` : ''}
+    <div class="row total"><span>Net</span><b class="${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${fmtTL(net)}</b></div>
+    <div class="row"><span>🛒 Hizmet edilen müşteri</span><b>${s.served}</b></div>
+    <div class="row"><span>❓ Rafta bulunamayan ürün</span><b>${s.missing}</b></div>
+    <div class="row"><span>💸 Pahalı bulunan ürün</span><b>${s.pricey}</b></div>
+    <div class="row"><span>😡 Kaçan müşteri</span><b>${s.lost}</b></div>
+    <div class="row total"><span>⭐ Popülerlik</span><b>${Math.round(game.pop)} (${dp >= 0 ? '+' : ''}${dp})</b></div>
+    <div class="row total"><span>🏦 Kasa</span><b>${fmtTL(game.money)}</b></div>
+    ${game.money < 0 ? '<p class="warn">Kasa ekside! Fiyatları ve siparişleri gözden geçir.</p>' : ''}`;
+  el('dayOverlay').style.display = 'flex';
+  AudioSys.cash();
+  updateHud();
+}
+el('nextDay').addEventListener('click', () => {
+  el('dayOverlay').style.display = 'none';
+  game.day++;
+  game.minutes = OPEN_H * 60;
+  game.dayOver = false;
+  game.spawnT = 3;
+  newDayStats();
+  saveGame();
+  toast(`☀️ Gün ${game.day} başladı! Rafları kontrol et, eksikleri sipariş et.`);
+});
+
 // ------------------------------------------------------------
-// MAIN LOOP
+// ANA DÖNGÜ
 // ------------------------------------------------------------
-const coinsHudEl = document.getElementById('coinsHud');
-const timeHudEl = document.getElementById('timeHud');
+const beacon = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.45, 0.45, 11, 16, 1, true),
+  new THREE.MeshBasicMaterial({ color: 0xffd54f, transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false })
+);
+scene.add(beacon);
 const clock = new THREE.Clock();
 let now = 0;
 
@@ -1210,89 +1626,101 @@ function tick() {
   requestAnimationFrame(tick);
   const dt = Math.min(clock.getDelta(), 0.05);
   now += dt;
-  if (timerOn && !won) {
-    elapsed += dt;
-    const m = Math.floor(elapsed / 60), s = String(Math.floor(elapsed % 60)).padStart(2, '0');
-    timeHudEl.textContent = `⏱ ${m}:${s}`;
-  }
+  const paused = !game.started || isPanelOpen() || game.dayOver;
 
-  if (started && !won) {
-    if (!inspecting) updatePlayer(dt);
-    updateCart(dt);
-    updateNPCs(dt, now);
-
-    const p = player.group.position;
-    for (const c of coins) {
-      if (c.got) continue;
-      c.mesh.rotation.z += dt * 4;
-      c.mesh.position.y = 0.8 + Math.sin(now * 3 + c.mesh.position.x) * 0.12;
-      if (Math.hypot(c.mesh.position.x - p.x, c.mesh.position.z - p.z) < 1.1) {
-        c.got = true; coinCount += 1;
-        tweens.push({ mesh: c.mesh, age: 0, dur: 0.4, fromY: c.mesh.position.y });
-        coinsHudEl.textContent = `🪙 ${coinCount}`;
-        AudioSys.coin();
-      }
+  if (!paused) {
+    updatePlayer(dt);
+    updateCustomers(dt);
+    updateDay(dt);
+    // kasiyer otomatik okutur
+    if (payCu && game.upgrades.kasiyer) {
+      autoScanT -= dt;
+      if (autoScanT <= 0) { autoScanT = 0.75; scanNext(); }
+      cashierNpc.parts.rArm.rotation.x = -1 + Math.sin(now * 8) * 0.3;
     }
-
-    const tgt = currentTargetPos();
-    if (tgt) {
-      beacon.visible = ring.visible = true;
-      beacon.position.set(tgt.x, 5.5, tgt.z);
-      const pulse = 1 + Math.sin(now * 4) * 0.18;
-      beacon.scale.set(pulse, 1, pulse);
-      ring.position.set(tgt.x, 0.06, tgt.z);
-      ring.scale.setScalar(pulse);
-    } else beacon.visible = ring.visible = false;
-
-    // context prompt
-    let prompt = null;
-    const nearP = nearestProductAny(2.7);
-    const listed = nearestListedProduct();
-    const fmt = n => '₹' + Math.round(n).toLocaleString('en-IN');
-    if (listed && !allDone() && listed.dept === 'Jewellery') prompt = `E: haggle 💬 (${4 - (listed.hag || 0)} left) · F: inspect ${listed.name} — ${fmt(listed.price)}`;
-    else if (nearP && !allDone()) prompt = `E: pick up · F: inspect ${nearP.userData.name} (${fmt(nearP.userData.price)})`;
-    else if (nearP && allDone()) prompt = `F: inspect ${nearP.userData.name} (${fmt(nearP.userData.price)})`;
-    if (!hasCart && Math.hypot(p.x - 3.2, p.z - 23.5) < 2.2) prompt = 'Press E to grab the shopping cart 🛒';
-    if (allDone() && Math.hypot(p.x - CHECKOUT.x, p.z - CHECKOUT.z) < 4.5) prompt = 'Press E to check out 🧾';
-    promptEl.style.display = prompt ? 'block' : 'none';
-    if (prompt) promptEl.textContent = prompt;
-
-    // compass
-    if (tgt && !inspecting) {
-      camera.getWorldDirection(fwdV); fwdV.y = 0; fwdV.normalize();
-      rightV.crossVectors(fwdV, UP).normalize();
-      const vx = tgt.x - p.x, vz = tgt.z - p.z;
-      const a = Math.atan2(vx * rightV.x + vz * rightV.z, vx * fwdV.x + vz * fwdV.z) * 180 / Math.PI;
-      document.getElementById('compass').style.transform = `translateX(-50%) rotate(${a}deg)`;
-    }
+    game.saveT += dt;
+    if (game.saveT > 20) { game.saveT = 0; saveGame(); }
   }
+  if (game.started) updateDonkey(paused ? 0 : dt);
 
-  // tweens
+  // tweenler
   for (let i = tweens.length - 1; i >= 0; i--) {
     const tw = tweens[i];
     tw.age += dt;
-    const k = tw.age / tw.dur;
-    tw.mesh.position.y = tw.fromY + k * 2.4;
-    tw.mesh.scale.setScalar(Math.max(0.001, 1 - k));
-    if (k >= 1) { tw.mesh.visible = false; tweens.splice(i, 1); }
+    const k = Math.min(1, tw.age / tw.dur);
+    if (tw.from) {
+      tw.mesh.position.lerpVectors(tw.from, tw.to, k);
+      tw.mesh.position.y += Math.sin(k * Math.PI) * 0.8;
+    }
+    if (k >= 1) {
+      if (tw.vanish) scene.remove(tw.mesh);
+      if (tw.done) tw.done();
+      tweens.splice(i, 1);
+    }
+  }
+
+  if (game.started) {
+    const tgt = currentTarget();
+    beacon.visible = !!tgt && !game.register;
+    if (tgt) {
+      beacon.position.set(tgt.x, 5.5, tgt.z);
+      const pulse = 1 + Math.sin(now * 4) * 0.18;
+      beacon.scale.set(pulse, 1, pulse);
+      if (!game.register) {
+        camera.getWorldDirection(fwdV); fwdV.y = 0; fwdV.normalize();
+        rightV.crossVectors(fwdV, UP).normalize();
+        const p = player.group.position;
+        const vx = tgt.x - p.x, vz = tgt.z - p.z;
+        const a = Math.atan2(vx * rightV.x + vz * rightV.z, vx * fwdV.x + vz * fwdV.z) * 180 / Math.PI;
+        el('compass').style.transform = `translateX(-50%) rotate(${a}deg)`;
+      }
+    }
+    el('compass').style.display = tgt && !game.register ? 'block' : 'none';
+    if (Math.floor(now * 4) !== Math.floor((now - dt) * 4)) updateHud();
+    updateActions();
+    if (minimapVisible) drawMinimap();
+  } else {
+    beacon.visible = false;
   }
 
   updateCamera();
-  updateInspect(dt);
-  // boutique life: rotating necklace + drifting sparkle dust
-  if (necklace && !inspecting) necklace.rotation.y += dt * 0.6;
-  if (sparkleMat) sparkleMat.opacity = 0.55 + Math.sin(now * 2) * 0.25;
-  if (minimapVisible && started) drawMinimap();
-  renderer.render(scene, (inspecting || inspectAnim.phase !== 'none') ? inspectCam : camera);
+  renderer.render(scene, game.register ? regCam : camera);
 }
-tick();
 
 // ------------------------------------------------------------
-// START
+// BAŞLAT
 // ------------------------------------------------------------
-document.getElementById('startBtn').addEventListener('click', () => {
-  document.getElementById('startOverlay').style.display = 'none';
-  started = true;
-  cart.visible = true;
-  toast('Grab the cart, then follow the yellow beacon!');
-});
+drawMinimapBase();
+function start(fresh) {
+  AudioSys.init();
+  if (fresh || !loadGame()) newGameState();
+  newDayStats();
+  applyWorld();
+  el('startOverlay').style.display = 'none';
+  el('hudRoot').style.display = 'block';
+  game.started = true;
+  setCamera(camMode);
+  toast(fresh ? '🐴 EsekMarketi\'ne hoş geldin! Raflar yarı dolu. 📦 Sipariş ver, eşek getirsin, rafları doldur, kasada müşterileri karşıla!' : `Tekrar hoş geldin! Gün ${game.day}, ${clockStr()}`, 5000);
+}
+el('startBtn').addEventListener('click', () => start(true));
+el('continueBtn').addEventListener('click', () => start(false));
+try {
+  const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+  if (s && s.v === 1) {
+    el('continueBtn').style.display = 'inline-block';
+    el('continueBtn').textContent = `▶ Devam Et (Gün ${s.day} · ${fmtTL(s.money)})`;
+    el('startBtn').textContent = '🆕 Yeni Oyun';
+  }
+} catch (e) { /* yok say */ }
+document.addEventListener('visibilitychange', () => { if (document.hidden && game.started) saveGame(); });
+// Android uygulaması (APK) geri tuşu
+window.__androidBack = () => {
+  if (isPanelOpen()) { closeOrderPanel(); return true; }
+  if (game.register) { leaveRegister(); return true; }
+  if (game.started) { saveGame(); return false; }
+  return false;
+};
+window.__androidPause = () => { if (game.started) saveGame(); };
+if (new URLSearchParams(location.search).has('debug')) window.__dbg = { game, P, customers, donkeyState, deliveries, player, spawnCustomer, setCarry, primaryAction, enterRegister, scanNext };
+setCamera(0);
+tick();

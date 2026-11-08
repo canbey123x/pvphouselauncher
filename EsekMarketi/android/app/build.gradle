@@ -1,0 +1,51 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Web oyununun kök klasörü (EsekMarketi/) — APK içine assets/www olarak kopyalanır.
+// Three.js zaten three.min.js olarak gömülü olduğu için oyun internetsiz çalışır.
+def webRoot = file('../..')
+def webOut = layout.buildDirectory.dir('generated/webassets')
+
+android {
+    namespace 'com.esekmarketi.game'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.esekmarketi.game'
+        minSdk 26
+        targetSdk 34
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int)
+        versionName '1.0.' + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs += webOut.get().asFile
+        }
+    }
+}
+
+tasks.register('copyWebAssets', Copy) {
+    into webOut.get().dir('www')
+    from(webRoot) {
+        include 'index.html', 'three.min.js', 'js/**', 'manifest.webmanifest', 'icons/**'
+    }
+}
+preBuild.dependsOn 'copyWebAssets'
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.11.0'
+}

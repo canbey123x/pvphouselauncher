@@ -19,3 +19,14 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+----------------------------------------------------------------------------
+EsekMarketi modifications
+
+EsekMarketi is a derivative of ShopSim 3D (https://github.com/Ishu-dev/shop-sim-3d,
+Copyright (c) 2026 Ishu Chaudhary), used under the MIT License above. The
+changes (market-management gameplay, Turkish UI, mobile controls, donkey
+delivery, Android wrapper) are released under the same MIT License terms.
+
+three.min.js is Three.js r128, Copyright 2010-2021 Three.js Authors, MIT License
+(the licence header travels inside the file).
