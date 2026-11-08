@@ -35,7 +35,7 @@ export async function initDb() {
       db = await createSupabaseDb(cfg.url, cfg.key);
       return db;
     } catch (e) {
-      console.warn('Sunucuya bağlanılamadı, demo moduna geçiliyor', e);
+      console.warn('Sunucuya bağlanılamadı, yerel moda geçiliyor', e);
       db = await createLocalDb();
       db.serverError = e.message || String(e);
       return db;

@@ -41,7 +41,7 @@ function dash(box, ctx, st) {
     ${c(st.banned, 'Askıdaki hesap')}${c(st.admins, 'Yönetici')}</div>
     <div class="section-t">Hızlı işlemler</div>
     <div class="create" style="padding-top:0"><button class="btn block" id="bc">${ic('bell')} Herkese bildirim gönder</button><a class="btn block gray" href="#/admin/ann">${ic('megaphone')} Ana sayfa duyurusu yayınla</a>
-    <p class="small muted">Mod: ${A.db.mode === 'local' ? 'Demo (bu cihaz)' : 'Supabase sunucusu'}</p></div>`;
+    <p class="small muted">Mod: ${A.db.mode === 'local' ? 'Yerel (bu cihaz)' : 'Supabase sunucusu'}</p></div>`;
   $('#bc', box).onclick = () =>
     promptSheet('Toplu bildirim', 'Mesaj (tüm kullanıcılara gider)', async (t) => {
       if (!t) return;

@@ -164,7 +164,7 @@ export function pickFile(accept = 'image/*,video/*') {
   });
 }
 
-/** data-m="..." olan resim/videolara gerçek adresi ver (demo modunda cihaz içi dosyalar). */
+/** data-m="..." olan resim/videolara gerçek adresi ver (yerel modda cihaz içi dosyalar). */
 export async function hydrate(root) {
   for (const el of $$('[data-m]', root)) {
     const u = el.dataset.m;

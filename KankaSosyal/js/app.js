@@ -5,7 +5,6 @@
 import * as A from './api.js';
 import { $, $$, esc, I, ic, TICK, avatar, uname, ago, num, toast, sheet, closeSheet, confirmSheet, promptSheet, pickFile, hydrate, mediaTag, autoplay, linkify } from './ui.js';
 import { renderAdmin } from './admin.js';
-import { seedDemo } from './seed.js';
 
 const app = $('#app');
 const tabbar = $('#tabbar');
@@ -18,8 +17,9 @@ let viewToken = 0;
    ========================================================= */
 async function boot() {
   await A.initDb();
-  if (A.db.mode === 'local' && A.db.isEmpty()) await A.db.seed(seedDemo);
-  if (A.db.serverError) toast('Sunucuya bağlanılamadı, demo modundasın: ' + A.db.serverError, true);
+  // Eski sürümün oluşturduğu deneme hesaplarını ve içeriklerini tamamen kaldır
+  if (A.db.mode === 'local' && A.db.hasDemo()) await A.db.clearDemo();
+  if (A.db.serverError) toast('Sunucuya bağlanılamadı, yerel moddasın: ' + A.db.serverError, true);
   A.db.onAuth(async () => {
     A.clearCache();
     meP = A.me() ? await A.profile(A.me(), true) : null;
@@ -111,7 +111,7 @@ async function refreshBadges() {
    ========================================================= */
 function modeBadge() {
   return A.db.mode === 'local'
-    ? `<div class="modebadge">${ic('device', 14)}<b>Demo modu</b>: hesaplar ve paylaşımlar sadece bu cihazda. Arkadaşlarınla ortak kullanmak için <a href="#/server" style="color:#0095f6">sunucu bağla</a>.<br><span class="small">Deneme hesapları: ayse@kanka.app · mehmet@kanka.app · zeynep@kanka.app (şifre 123456)</span></div>`
+    ? `<div class="modebadge">${ic('device', 14)}<b>Yerel mod</b>: hesaplar ve paylaşımlar sadece bu cihazda. Arkadaşlarınla ortak kullanmak için <a href="#/server" style="color:#0095f6">sunucu bağla</a>.</div>`
     : `<div class="modebadge">${ic('globe', 14)}Sunucuya bağlı — arkadaşların aynı uygulamadan görür. <a href="#/server" style="color:#0095f6">Değiştir</a></div>`;
 }
 function vLogin() {
@@ -164,8 +164,8 @@ function vServer() {
     <input class="field" id="su" placeholder="Supabase URL (https://xxxx.supabase.co)" value="${esc(cfg?.url || '')}">
     <input class="field" id="sk" placeholder="anon public anahtar" value="${esc(cfg?.key || '')}">
     <button class="btn block" id="save">Bağlan</button>
-    <button class="btn block gray" id="local">Demo moduna dön (sadece bu cihaz)</button>
-    <p class="small muted">Şu an: ${A.db.mode === 'local' ? 'Demo modu' : 'Sunucu'}.</p></div>`;
+    <button class="btn block gray" id="local">Yerel moda dön (sadece bu cihaz)</button>
+    <p class="small muted">Şu an: ${A.db.mode === 'local' ? 'Yerel mod' : 'Sunucu'}.</p></div>`;
   $('#save').onclick = () => {
     const url = $('#su').value.trim().replace(/\/$/, '');
     const key = $('#sk').value.trim();
@@ -548,7 +548,6 @@ async function vProfile(username, tab = 'posts', tok) {
           { icon: I.gear, label: 'Yönetim panelinde aç', run: () => (location.hash = '#/admin/users/' + u.id) }
         );
       }
-      if (A.db.mode === 'local') opts.push({ icon: I.user, label: 'Demo: bu hesaba geçiş yap', run: () => A.db.switchTo(u.id) });
       sheet(opts);
     };
   }
@@ -965,8 +964,7 @@ async function vSettings() {
     <button class="list-row" id="vreq" style="width:100%;text-align:left">${TICK}<div class="grow">Mavi tik başvurusu<small>${meP.verified ? 'Hesabın zaten onaylı' : 'Yöneticiler başvurunu inceler'}</small></div></button>
     <a class="list-row" href="#/notifs">${I.bell}<div class="grow">Bildirimler</div></a>
     <button class="list-row" id="pw" style="width:100%;text-align:left">${I.gear}<div class="grow">Şifre değiştir</div></button>
-    <a class="list-row" href="#/server">${I.globe}<div class="grow">Sunucu<small>${local ? 'Demo modu (sadece bu cihaz)' : 'Ortak sunucuya bağlı'}</small></div></a>
-    ${local ? `<button class="list-row" id="sw" style="width:100%;text-align:left">${I.user}<div class="grow">Demo: hesap değiştir<small>Arkadaş gibi denemek için bu cihazdaki hesaplar</small></div></button>` : ''}
+    <a class="list-row" href="#/server">${I.globe}<div class="grow">Sunucu<small>${local ? 'Yerel mod (sadece bu cihaz)' : 'Ortak sunucuya bağlı'}</small></div></a>
     <button class="list-row" id="out" style="width:100%;text-align:left;color:#ff6b77">${I.close}<div class="grow">Çıkış yap</div></button>
     <p class="small muted" style="padding:14px">Kanka 1.0 · @${esc(meP.username)}</p>`;
   $('#vreq').onclick = () => {
@@ -987,11 +985,6 @@ async function vSettings() {
       toast('Şifre değişti');
     });
   $('#out').onclick = () => confirmSheet('Çıkış yapılsın mı?', () => A.db.signOut(), 'Çıkış yap');
-  if (local)
-    $('#sw').onclick = async () => {
-      const all = await A.searchUsers('');
-      sheet(all.filter((u) => u.id !== A.me()).map((u) => ({ label: `@${u.username} (${u.name})`, run: () => A.db.switchTo(u.id) })));
-    };
 }
 
 async function vEdit() {

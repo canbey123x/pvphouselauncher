@@ -1,9 +1,9 @@
 // =========================================================
-// db-local.js — Demo modu veri katmanı: her şey bu cihazda (IndexedDB) saklanır.
+// db-local.js — Yerel mod veri katmanı: her şey bu cihazda (IndexedDB) saklanır.
 // Supabase katmanıyla AYNI arayüzü sunar; uygulama hangisinin kullanıldığını bilmez.
 // =========================================================
 
-const DB_NAME = 'kanka-demo';
+const DB_NAME = 'kanka-demo'; // eski kurulumlarla uyum için ad aynı kaldı
 const SESSION_KEY = 'kanka.demo.session';
 
 function idb() {
@@ -63,7 +63,6 @@ export async function createLocalDb() {
     session = null;
   }
   const listeners = new Set();
-
   const api = {
     mode: 'local',
     async list(table, q = {}) {
@@ -119,7 +118,10 @@ export async function createLocalDb() {
     async signUp({ email, password, username, name }) {
       email = email.trim().toLowerCase();
       if (T('accounts').some((a) => a.email === email)) throw new Error('Bu e-posta ile zaten hesap var.');
-      if (T('profiles').some((p) => p.username === username)) throw new Error('Bu kullanıcı adı alınmış.');
+      const holder = T('profiles').find((p) => p.username === username);
+      if (holder) {
+        throw new Error('Bu kullanıcı adı alınmış.');
+      }
       const id = uuid();
       T('accounts').push({ id, email, pass: await sha(password) });
       const first = !T('profiles').some((p) => p.role === 'admin');
@@ -149,21 +151,19 @@ export async function createLocalDb() {
       if (a) a.pass = await sha(pw);
       persist();
     },
-    /** Demo: bu cihazdaki hesaplar arasında hızlı geçiş (arkadaş gibi denemek için). */
-    async switchTo(uid) {
-      session = { uid };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      listeners.forEach((f) => f());
-    },
-    isEmpty: () => !T('profiles').length,
-    async seed(seedFn) {
-      await seedFn(api, async (email, pass, username, name, extra = {}) => {
-        const id = uuid();
-        T('accounts').push({ id, email, pass: await sha(pass) });
-        T('profiles').push({ id, username, name, bio: '', avatar: '', verified: false, role: 'user', banned: false, created_at: new Date().toISOString(), ...extra });
-        return id;
-      });
+    hasDemo: () => T('accounts').some((a) => a.email.endsWith('@kanka.app')),
+    /** Deneme hesaplarını ve tüm içeriklerini sil. */
+    async clearDemo() {
+      const ids = new Set(T('accounts').filter((a) => a.email.endsWith('@kanka.app')).map((a) => a.id));
+      const refs = ['user_id', 'follower_id', 'following_id', 'sender_id', 'actor_id', 'reporter_id', 'a', 'b'];
+      const postIds = new Set(T('posts').filter((p) => ids.has(p.user_id)).map((p) => p.id));
+      const convIds = new Set(T('conversations').filter((c) => ids.has(c.a) || ids.has(c.b)).map((c) => c.id));
+      const storyIds = new Set(T('stories').filter((st) => ids.has(st.user_id)).map((st) => st.id));
+      for (const t of Object.keys(data)) {
+        data[t] = data[t].filter((r) => !(ids.has(r.id) && (t === 'profiles' || t === 'accounts')) && !refs.some((k) => ids.has(r[k])) && !postIds.has(r.post_id) && !convIds.has(r.conversation_id) && !storyIds.has(r.story_id));
+      }
       persist();
+      if (ids.has(session?.uid)) await api.signOut();
     },
   };
   return api;

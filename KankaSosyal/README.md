@@ -22,11 +22,9 @@ Arkadaşlar için siyah temalı sosyal medya uygulaması. Android APK olarak kur
 
 ## İki çalışma modu
 
-### 1. Demo modu (kurulum yok)
-Uygulama sunucu ayarı olmadan açılırsa her şey **sadece o telefonda** saklanır. Deneme için hazır hesaplar,
-gönderiler, hikâyeler ve reels videoları gelir (şifreleri `123456`):
-`ayse@kanka.app`, `mehmet@kanka.app`, `zeynep@kanka.app`.
-Ayarlar > *Demo: hesap değiştir* ile hesaplar arasında geçip DM, şikâyet ve mavi tik başvurusunu deneyebilirsin.
+### 1. Yerel mod (kurulum yok)
+Sunucu ayarı olmadan açılırsa hesaplar ve paylaşımlar **sadece o telefonda** saklanır. Hazır deneme hesabı ya da örnek içerik yoktur;
+uygulama boş başlar. (Eski sürümün oluşturduğu deneme hesapları açılışta otomatik silinir.)
 
 ### 2. Arkadaşlarla ortak kullanım (ücretsiz Supabase sunucusu)
 Herkesin birbirini görmesi için ortak bir sunucu gerekir. Supabase'in ücretsiz planı yeterli:
@@ -63,9 +61,8 @@ KankaSosyal/
 │   ├── admin.js        # yönetim paneli
 │   ├── api.js          # uygulama mantığı (takip, beğeni, repost, DM, hikâye, mavi tik...)
 │   ├── ui.js           # SVG ikonlar, mavi tik rozeti, ortak bileşenler
-│   ├── db-local.js     # demo modu (IndexedDB)
+│   ├── db-local.js     # yerel mod (IndexedDB)
 │   ├── db-supabase.js  # ortak sunucu
-│   ├── seed.js         # demo içerik (kodla çizilmiş görseller ve videolar)
 │   └── config.js       # sunucu adresi ve anahtarı
 ├── supabase/schema.sql # sunucu kurulumu
 └── android/            # WebView sarmalayıcı (dosya seçici destekli)
