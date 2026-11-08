@@ -39,6 +39,12 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: supabase-js'i APK içine indir
+        run: |
+          mkdir -p vendor
+          curl -fsSL --retry 4 https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js -o vendor/supabase.js
+          ls -la vendor
+
       - name: APK derle
         run: gradle assembleRelease --no-daemon --stacktrace
 

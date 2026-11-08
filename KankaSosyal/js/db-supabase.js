@@ -4,7 +4,15 @@
 // =========================================================
 
 export async function createSupabaseDb(url, key) {
-  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
+  // APK içinde gömülü kütüphane (vendor/supabase.js) varsa onu kullan, yoksa internetten yükle
+  let createClient = window.supabase?.createClient;
+  if (!createClient) {
+    try {
+      ({ createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm'));
+    } catch {
+      ({ createClient } = await import('https://esm.sh/@supabase/supabase-js@2.45.4'));
+    }
+  }
   const sb = createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } });
   let uid = (await sb.auth.getSession()).data.session?.user?.id || null;
   const listeners = new Set();

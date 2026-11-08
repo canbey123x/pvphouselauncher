@@ -42,6 +42,11 @@ tasks.register('copyWebAssets', Copy) {
     from(webRoot) {
         include 'index.html', 'style.css', 'js/**', 'manifest.webmanifest', 'icons/**'
     }
+    // CI'da indirilen supabase-js (internet olmadan da yüklensin diye APK'ya gömülür)
+    from(file('../vendor')) {
+        include 'supabase.js'
+        into 'vendor'
+    }
 }
 preBuild.dependsOn 'copyWebAssets'
 

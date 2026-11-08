@@ -111,7 +111,7 @@ async function refreshBadges() {
    ========================================================= */
 function modeBadge() {
   if (A.db.mode !== 'local') return `<div class="modebadge">${ic('globe', 14)}Sunucuya bağlı. Arkadaşların aynı uygulamadan seni görür.</div>`;
-  return `<div class="modebadge" style="text-align:left">${ic('device', 14)}<b>Sunucuya bağlanılamadı.</b> İnternet bağlantını kontrol et ya da yönetici sunucuyu henüz ayarlamamış olabilir.
+  return `<div class="modebadge" style="text-align:left">${ic('device', 14)}<b>Sunucuya bağlanılamadı.</b> İnternet bağlantını kontrol et ya da yönetici sunucuyu henüz ayarlamamış olabilir.${A.db.serverError ? `<br><span class="small" style="color:#ff6b77">Hata: ${esc(A.db.serverError)}</span>` : ''}
     <button class="btn block gray" id="retry" type="button" style="margin-top:8px">Tekrar dene</button></div>`;
 }
 function bindRetry() {
