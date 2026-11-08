@@ -291,7 +291,6 @@ async function ann(box, ctx) {
 const EDIT_URL = 'https://github.com/canbey123x/pvphouselauncher/edit/ccr-111fa307-9zbgth/KankaSosyal/server.json';
 async function server(box) {
   const cfg = A.serverConfig();
-  const code = A.makeInvite(cfg);
   const local = A.db.mode === 'local';
   box.innerHTML = `<div class="create">
     <div class="modebadge" style="text-align:left">${local ? `${ic('device', 14)}<b>Bu cihaz sunucuya bağlı değil.</b> Önce aşağıdan adres ve anahtarı girip bağlan.` : `${ic('globe', 14)}<b>Bağlı sunucu:</b><br>${esc(cfg.url)}`}</div>
@@ -306,15 +305,10 @@ async function server(box) {
     <a class="btn block" href="${EDIT_URL}" target="_blank" rel="noopener">${ic('pen')} server.json'u GitHub'da düzenle</a>
     <p class="small muted" style="margin:0">Açılan sayfada içeriği sil, kopyaladığını yapıştır, <b>Commit changes</b> de. Birkaç dakika içinde herkes bağlanır.</p>
 
-    <div class="section-t" style="padding:12px 0 0">2. Davet kodu (hemen bağlamak için)</div>
-    ${code ? `<div class="card" style="font-family:monospace;font-size:12px;word-break:break-all" id="code">${esc(code)}</div>
-    <button class="btn block" id="cpCode">${ic('link')} Davet kodunu kopyala</button>
-    <p class="small muted" style="margin:0">Kodu arkadaşına gönder. Giriş ekranındaki "davet kodu" kutusuna yapıştırıp <b>Bağlan</b> der.</p>` : '<p class="small muted">Önce bir sunucuya bağlan.</p>'}
-
-    <div class="section-t" style="padding:12px 0 0">3. Sunucuyu değiştir</div>
+    <div class="section-t" style="padding:12px 0 0">2. Bu cihazın sunucusu</div>
     <input class="field" id="su" placeholder="Supabase URL (https://xxxx.supabase.co)" value="${esc(cfg?.url || '')}">
     <input class="field" id="sk" placeholder="publishable / anon anahtar (secret DEĞİL)" value="${esc(cfg?.key || '')}">
-    <button class="btn block gray" id="sv">Bu cihazı bağla ve davet kodu üret</button>
+    <button class="btn block gray" id="sv">Bu cihazı bağla</button>
     <p class="small muted" style="margin:0">Asla <b>secret / service_role</b> anahtarını girme.</p></div>`;
   const copy = async (text) => {
     try {
@@ -331,7 +325,6 @@ async function server(box) {
     }
   };
   $('#cpJson', box).onclick = () => copy($('#json', box).textContent);
-  if ($('#cpCode', box)) $('#cpCode', box).onclick = () => copy(code);
   $('#sv', box).onclick = () => {
     const url = $('#su', box).value.trim().replace(/\/$/, '');
     const key = $('#sk', box).value.trim();

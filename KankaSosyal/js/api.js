@@ -41,7 +41,7 @@ async function fetchRemote() {
   }
 }
 
-/** Öncelik: davet kodu / elle girilen > ortak ayar dosyası > uygulamaya gömülü (config.js). */
+/** Öncelik: elle girilen > ortak ayar dosyası > uygulamaya gömülü (config.js). */
 export function serverConfig() {
   const manual = readLS(SERVER_KEY);
   if (valid(manual)) return { ...manual, source: 'manual' };
@@ -53,24 +53,6 @@ export function serverConfig() {
 export function setServerConfig(cfg) {
   if (cfg) localStorage.setItem(SERVER_KEY, JSON.stringify({ url: cfg.url, key: cfg.key }));
   else localStorage.removeItem(SERVER_KEY);
-}
-
-/* ---------- Davet kodu: sunucu adresi + herkese açık anahtar ---------- */
-export function makeInvite(cfg = serverConfig()) {
-  if (!cfg) return '';
-  const b = btoa(unescape(encodeURIComponent(JSON.stringify({ u: cfg.url, k: cfg.key }))));
-  return 'KANKA-' + b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-export function parseInvite(code) {
-  try {
-    let b = String(code).trim().replace(/^KANKA-/i, '').replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
-    while (b.length % 4) b += '=';
-    const j = JSON.parse(decodeURIComponent(escape(atob(b))));
-    const cfg = { url: String(j.u || '').trim().replace(/\/$/, ''), key: String(j.k || '').trim() };
-    return valid(cfg) ? cfg : null;
-  } catch {
-    return null;
-  }
 }
 
 export async function initDb() {

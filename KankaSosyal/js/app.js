@@ -111,21 +111,12 @@ async function refreshBadges() {
    ========================================================= */
 function modeBadge() {
   if (A.db.mode !== 'local') return `<div class="modebadge">${ic('globe', 14)}Sunucuya bağlı. Arkadaşların aynı uygulamadan seni görür.</div>`;
-  return `<div class="modebadge" style="text-align:left">${ic('device', 14)}<b>Sunucuya bağlı değilsin.</b> Arkadaşlarını görmek için yöneticinin gönderdiği <b>davet kodunu</b> yapıştır:
-    <div class="form" style="margin-top:8px"><input class="field" id="invIn" placeholder="KANKA-..." autocapitalize="off" autocomplete="off"><button class="btn block" id="invGo" type="button">Bağlan</button></div></div>`;
+  return `<div class="modebadge" style="text-align:left">${ic('device', 14)}<b>Sunucuya bağlanılamadı.</b> İnternet bağlantını kontrol et ya da yönetici sunucuyu henüz ayarlamamış olabilir.
+    <button class="btn block gray" id="retry" type="button" style="margin-top:8px">Tekrar dene</button></div>`;
 }
-/** Davet kodu kutusunu bağla (giriş, kayıt ve sunucu ekranlarında). */
-function bindInvite() {
-  const go = $('#invGo');
-  if (!go) return;
-  go.onclick = () => {
-    const cfg = A.parseInvite($('#invIn').value);
-    if (!cfg) return toast('Davet kodu geçersiz', true);
-    A.setServerConfig(cfg);
-    toast('Sunucuya bağlanılıyor...');
-    location.hash = '#/login';
-    location.reload();
-  };
+function bindRetry() {
+  const r = $('#retry');
+  if (r) r.onclick = () => location.reload();
 }
 function vLogin() {
   app.innerHTML = `<div class="auth"><div class="logo">Kanka</div>
@@ -133,7 +124,7 @@ function vLogin() {
     <input class="field" name="pass" type="password" placeholder="Şifre" autocomplete="current-password" required>
     <div class="err" id="err"></div><button class="btn block">Giriş yap</button></form>
     <div class="alt">Hesabın yok mu? <a href="#/signup">Kaydol</a></div>${modeBadge()}</div>`;
-  bindInvite();
+  bindRetry();
   $('#f').onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
@@ -155,7 +146,7 @@ function vSignup() {
     <input class="field" name="pass" type="password" placeholder="Şifre (en az 6 karakter)" minlength="6" required>
     <div class="err" id="err"></div><button class="btn block">Kaydol</button></form>
     <div class="alt">Hesabın var mı? <a href="#/login">Giriş yap</a></div>${modeBadge()}</div>`;
-  bindInvite();
+  bindRetry();
   $('#f').onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
@@ -174,18 +165,16 @@ function vSignup() {
 }
 function vServer() {
   const cfg = A.serverConfig();
-  const src = { manual: 'davet kodu / elle', remote: 'otomatik (ortak ayar)', builtin: 'uygulamaya gömülü' }[cfg?.source] || '';
+  const src = { manual: 'elle girildi', remote: 'otomatik', builtin: 'uygulamaya gömülü' }[cfg?.source] || '';
   app.innerHTML = `${topbar('Sunucu', true)}<div class="create">
     <div class="modebadge" style="text-align:left">${A.db.mode === 'local' ? `${ic('device', 14)}<b>Bağlı değil</b> (yerel mod: her şey sadece bu cihazda)` : `${ic('globe', 14)}<b>Bağlı:</b> ${esc(cfg?.url || '')}<br><span class="small">Kaynak: ${src}</span>`}</div>
-    <label class="small muted">Davet kodu</label>
-    <input class="field" id="invIn" placeholder="KANKA-..." autocapitalize="off" autocomplete="off"><button class="btn block" id="invGo" type="button">Davet koduyla bağlan</button>
     <details><summary class="muted" style="padding:8px 0">Gelişmiş: adres ve anahtarı elle gir</summary><div class="form">
       <input class="field" id="su" placeholder="Supabase URL (https://xxxx.supabase.co)" value="${esc(cfg?.url || '')}">
       <input class="field" id="sk" placeholder="publishable / anon anahtar" value="${esc(cfg?.key || '')}">
       <button class="btn block gray" id="save">Bağlan</button></div></details>
     ${cfg?.source === 'manual' ? '<button class="btn block gray" id="auto">Otomatik ayara dön</button>' : ''}
-    <p class="small muted">Uygulama açılışta ortak ayar dosyasındaki sunucuya kendiliğinden bağlanır. Davet kodu ya da elle girilen ayar bunun önüne geçer.</p></div>`;
-  bindInvite();
+    <p class="small muted">Uygulama açılışta yöneticinin ayarladığı sunucuya kendiliğinden bağlanır. Elle girilen ayar bunun önüne geçer.</p></div>`;
+  bindRetry();
   $('#save').onclick = () => {
     const url = $('#su').value.trim().replace(/\/$/, '');
     const key = $('#sk').value.trim();
@@ -344,7 +333,7 @@ async function vHome(_a, _b, tok) {
   const [groups, items, ann] = await Promise.all([A.storyGroups(), A.feed(), A.activeAnnouncements()]);
   if (stale(tok)) return;
   $('#ann').innerHTML = ann.map((x) => `<div class="announce">${ic('megaphone', 18)}<span>${linkify(x.text)}</span></div>`).join('');
-  if (A.db.mode === 'local') $('#ann').insertAdjacentHTML('afterbegin', `<a class="announce" href="#/server" style="border-color:#5a1a22;background:#1a0a0d">${ic('device', 18)}<span><b>Sunucuya bağlı değilsin.</b> Arkadaşlarını göremezsin. Davet koduyla bağlanmak için dokun.</span></a>`);
+  if (A.db.mode === 'local') $('#ann').insertAdjacentHTML('afterbegin', `<a class="announce" href="#/server" style="border-color:#5a1a22;background:#1a0a0d">${ic('device', 18)}<span><b>Sunucuya bağlı değilsin.</b> Arkadaşlarını göremezsin. Ayrıntı için dokun.</span></a>`);
   const mine = groups.find((g) => g.user.id === A.me());
   $('#stories').innerHTML =
     `<a class="st" href="${mine ? '#/story/' + A.me() : '#/create/story'}"><span class="wrap">${avatar(meP, 62, mine ? (mine.allSeen ? 'seen' : 'new') : '')}${mine ? '' : '<span class="plus">+</span>'}</span><span>Hikâyen</span></a>` +
