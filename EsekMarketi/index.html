@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ShopSim 3D — Retail Shop Game</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #101018; height: 100%; font-family: system-ui, -apple-system, sans-serif; }
+  #app { width: 100vw; height: 100vh; }
+  canvas { display: block; }
+
+  .hud { position: fixed; z-index: 10; color: #fff; user-select: none; }
+
+  #listPanel {
+    top: 12px; left: 12px; width: 235px;
+    background: rgba(16,18,28,.82); border: 1px solid rgba(255,255,255,.14);
+    border-radius: 12px; padding: 10px 14px; backdrop-filter: blur(6px);
+  }
+  #listPanel h3 { margin: 0 0 6px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #9fd6ff; }
+  #listPanel ul { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+  #listPanel li { padding: 3px 0; opacity: .45; }
+  #listPanel li.pending { opacity: 1; }
+  #listPanel li.done { text-decoration: line-through; opacity: .35; }
+  #listPanel li .tick { display: inline-block; width: 18px; color: #7CFC98; }
+  #listPanel li .pr { float: right; color: #ffd54f; }
+  #objective { margin-top: 8px; font-size: 13px; color: #ffd54f; }
+  #cartHud { margin-top: 8px; font-size: 13px; color: #9fd6ff; }
+
+  #stats {
+    bottom: 14px; left: 14px; font-size: 14px; display: flex; gap: 16px;
+    background: rgba(16,18,28,.7); padding: 8px 14px; border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.12);
+  }
+  #cameraLabel { top: 12px; left: 50%; transform: translateX(-50%); font-size: 12px; letter-spacing: .15em; text-transform: uppercase; color: rgba(255,255,255,.75); background: rgba(16,18,28,.6); padding: 5px 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12); }
+
+  /* camera buttons */
+  #camButtons { top: 46px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+  #camButtons button {
+    background: rgba(16,18,28,.7); color: #cfe3ff; border: 1px solid rgba(255,255,255,.18);
+    border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer; letter-spacing: .04em;
+  }
+  #camButtons button.active { background: #4caf50; color: #08120a; font-weight: 700; border-color: #4caf50; }
+
+  #minimapWrap { top: 12px; right: 12px; background: rgba(16,18,28,.82); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 6px; }
+  #minimap { display: block; border-radius: 8px; }
+
+  #prompt {
+    bottom: 90px; left: 50%; transform: translateX(-50%);
+    font-size: 15px; background: rgba(255,213,79,.95); color: #222; font-weight: 600;
+    padding: 8px 18px; border-radius: 999px; display: none; box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  }
+  #compass { bottom: 34px; left: 50%; transform: translateX(-50%); font-size: 26px; filter: drop-shadow(0 2px 4px #000); }
+  #toast {
+    top: 84px; left: 50%; transform: translateX(-50%); font-size: 15px;
+    background: rgba(16,18,28,.9); border: 1px solid rgba(255,255,255,.2);
+    padding: 8px 18px; border-radius: 10px; opacity: 0; transition: opacity .3s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+
+  /* inspect card */
+  #inspectCard {
+    bottom: 130px; right: 14px; width: 250px; display: none;
+    background: rgba(16,18,28,.9); border: 1px solid rgba(255,255,255,.2); border-radius: 12px; padding: 14px 16px;
+  }
+  #inspectCard h4 { margin: 0 0 4px; font-size: 17px; }
+  #inspectCard .dept { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: #9fd6ff; }
+  #inspectCard .price { font-size: 26px; font-weight: 800; color: #ffd54f; margin: 8px 0 2px; }
+  #inspectCard .mrp { font-size: 12px; color: #8892a6; }
+  #inspectCard .desc { font-size: 13px; color: #aab; margin-top: 8px; line-height: 1.5; }
+  #inspectCard .key { margin-top: 10px; font-size: 12px; color: #7CFC98; }
+
+  /* controls legend, bottom right */
+  #controlsHint {
+    bottom: 14px; right: 14px; font-size: 11px; line-height: 1.8; color: rgba(255,255,255,.78);
+    background: rgba(16,18,28,.6); border: 1px solid rgba(255,255,255,.1);
+    padding: 8px 12px; border-radius: 10px; pointer-events: none;
+  }
+  #controlsHint kbd {
+    background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+    border-radius: 4px; padding: 0 5px; font-size: 10px; color: #cfe3ff; font-family: inherit;
+  }
+  #controlsHint b { color: #9fd6ff; font-weight: 600; }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: rgba(8,10,18,.78); backdrop-filter: blur(4px); color: #fff;
+  }
+  .card {
+    background: #161a26; border: 1px solid rgba(255,255,255,.15); border-radius: 16px;
+    padding: 34px 44px; text-align: center; max-width: 480px; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+  }
+  .card h1 { margin: 0 0 6px; font-size: 30px; }
+  .card h1 span { color: #7CFC98; }
+  .card p { color: #aab; font-size: 14px; line-height: 1.7; margin: 10px 0 18px; }
+  .card kbd { background: #2a3040; border: 1px solid #3a4256; border-bottom-width: 3px; border-radius: 5px; padding: 1px 7px; font-size: 12px; color: #cfe3ff; }
+  .card button {
+    background: #4caf50; color: #08120a; font-weight: 800; font-size: 16px; border: 0; cursor: pointer;
+    padding: 12px 34px; border-radius: 999px; letter-spacing: .05em;
+  }
+  .card button:hover { filter: brightness(1.1); }
+  #winOverlay { display: none; }
+  #receipt { text-align: left; background: #fdfdf6; color: #333; font-family: ui-monospace, Menlo, monospace; font-size: 13px; padding: 16px 20px; border-radius: 8px; margin-bottom: 18px; }
+  #receipt h2 { text-align: center; margin: 0 0 8px; font-size: 15px; border-bottom: 1px dashed #999; padding-bottom: 6px; }
+  #receipt .row { display: flex; justify-content: space-between; padding: 2px 0; }
+  #receipt .total { border-top: 1px dashed #999; margin-top: 6px; padding-top: 6px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- HUD -->
+<div id="listPanel" class="hud">
+  <h3>🛒 Shopping List</h3>
+  <ul id="listItems"></ul>
+  <div id="objective"></div>
+  <div id="cartHud">🛒 Cart: empty</div>
+</div>
+<div id="cameraLabel" class="hud">Isometric</div>
+<div id="camButtons" class="hud">
+  <button data-cam="0" class="active">Iso</button>
+  <button data-cam="1">3rd</button>
+  <button data-cam="2">Top</button>
+  <button data-cam="3">Free</button>
+  <button data-cam="4">1st</button>
+</div>
+<div id="minimapWrap" class="hud"><canvas id="minimap" width="230" height="170"></canvas></div>
+<div id="stats" class="hud"><span id="coinsHud">🪙 0</span><span id="timeHud">⏱ 0:00</span></div>
+<div id="prompt" class="hud">Press E to pick up</div>
+<div id="compass" class="hud">⬆️</div>
+<div id="toast" class="hud"></div>
+<div id="controlsHint" class="hud">
+  <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move · <kbd>Shift</kbd> sprint<br>
+  <kbd>E</kbd> pick up / cart / checkout · <kbd>F</kbd> inspect<br>
+  <kbd>C</kbd> or buttons — camera · <kbd>M</kbd> map · <kbd>Tab</kbd> list<br>
+  drag = orbit · scroll = zoom
+</div>
+<div id="inspectCard" class="hud">
+  <div class="dept" id="insDept"></div>
+  <h4 id="insName"></h4>
+  <div class="price" id="insPrice"></div>
+  <div class="mrp" id="insMrp"></div>
+  <div class="desc" id="insDesc"></div>
+  <div class="key">Press <b>F</b> to put in cart</div>
+</div>
+
+<!-- Start overlay -->
+<div id="startOverlay" class="overlay">
+  <div class="card">
+    <h1>Shop<span>Sim 3D</span></h1>
+    <p>
+      Grab a cart, find everything on your list, check the prices, and check out!<br><br>
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move &nbsp;·&nbsp; <kbd>Shift</kbd> sprint &nbsp;·&nbsp; <kbd>E</kbd> pick up<br>
+      <kbd>F</kbd> inspect product up close &nbsp;·&nbsp; <kbd>C</kbd>/<b>buttons</b> change camera<br>
+      drag / scroll to orbit & zoom &nbsp;·&nbsp; <kbd>M</kbd> minimap &nbsp;·&nbsp; <kbd>Tab</kbd> list
+    </p>
+    <button id="startBtn">Start Shopping</button>
+  </div>
+</div>
+
+<!-- Win overlay -->
+<div id="winOverlay" class="overlay">
+  <div class="card">
+    <div id="receipt"></div>
+    <button onclick="location.reload()">Shop Again</button>
+  </div>
+</div>
+
+<script src="three.min.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
