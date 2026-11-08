@@ -6,11 +6,9 @@ Derleme yok, `npm install` yok: Three.js CDN üzerinden ES Module olarak yüklen
 ## 🎮 Oynanış
 
 - **Kepenk:** Sabah kıraathanenin önüne git (sarı ok yolu gösterir), *Kepengi Aç*. Gece *Kepengi İndir*, sonra eve git ve uyu.
-- **Birinci şahıs içeride:** Kıraathaneye girince kamera gözünden görür, elinde metal çay tepsisi taşırsın. Sürükleyerek etrafa bakarsın.
-- **Ocak (arka sol):** Bakır semaver, siyah emaye çaydanlık, cezve ve temiz bardaklar.
-  - *Çay Demle* → ibre **yeşile (tavşan kanı)** gelince *Çay Doldur*. Erken doldurursan açık, geç kalırsan acı olur.
-  - *Kahve Pişir* → köpürünce *Kahveyi Al*. Bekletirsen taşar!
-  - Oralet, soda, su ve simit de tepsiye konur.
+- **Hep birinci şahıs:** Oyun baştan sona kendi gözünden oynanır (eşeğe binince kulakların arasından). Ekranı sürükleyerek bakarsın. Kıraathanede ortada bir nişangah ve baktığın nesnenin ne işe yaradığı yazar; nesneye **dokunarak** ya da sağ alttaki tek butonla etkileşirsin. Menü yok.
+- **Çay:** Arka soldaki çay makinesine (sebil) dokun → *Çay Demle*. Tezgahtaki bardaklara dokun → tepsine **boş bardak** gelir. Elinde boş bardakla makineye dokun → **çay dolar**. Makinedeki lamba: turuncu = açık (bekle), yeşil = **tavşan kanı**, kırmızı = acı (yeniden demle).
+- **Diğer içecekler:** Cezveye dokun = kahve pişir, köpürünce tekrar dokun = al (bekletirsen taşar). Boş bardakla oralet kavanozuna dokun = oralet. Sol duvardaki dolaptan soda (üst raf) ve su (alt raf), tezgahtaki tabladan simit. Fazlasını çöp kovasına boşalt.
 - **Siparişler:** Müşteri grupları caddeden gelir, çiçekli örtülü masalara oturur, biri **el kaldırır**. Başlarının üstündeki balonda ne istedikleri (🍵 ☕ 🍊 🫧 💧 🥯) ve sabır çubuğu görünür. Masaya yaklaş, *Servis Et*.
 - **Oyunlar:** Bazı masalar okey 🀄, tavla 🎲 ya da iskambil 🃏 ister. Arka sağdaki raftan takımı al, masaya ver. Oynayan masa daha uzun oturur, daha çok çay içer ve masa ücreti öder.
 - **Kasa (sağ ön):** Kalkan masadan biri kasaya gelir. Kasanın arkasına geç, *Ödeme Al*. İyi çay ve hızlı servis bahşiş getirir; çok bekletirsen parayı bırakıp bahşişsiz çıkar.

@@ -280,14 +280,8 @@ const ui = {
   highScore: $('highScore'),
   btnSound: $('btnSound'),
   btnQuality: $('btnQuality'),
-  ocak: $('ocakPanel'),
-  ocakBtns: $('ocakBtns'),
-  teaNeedle: $('teaNeedle'),
-  teaLabel: $('teaLabel'),
-  coffeeNeedle: $('coffeeNeedle'),
-  coffeeLabel: $('coffeeLabel'),
-  ocakTray: $('ocakTray'),
-  ocakInfo: $('ocakInfo'),
+  aimPrompt: $('aimPrompt'),
+  crosshair: $('crosshair'),
   stockPill: $('stockPill'),
   shopPanel: $('shopPanel'),
   shopTitle: $('shopTitle'),
@@ -443,7 +437,6 @@ const ctx = {
   getPop: () => game.pop,
   world: cityWorld,
   stock: game.stock,
-  openOcak: () => openOcak(),
   near: (p, r) => game.state === 'playing' && distXZ(player.pos, p) < r,
 };
 
@@ -684,12 +677,14 @@ function computeActions() {
   const night = h >= 21 || h < 6;
   if (game.mode === 'walk') {
     const inK = kira.isInside(player.pos);
-    if (inK && game.shopOpen) list.push(...kira.actions(player.pos));
+    if (inK && game.shopOpen && game.aim && game.aim.run) {
+      const a = game.aim;
+      list.push({ id: 'aim', icon: a.icon, label: a.label, cls: a.cls + ' hot', onPress: () => runAim(a) });
+    }
     if (distXZ(player.pos, city.shop.interactPoint) < 2.4 && !list.length) {
       if (game.shopOpen) list.push({ id: 'close', icon: '🔒', label: 'Kepengi İndir', cls: 'gray' + (night ? ' hot' : ''), onPress: closeShop });
       else list.push({ id: 'open', icon: '🔓', label: 'Kepengi Aç', cls: 'green' + (night ? '' : ' hot'), onPress: openShop });
     }
-    if (inK && (kira.tray.length || kira.dirty) && list.length < 4) list.push({ id: 'trayEmpty', icon: '🗑️', label: 'Tepsiyi Boşalt', cls: 'gray', onPress: () => kira.emptyTray() });
     if (distXZ(player.pos, city.home.doorPoint) < 2.2) list.push({ id: 'enter', icon: '🏠', label: 'Eve Gir', cls: 'blue' + (night ? ' hot' : ''), onPress: enterHome });
     for (const sh of city.shops) {
       if (distXZ(player.pos, sh.door) < 2.0) list.push({ id: 'shop-' + sh.id, icon: '🚪', label: `Gir: ${CATALOG[sh.id].title}`, cls: 'blue', onPress: () => enterShop(sh) });
@@ -726,7 +721,6 @@ function setMode(mode) {
   const showJoy = mode === 'walk' || mode === 'ride' || mode === 'home';
   show(ui.joyZone, showJoy);
   show(ui.order, false);
-  show(ui.ocak, mode === 'ocak');
   controls.resetJoystick();
   controls.brakeHeld = false;
   actionsKey = null;
@@ -739,6 +733,8 @@ function fadeTo(fn) {
   ui.fade.classList.add('on');
   setTimeout(() => {
     fn();
+    cam.yaw = player.heading + Math.PI;
+    cam.fpPitch = -0.1;
     game.snapCam = true;
     setTimeout(() => {
       ui.fade.classList.remove('on');
@@ -795,63 +791,36 @@ function closeShop() {
   toast(n ? `🔒 Kepenk indi. ${n} masa hesabı ödeyip kalktı.` : '🔒 Kepenk indi. Eline sağlık usta!', n ? 'warn' : 'ok');
 }
 
-/* ---------- Ocak paneli ---------- */
-function openOcak() {
-  if (game.mode !== 'walk') return;
-  sfx.click();
-  setMode('ocak');
-  renderOcak(true);
-  if (!game.ocakTutorial) {
-    game.ocakTutorial = true;
-    toast('🫖 Önce çayı demle, ibre yeşile (tavşan kanı) gelince bardaklara doldur!', 'info');
-  }
+/* ---------- Bakılan nesne ile etkileşim (birinci şahıs) ---------- */
+const aimRay = new THREE.Raycaster();
+const aimNdc = new THREE.Vector2();
+function aimAt(x, y) {
+  aimNdc.set(x, y);
+  aimRay.setFromCamera(aimNdc, camera);
+  return kira.describe(kira.pick(aimRay));
 }
-function closeOcak() {
-  if (game.mode !== 'ocak') return;
-  sfx.click();
-  setMode('walk');
+function runAim(a) {
+  if (!a || !a.run || game.busy) return;
+  a.run();
+  actionsKey = null;
 }
-let ocakKey = '';
-function renderOcak(force = false) {
-  const st = game.stock;
-  const btns = [
-    { id: 'demle', icon: '🫖', label: kira.tea.left > 0 ? 'Yeniden Demle' : 'Çay Demle', sub: `kuru çay ${st.cay}`, fn: () => kira.brewTea() },
-    { id: 'doldur', icon: '🍵', label: 'Çay Doldur', sub: `demlik ${kira.tea.left}`, fn: () => kira.pourTea(), hot: kira.teaQuality() === 'good' },
-    { id: 'kahve', icon: '☕', label: kira.coffee.on ? 'Kahveyi Al' : 'Kahve Pişir', sub: `kahve ${st.kahve}`, fn: () => kira.coffeeAction(), hot: kira.coffee.on && kira.coffee.t >= 0.8 },
-    { id: 'oralet', icon: '🍊', label: 'Oralet', sub: String(st.oralet), fn: () => kira.addSimple('oralet') },
-    { id: 'soda', icon: '🫧', label: 'Soda', sub: String(st.soda), fn: () => kira.addSimple('soda') },
-    { id: 'su', icon: '💧', label: 'Su', sub: String(st.su), fn: () => kira.addSimple('su') },
-    { id: 'simit', icon: '🥯', label: 'Simit', sub: String(st.simit), fn: () => kira.addSimple('simit') },
-    { id: 'bosalt', icon: '🗑️', label: 'Tepsiyi Boşalt', sub: '', fn: () => kira.emptyTray() },
-  ];
-  const key = btns.map((b) => b.label + b.sub + (b.hot ? 1 : 0)).join('|');
-  if (force || key !== ocakKey) {
-    ocakKey = key;
-    ui.ocakBtns.innerHTML = '';
-    for (const b of btns) {
-      const el = document.createElement('button');
-      el.className = 'ocak-btn' + (b.hot ? ' hot' : '');
-      el.innerHTML = `<span class="oi">${b.icon}</span><b></b><small></small>`;
-      el.querySelector('b').textContent = b.label;
-      el.querySelector('small').textContent = b.sub;
-      el.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        b.fn();
-        renderOcak(true);
-      });
-      ui.ocakBtns.appendChild(el);
-    }
+controls.onTap = (cx, cy) => {
+  if (game.state !== 'playing' || game.mode !== 'walk' || game.inside || !game.shopOpen || !kira.isInside(player.pos)) return;
+  const r = canvas.getBoundingClientRect();
+  const a = aimAt(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  if (a && a.run) runAim(a);
+  else if (a) toast(`${a.icon} ${a.label}`, 'info', 'aiminfo');
+};
+function updateAim() {
+  const on = game.state === 'playing' && game.mode === 'walk' && !game.inside && game.shopOpen && kira.isInside(player.pos);
+  game.aim = on ? aimAt(0, 0) : null;
+  show(ui.crosshair, on);
+  const a = game.aim;
+  show(ui.aimPrompt, !!a);
+  if (a) {
+    setText(ui.aimPrompt, `${a.icon} ${a.label}`);
+    ui.aimPrompt.classList.toggle('info', !a.run);
   }
-  // demlik ibresi: 0..1.8 (0.5-1.25 tavşan kanı)
-  const tb = kira.tea.left > 0 ? kira.tea.brew : 0;
-  ui.teaNeedle.style.left = `${Math.min(100, (tb / 1.8) * 100)}%`;
-  const q = kira.teaQuality();
-  setText(ui.teaLabel, q === null ? 'Demlik boş' : q === 'light' ? `Demleniyor... (açık) · ${kira.tea.left} bardak` : q === 'good' ? `🟢 Tavşan kanı! · ${kira.tea.left} bardak` : `🔴 Acılaştı · ${kira.tea.left} bardak`);
-  const ct = kira.coffee.on ? kira.coffee.t : 0;
-  ui.coffeeNeedle.style.left = `${Math.min(100, (ct / 1.35) * 100)}%`;
-  setText(ui.coffeeLabel, !kira.coffee.on ? 'Cezve boş' : ct < 0.8 ? 'Kahve ısınıyor...' : ct < 1.15 ? '🟢 Köpürdü, AL!' : '🔴 Taşmak üzere!');
-  setText(ui.ocakTray, `Tepsi (${kira.tray.length}/${kira.trayMax}): ${kira.tray.length ? kira.tray.map((x) => DRINKS[x.type].icon).join(' ') : 'boş'}`);
-  setText(ui.ocakInfo, `🥃 Temiz bardak ${kira.glassClean}/${kira.glassTotal} · 🧺 Kirli ${kira.dirty} · 🧊 Şeker ${st.seker}`);
 }
 
 function startTalk(npc) {
@@ -1043,7 +1012,6 @@ function startSleep(kind) {
   const h = hourNow();
   const overnight = kind === 'faint' || h >= 18 || h < 6;
   const to = kind === 'faint' ? nextTime(10 * 60) : overnight ? nextTime(7 * 60) : game.minutes + 120;
-  if (game.mode === 'ocak') setMode('walk');
   if (game.mode === 'ride') {
     donkey.ridden = false;
     donkey.speed = 0;
@@ -1344,7 +1312,6 @@ $('btnMenu').addEventListener('click', () => {
   goMenu();
 });
 $('btnWake').addEventListener('click', wakeUp);
-$('ocakClose').addEventListener('click', closeOcak);
 $('shopClose').addEventListener('click', () => {
   sfx.click();
   closeShopPanel();
@@ -1390,17 +1357,6 @@ window.addEventListener('keydown', (e) => {
     else if (e.code === 'Enter' || e.code === 'Space' || e.code === 'KeyE') npcs.chooseIndex(0);
     return;
   }
-  if (game.mode === 'ocak') {
-    const map = { Digit1: 'brewTea', Digit2: 'pourTea', Digit3: 'coffeeAction' };
-    if (map[e.code]) kira[map[e.code]]();
-    else if (e.code === 'Digit4') kira.addSimple('oralet');
-    else if (e.code === 'Digit5') kira.addSimple('soda');
-    else if (e.code === 'Digit6') kira.addSimple('su');
-    else if (e.code === 'Digit7') kira.addSimple('simit');
-    else if (e.code === 'KeyQ' || e.code === 'KeyE') return closeOcak();
-    renderOcak(true);
-    return;
-  }
   if (e.code === 'KeyE' || e.code === 'Enter') currentActions.find((a) => !a.hold)?.onPress?.();
   else if (e.code === 'KeyR') currentActions.filter((a) => !a.hold)[1]?.onPress?.();
   else if (e.code === 'KeyH' && game.mode === 'ride') donkey.bray();
@@ -1428,7 +1384,7 @@ const cam = {
 };
 /** Oyuncu kıraathanenin içinde yürürken birinci şahıs kamera. */
 function firstPerson() {
-  return game.state !== 'menu' && !game.inside && (game.mode === 'walk' || game.mode === 'ocak' || game.mode === 'talk') && kira.isInside(player.pos);
+  return game.state !== 'menu' && game.mode !== 'sleep';
 }
 
 function cycleCamera() {
@@ -1457,19 +1413,31 @@ function updateCamera(dt, look) {
     desiredLook.set(0, 2, 2);
     k = 1 - Math.exp(-dt * 2);
   } else if (firstPerson()) {
-    // --- Kıraathane içi: birinci şahıs, elde tepsi ---
-    if (look && game.state === 'playing' && game.mode === 'walk') {
+    // --- Her yerde birinci şahıs ---
+    const riding = game.mode === 'ride';
+    if (look && game.state === 'playing' && (look.dx || look.dy)) {
+      cam.lastManual = game.time;
       cam.yaw -= look.dx * 0.0055;
-      cam.fpPitch = clamp(cam.fpPitch - look.dy * 0.004, -1.0, 0.6);
+      cam.fpPitch = clamp(cam.fpPitch - look.dy * 0.004, -1.1, 0.8);
     }
-    if (game.mode === 'ocak') {
-      cam.yaw = lerpAngle(cam.yaw, Math.atan2(player.pos.x - kira.ocakPoint.x, player.pos.z - (kira.ocakPoint.z - 1.2)), 1 - Math.exp(-dt * 6));
-      cam.fpPitch += (-0.16 - cam.fpPitch) * (1 - Math.exp(-dt * 6));
+    const idle = game.time - cam.lastManual;
+    if (riding && Math.abs(donkey.speed) > 0.6 && idle > 1.2) {
+      cam.yaw = lerpAngle(cam.yaw, donkey.heading + Math.PI, 1 - Math.exp(-dt * 2.6 * Math.min(1, Math.abs(donkey.speed) / 4)));
     }
-    const bob = Math.sin(player.phase) * 0.025 * Math.min(1, player.moving * 2);
-    desiredPos.set(player.pos.x, player.pos.y + 1.62 + bob, player.pos.z);
+    if (game.mode === 'talk' && npcs.active) {
+      const n = npcs.active.pos;
+      cam.yaw = lerpAngle(cam.yaw, Math.atan2(player.pos.x - n.x, player.pos.z - n.z), 1 - Math.exp(-dt * 6));
+      cam.fpPitch += (-0.05 - cam.fpPitch) * (1 - Math.exp(-dt * 4));
+    }
+    if (riding) {
+      donkey.seatWorld(desiredPos);
+      desiredPos.y += 0.55;
+    } else {
+      const bob = Math.sin(player.phase) * 0.025 * Math.min(1, player.moving * 2);
+      desiredPos.set(player.pos.x, player.pos.y + 1.62 + bob, player.pos.z);
+    }
     const cp = Math.cos(cam.fpPitch);
-    desiredLook.set(player.pos.x - Math.sin(cam.yaw) * cp, desiredPos.y + Math.sin(cam.fpPitch), player.pos.z - Math.cos(cam.yaw) * cp);
+    desiredLook.set(desiredPos.x - Math.sin(cam.yaw) * cp, desiredPos.y + Math.sin(cam.fpPitch), desiredPos.z - Math.cos(cam.yaw) * cp);
     camPos.copy(desiredPos);
     camLook.copy(desiredLook);
     camera.position.copy(camPos);
@@ -1538,7 +1506,7 @@ function updateWalk(dt) {
   const tired = game.energy < 15 ? 0.65 : 1;
   player.moving = 0;
   if (mag > 0.01) {
-    const yaw = game.inside ? 0 : cam.yaw;
+    const yaw = cam.yaw;
     const fx = -Math.sin(yaw);
     const fz = -Math.cos(yaw);
     const rx = -fz;
@@ -1548,7 +1516,7 @@ function updateWalk(dt) {
     const l = Math.hypot(dx, dz) || 1;
     dx /= l;
     dz /= l;
-    const sp = player.speed * mag * tired * (game.inside ? 0.7 : 1);
+    const sp = player.speed * mag * tired * (game.inside ? 0.7 : kira.isInside(player.pos) ? 0.75 : 1);
     player.pos.x += dx * sp * dt;
     player.pos.z += dz * sp * dt;
     player.heading = lerpAngle(player.heading, Math.atan2(dx, dz), 1 - Math.exp(-dt * 12));
@@ -1619,9 +1587,7 @@ function updatePlaying(dt) {
   if (game.mode === 'walk' || game.mode === 'home') {
     if (!game.busy) updateWalk(dt);
     donkey.update(dt, null);
-  } else if (game.mode === 'ocak') {
-    donkey.update(dt, null);
-    renderOcak();
+
   } else if (game.mode === 'ride') {
     const mv = controls.getMove();
     donkey.update(dt, { throttle: mv.y, steer: mv.x, brake: controls.brake });
@@ -1649,6 +1615,7 @@ function updatePlaying(dt) {
 
   customers.update(dt, true, customerRate(), matchOn() && kira.tvOn);
   checkStock();
+  updateAim();
   computeActions();
   updateHud();
   if (game.time - game.lastSave > 30) saveGame();
@@ -1673,7 +1640,7 @@ function objective() {
     const want = kira.tables.find((t) => t.state === 'ordering');
     if (want) {
       const has = kira.tray.some((x) => want.order.includes(x.type));
-      return has ? { pos: want.center, text: '🛎️ Tepsiyi el kaldıran masaya götür.' } : { pos: kira.ocakPoint, text: '🫖 Sipariş var: ' + want.order.map((x) => DRINKS[x].icon).join('') + ' — Ocağa git.' };
+      return has ? { pos: want.center, text: '🛎️ Tepsiyi el kaldıran masaya götür.' } : { pos: kira.ocakPoint, text: '🫖 Sipariş var: ' + want.order.map((x) => DRINKS[x].icon).join('') + ' — Çay makinesine git.' };
     }
     const g = kira.tables.find((t) => t.party && t.wantGame && !t.game);
     if (g) return kira.gear ? { pos: g.center, text: `${GAMES[g.wantGame].icon} Takımı masaya ver.` } : { pos: kira.rackPoint, text: `${GAMES[g.wantGame].icon} Bir masa ${GAMES[g.wantGame].name} istiyor! Raftan al.` };
@@ -1840,7 +1807,6 @@ window.__androidBack = () => {
       return true;
     }
     if (game.mode === 'talk') npcs.close();
-    else if (game.mode === 'ocak') closeOcak();
     else pause();
     return true;
   }

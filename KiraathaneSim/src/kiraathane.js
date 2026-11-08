@@ -24,6 +24,7 @@ export const DRINKS = {
   soda: { icon: '🫧', name: 'Soda', price: 15 },
   su: { icon: '💧', name: 'Su', price: 8 },
   simit: { icon: '🥯', name: 'Simit', price: 15 },
+  bos: { icon: '🥃', name: 'Boş bardak', price: 0 },
 };
 export const GAMES = {
   okey: { icon: '🀄', name: 'Okey takımı', rent: 20 },
@@ -497,6 +498,44 @@ export class Kiraathane {
     addMesh(g, new THREE.CylinderGeometry(0.015, 0.015, 0.22, 8), steel, -hw + 0.22, 1.36, -2.1, false).rotation.z = Math.PI / 2;
     col(-hw, -hw + 0.95, -2.7, -1.5, 1.1);
 
+    /* ---------- İçecek dolabı (sol duvar), oralet kavanozu, simit tablası, çöp kovası ---------- */
+    const fr = new THREE.Group();
+    fr.position.set(-hw + 0.35, 0, -3.7);
+    g.add(fr);
+    addBox(fr, 0.62, 1.8, 0.72, 0xe9ecef, 0, 0.9, 0);
+    addBox(fr, 0.02, 1.5, 0.6, new THREE.MeshStandardMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.28, roughness: 0.05 }), 0.32, 0.95, 0, false);
+    addBox(fr, 0.03, 0.25, 0.62, mat(0xc1121f), 0.32, 1.65, 0, false);
+    const fridgeLight = mat(0xffffff, { emissive: 0xdff3ff, emissiveIntensity: 0.6 });
+    addBox(fr, 0.5, 0.02, 0.6, fridgeLight, 0, 1.6, 0, false);
+    for (const [y, colr] of [[1.18, 0x2f8f4a], [0.55, 0x3fb7c9]]) {
+      addBox(fr, 0.55, 0.02, 0.6, 0x9aa0a6, 0, y - 0.02, 0, false);
+      for (let i = 0; i < 8; i++) {
+        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, colr === 0x2f8f4a ? 0.2 : 0.26, 10), new THREE.MeshStandardMaterial({ color: colr, transparent: true, opacity: 0.85, roughness: 0.1 }));
+        b.position.set(0.12 - (i % 2) * 0.12, y + 0.12, -0.24 + Math.floor(i / 2) * 0.16);
+        fr.add(b);
+      }
+    }
+    col(-hw, -hw + 0.7, -4.08, -3.32, 1.8);
+    // oralet kavanozu + simit tablası (tezgahın sağ ucu)
+    addMesh(g, new THREE.CylinderGeometry(0.09, 0.09, 0.2, 14), new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, roughness: 0.05 }), -3.15, 1.15, sz - 0.2, false);
+    addMesh(g, new THREE.CylinderGeometry(0.085, 0.085, 0.12, 14), mat(0xff8c1a), -3.15, 1.11, sz - 0.2, false);
+    addMesh(g, new THREE.CylinderGeometry(0.095, 0.095, 0.03, 14), mat(0xe8761a), -3.15, 1.26, sz - 0.2, false);
+    addMesh(g, new THREE.CylinderGeometry(0.22, 0.22, 0.02, 20), 0x8a5a2b, -2.85, 1.06, sz + 0.15, false);
+    this.simitMeshes = [];
+    for (let i = 0; i < 5; i++) {
+      const m = addMesh(g, new THREE.TorusGeometry(0.06, 0.02, 8, 16), mat(0xa0662f, { roughness: 0.8 }), -2.85 + Math.cos(i * 1.25) * 0.1, 1.09 + (i === 4 ? 0.03 : 0), sz + 0.15 + Math.sin(i * 1.25) * 0.1, false);
+      m.rotation.x = Math.PI / 2;
+      this.simitMeshes.push(m);
+    }
+    // çöp kovası
+    addMesh(g, new THREE.CylinderGeometry(0.2, 0.17, 0.55, 14), 0x3a3d42, -2.2, 0.28, -hd + 1.25);
+    addMesh(g, new THREE.CylinderGeometry(0.21, 0.21, 0.04, 14), 0x2a2b2e, -2.2, 0.57, -hd + 1.25, false);
+    col(-2.42, -1.98, -hd + 1.03, -hd + 1.47, 0.6);
+    // çay makinesinin durum lambası + musluk
+    this.teaLamp = addMesh(g, new THREE.SphereGeometry(0.035, 10, 8), new THREE.MeshStandardMaterial({ color: 0x555555, emissive: 0x000000 }), sx - 0.45, 1.5, sz + 0.32, false);
+    addMesh(g, new THREE.CylinderGeometry(0.02, 0.015, 0.1, 8), steel, sx + 0.1, 1.12, sz + 0.34, false);
+    addBox(g, 0.3, 0.02, 0.18, steel, sx + 0.1, 1.06, sz + 0.38, false);
+
     /* ---------- Oyun dolabı (arka sağ): koyu ahşap, raflar ---------- */
     addBox(g, 2.4, 2.0, 0.5, 0x22160e, 4.7, 1.0, -hd + 0.25);
     for (const y of [0.6, 1.2, 1.8]) addBox(g, 2.3, 0.04, 0.46, 0x3a2616, 4.7, y, -hd + 0.28, false);
@@ -612,6 +651,7 @@ export class Kiraathane {
     this.tableSpots = [[-3.6, 4.6], [3.0, 4.6], [-3.6, 1.0], [3.0, 1.0], [-3.6, -2.4], [3.0, -2.4]];
     this.tables = [];
     this.tableCount = 0;
+    this.setTableCount(6);
     this.setTableCount(4);
 
     /* ---------- Noktalar ---------- */
@@ -662,6 +702,7 @@ export class Kiraathane {
     this.patienceMul = 1;
     this._buildTrayView();
     this._refreshRack();
+    this._buildHits();
   }
 
   _applyShutter() {
@@ -713,7 +754,12 @@ export class Kiraathane {
       const it3 = new THREE.Group();
       it3.position.set(x, 0.006, z);
       g.add(it3);
-      if (it.type === 'cay' || it.type === 'oralet') {
+      if (it.type === 'bos') {
+        saucer(it3, 0.04);
+        const glass = new THREE.Mesh(this.glassGeo, this.glassMat);
+        glass.position.y = 0.006;
+        it3.add(glass);
+      } else if (it.type === 'cay' || it.type === 'oralet') {
         saucer(it3, 0.04);
         const glass = new THREE.Mesh(this.glassGeo, this.glassMat);
         glass.position.y = 0.006;
@@ -1212,6 +1258,10 @@ export class Kiraathane {
       s.m.scale.setScalar(0.6 + s.t * 1.6);
     }
     this.glassMeshes.forEach((m, i) => (m.visible = i < this.glassClean));
+    const tq = this.teaQuality();
+    this.teaLamp.material.emissive.setHex(tq === null ? 0x000000 : tq === 'light' ? 0xff9f1c : tq === 'good' ? 0x22dd55 : 0xff2222);
+    const sim = this.ctx.stock.simit ?? 0;
+    this.simitMeshes.forEach((m, i) => (m.visible = i < sim));
     this._drawTv(matchOn);
 
     // Masalar
@@ -1390,9 +1440,9 @@ export class Kiraathane {
     this.ctx.toast('🫖 Çay demleniyor... Tavşan kanı olunca doldur.', 'info', 'demle');
   }
   pourTea() {
-    if (this.tray.length >= this.trayMax) return this.ctx.toast('Tepsi dolu!', 'warn', 'trayfull');
     if (this.tea.left <= 0) return this.ctx.toast('Demlik boş, önce çay demle 🫖', 'warn', 'nodem');
-    if (this.glassClean <= 0) return this.ctx.toast('Temiz bardak kalmadı! Lavaboda bardak yıka 🧽', 'bad', 'noglass');
+    const k = this.tray.findIndex((x) => x.type === 'bos');
+    if (k < 0) return this.ctx.toast('Önce tezgahtan boş bardak al 🥃', 'warn', 'noglass');
     let q = this.teaQuality();
     if (this.ctx.stock.seker > 0) this.ctx.stock.seker--;
     else {
@@ -1400,8 +1450,9 @@ export class Kiraathane {
       if (q === 'good') q = 'light';
     }
     this.tea.left--;
-    this.glassClean--;
-    this.tray.push({ type: 'cay', q });
+    this.tray[k] = { type: 'cay', q };
+    if (q === 'good') this.ctx.toast('🍵 Tavşan kanı!', 'ok', 'tk');
+    else this.ctx.toast(q === 'light' ? '🍵 Çay açık oldu, demlenmeyi bekle...' : '🍵 Çay acı oldu, yeniden demle!', 'warn', 'tq');
     this.totalTea++;
     this.ctx.sfx.pour?.();
     this.refreshTrayView();
@@ -1440,7 +1491,10 @@ export class Kiraathane {
     this.refreshTrayView();
   }
   emptyTray() {
-    for (const it of this.tray) if (GLASS_TYPES[it.type]) this.dirty++;
+    for (const it of this.tray) {
+      if (it.type === 'bos') this.glassClean = Math.min(this.glassTotal, this.glassClean + 1);
+      else if (GLASS_TYPES[it.type]) this.dirty++;
+    }
     this.tray = [];
     this.refreshTrayView();
   }
@@ -1539,28 +1593,134 @@ export class Kiraathane {
     this.refreshTrayView();
   }
 
-  /** Bağlamsal butonlar (oyuncu kıraathanenin içindeyken). */
-  actions(pos) {
-    const list = [];
-    const near = (p, r) => Math.hypot(pos.x - p.x, pos.z - p.z) < r;
-    if (near(this.ocakPoint, 2.4)) list.push({ id: 'ocak', icon: '🫖', label: 'Ocak', cls: 'yellow hot', onPress: () => this.ctx.openOcak() });
-    if (near(this.kasaPoint, 1.7) && this.payQueue.length) {
-      const gp = this.payQueue[0];
-      const arrived = gp.payer && !gp.payer.path.length;
-      list.push({ id: 'kasa', icon: '💰', label: arrived ? `Ödeme Al (${gp.bill} TL)` : 'Müşteri kasaya geliyor', cls: arrived ? 'green hot' : 'gray', onPress: () => arrived && this._settle(gp) });
+  /* ---------- Dokunarak etkileşim (birinci şahıs) ---------- */
+  _buildHits() {
+    const O = KIRA_ORIGIN;
+    const hd = D / 2;
+    const hw = W / 2;
+    const sz = -hd + 0.45;
+    const sx = -6.3;
+    this.hits = [];
+    const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+    const hit = (x, y, z, w, h, d, kind, extra = {}) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), hitMat);
+      m.position.set(O.x + x, y, O.z + z);
+      m.userData.hit = { kind, ...extra };
+      this.ctx.scene.add(m);
+      this.hits.push(m);
+      return m;
+    };
+    hit(sx, 1.75, sz, 1.45, 1.3, 0.8, 'sebil');
+    hit(-3.7, 1.1, sz - 0.15, 0.7, 0.3, 0.5, 'bardak');
+    hit(-4.6, 1.2, sz, 0.45, 0.35, 0.45, 'cezve');
+    hit(-3.15, 1.15, sz - 0.2, 0.26, 0.32, 0.26, 'oralet');
+    hit(-2.85, 1.1, sz + 0.15, 0.48, 0.15, 0.48, 'simit');
+    hit(-hw + 0.35, 1.3, -3.7, 0.7, 0.7, 0.75, 'soda');
+    hit(-hw + 0.35, 0.6, -3.7, 0.7, 0.7, 0.75, 'su');
+    hit(-2.2, 0.35, -hd + 1.25, 0.5, 0.7, 0.5, 'cop');
+    hit(-hw + 0.45, 1.0, -2.1, 0.95, 0.6, 1.25, 'lavabo');
+    hit(4.7, 0.72, -hd + 0.3, 2.3, 0.5, 0.55, 'raf', { game: 'okey' });
+    hit(4.7, 1.3, -hd + 0.3, 2.3, 0.5, 0.55, 'raf', { game: 'tavla' });
+    hit(4.7, 1.88, -hd + 0.3, 2.3, 0.5, 0.55, 'raf', { game: 'kart' });
+    hit(1.3, 1.25, -hd + 0.3, 1.8, 1.05, 0.25, 'tv');
+    hit(hw - 0.9, 1.25, 2.2, 1.9, 0.55, 0.95, 'kasa');
+    this.tableHits = this.tables.map((t) => hit(t.local.x, 0.7, t.local.z, 1.5, 1.2, 1.5, 'masa', { t }));
+  }
+
+  /** Bakılan / dokunulan nesneden yapılacak işi çıkar. */
+  describe(h) {
+    if (!h) return null;
+    const st = this.ctx.stock;
+    const hasEmpty = this.tray.some((x) => x.type === 'bos');
+    const full = this.tray.length >= this.trayMax;
+    const act = (icon, label, run, cls = 'green') => ({ icon, label, run, cls });
+    const info = (icon, label) => ({ icon, label, run: null, cls: 'gray' });
+    switch (h.kind) {
+      case 'bardak':
+        if (full) return info('🍽️', 'Tepsi dolu');
+        if (this.glassClean <= 0) return info('🥃', 'Temiz bardak yok! Lavaboda yıka');
+        return act('🥃', `Bardak Al (${this.glassClean})`, () => this.takeGlass());
+      case 'sebil': {
+        const q = this.teaQuality();
+        if (q === null) return st.cay > 0 ? act('🫖', `Çay Demle (kuru çay ${st.cay})`, () => this.brewTea(), 'yellow') : info('🫖', 'Kuru çay bitti! Bakkala git');
+        const qt = q === 'light' ? 'açık, demleniyor' : q === 'good' ? 'TAVŞAN KANI' : 'acılaştı';
+        if (hasEmpty) return act('🍵', `Çay Doldur — ${qt}`, () => this.pourTea(), q === 'good' ? 'green' : 'yellow');
+        if (q === 'bitter' && st.cay > 0) return act('🫖', 'Yeniden Demle (acılaştı)', () => this.brewTea(), 'yellow');
+        return info('🫖', `Demlik: ${qt} · ${this.tea.left} bardak — önce bardak al`);
+      }
+      case 'cezve':
+        if (this.coffee.on) {
+          const c = this.coffee.t;
+          if (c < 0.8) return info('☕', 'Kahve ısınıyor...');
+          return act('☕', c < 1.15 ? 'Kahveyi Al — köpürdü!' : 'Kahveyi Al — TAŞIYOR!', () => this.coffeeAction(), c < 1.15 ? 'green' : 'yellow');
+        }
+        return st.kahve > 0 ? act('☕', `Kahve Pişir (${st.kahve})`, () => this.coffeeAction(), 'yellow') : info('☕', 'Kahve bitti! Bakkala git');
+      case 'oralet':
+        if (!hasEmpty) return info('🍊', 'Oralet: önce bardak al');
+        return st.oralet > 0 ? act('🍊', `Oralet Yap (${st.oralet})`, () => this.makeOralet()) : info('🍊', 'Oralet bitti!');
+      case 'simit':
+      case 'soda':
+      case 'su':
+        if (full) return info('🍽️', 'Tepsi dolu');
+        return (st[h.kind] ?? 0) > 0 ? act(DRINKS[h.kind].icon, `${DRINKS[h.kind].name} Al (${st[h.kind]})`, () => this.addSimple(h.kind)) : info(DRINKS[h.kind].icon, `${DRINKS[h.kind].name} bitti!`);
+      case 'cop':
+        return this.tray.length ? act('🗑️', 'Tepsiyi Boşalt', () => this.emptyTray(), 'gray') : info('🗑️', 'Çöp kovası');
+      case 'lavabo':
+        return this.dirty ? act('🧽', `Bardak Yıka (${this.dirty})`, () => this.wash(), 'blue') : info('🧽', 'Lavabo — kirli bardak yok');
+      case 'raf':
+        if (this.gear === h.game) return act('↩️', `${GAMES[h.game].name} — rafa koy`, () => this.returnGame(), 'gray');
+        if (this.gear) return info(GAMES[h.game].icon, 'Elinde zaten bir takım var');
+        return this.sets[h.game] - this.setsOut[h.game] > 0 ? act(GAMES[h.game].icon, `${GAMES[h.game].name} Al`, () => this.takeGame(h.game), 'blue') : info(GAMES[h.game].icon, `${GAMES[h.game].name} kalmadı`);
+      case 'tv':
+        return act('📺', this.tvOn ? 'TV Kapat' : 'TV Aç', () => { this.tvOn = !this.tvOn; this._tvKey = null; this.ctx.sfx.click(); }, 'gray');
+      case 'kasa': {
+        if (!this.payQueue.length) return info('💰', 'Kasa — bekleyen yok');
+        const gp = this.payQueue[0];
+        const arrived = gp.payer && !gp.payer.path.length;
+        return arrived ? act('💰', `Ödeme Al (${gp.bill} TL)`, () => this._settle(gp)) : info('💰', 'Müşteri kasaya geliyor...');
+      }
+      case 'masa': {
+        const t = h.t;
+        if (t.idx >= this.tableCount) return null;
+        if (t.state === 'ordering') {
+          const want = t.order.map((x) => DRINKS[x].icon).join('');
+          return this.tray.some((x) => t.order.includes(x.type)) ? act('🛎️', `Servis Et (${want})`, () => this.serveTable(t)) : info('🙋', `Sipariş: ${want}`);
+        }
+        if (t.wantGame && !t.game) return this.gear === t.wantGame ? act(GAMES[t.wantGame].icon, 'Takımı Ver', () => this.giveGame(t)) : info(GAMES[t.wantGame].icon, `${GAMES[t.wantGame].name} istiyorlar — raftan al`);
+        if (t.state === 'dirty') return act('🧺', `Masayı Topla (${t.dirtyCups})`, () => this.collect(t), 'blue');
+        return null;
+      }
     }
-    if (near(this.sinkPoint, 1.9)) list.push({ id: 'wash', icon: '🧽', label: `Bardak Yıka (${this.dirty})`, cls: this.dirty ? 'blue hot' : 'gray', onPress: () => this.wash() });
-    if (near(this.rackPoint, 2.0)) {
-      if (this.gear) list.push({ id: 'rgear', icon: '↩️', label: 'Takımı Rafa Koy', cls: 'gray', onPress: () => this.returnGame() });
-      else for (const k of Object.keys(GAMES)) list.push({ id: 'g' + k, icon: GAMES[k].icon, label: `${GAMES[k].name} (${this.sets[k] - this.setsOut[k]})`, cls: 'blue', onPress: () => this.takeGame(k) });
+    return null;
+  }
+
+  /** Ekran noktasından (−1..1) ışın: erişim mesafesindeki nesne. */
+  pick(raycaster, reach = 2.7) {
+    const res = raycaster.intersectObjects(this.hits, false);
+    for (const r of res) {
+      if (r.distance > reach) break;
+      const h = r.object.userData.hit;
+      if (h.kind === 'masa' && h.t.idx >= this.tableCount) continue;
+      return h;
     }
-    if (near(this.tvPoint, 1.8)) list.push({ id: 'tv', icon: '📺', label: this.tvOn ? 'TV Kapat' : 'TV Aç', cls: 'gray', onPress: () => { this.tvOn = !this.tvOn; this._tvKey = null; this.ctx.sfx.click(); } });
-    const t = this.nearestTable(pos);
-    if (t) {
-      if (t.state === 'ordering') list.push({ id: 'serve' + t.idx, icon: '🛎️', label: this.tray.length ? 'Servis Et' : 'Sipariş: ' + t.order.map((x) => DRINKS[x].icon).join(''), cls: this.tray.length ? 'green hot' : 'gray', onPress: () => this.serveTable(t) });
-      if (t.wantGame && !t.game && this.gear) list.push({ id: 'game' + t.idx, icon: GAMES[t.wantGame].icon, label: 'Takımı Ver', cls: 'green hot', onPress: () => this.giveGame(t) });
-      if (t.state === 'dirty') list.push({ id: 'collect' + t.idx, icon: '🧺', label: `Masayı Topla (${t.dirtyCups})`, cls: 'blue', onPress: () => this.collect(t) });
-    }
-    return list;
+    return null;
+  }
+
+  takeGlass() {
+    if (this.tray.length >= this.trayMax) return this.ctx.toast('Tepsi dolu!', 'warn', 'trayfull');
+    if (this.glassClean <= 0) return this.ctx.toast('Temiz bardak kalmadı! Lavaboda yıka 🧽', 'bad', 'noglass');
+    this.glassClean--;
+    this.tray.push({ type: 'bos', q: 'good' });
+    this.ctx.sfx.clink?.();
+    this.refreshTrayView();
+  }
+  makeOralet() {
+    const k = this.tray.findIndex((x) => x.type === 'bos');
+    if (k < 0 || this.ctx.stock.oralet <= 0) return;
+    this.ctx.stock.oralet--;
+    this.tray[k] = { type: 'oralet', q: 'good' };
+    this.ctx.sfx.pour?.();
+    this.refreshTrayView();
+
   }
 }

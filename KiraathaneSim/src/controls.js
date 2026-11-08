@@ -96,7 +96,7 @@ export class Controls {
     };
     el.addEventListener('pointerdown', (e) => {
       if (pts.size >= 2) return;
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
       try { el.setPointerCapture(e.pointerId); } catch { /* yok say */ }
       if (pts.size === 2) this.pinchLast = pinchDist();
     });
@@ -116,6 +116,11 @@ export class Controls {
       }
     });
     const end = (e) => {
+      const p = pts.get(e.pointerId);
+      // Kısa ve kaydırmasız dokunuş = nesneye tıklama
+      if (p && e.type === 'pointerup' && pts.size === 1 && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 12 && performance.now() - p.t0 < 400) {
+        this.onTap?.(e.clientX, e.clientY);
+      }
       pts.delete(e.pointerId);
     };
     el.addEventListener('pointerup', end);

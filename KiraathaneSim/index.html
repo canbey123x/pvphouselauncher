@@ -99,8 +99,9 @@
     <ul class="how-list">
       <li><b>🕹️ Yürü:</b> Sol alttaki joystick (klavyede WASD / ok tuşları). Ekranı sürükleyerek etrafa bak.</li>
       <li><b>🔓 Kepenk:</b> Sabah kıraathanenin önüne git (sarı ok), <i>Kepengi Aç</i>. Gece yarısına doğru <i>Kepengi İndir</i>.</li>
-      <li><b>👀 Birinci şahıs:</b> İçeri girince kamera gözünden görür, elinde tepsi taşırsın.</li>
-      <li><b>🫖 Ocak:</b> Arka soldaki ocağa git, <i>Ocak</i>'a bas. <i>Çay Demle</i> → ibre yeşile (tavşan kanı) gelince <i>Çay Doldur</i>. Erken doldurursan açık, geç kalırsan acı olur. Kahveyi cezveye koy, köpürünce al; bekletirsen taşar! Oralet, soda, su, simit de tepsiye konur.</li>
+      <li><b>👀 Birinci şahıs:</b> Oyun baştan sona kendi gözünden oynanır. Ekranı sürükleyerek bak, ortadaki noktayı bir şeye çevir ya da doğrudan nesneye dokun.</li>
+      <li><b>🫖 Çay:</b> Arka soldaki çay makinesine dokun → <i>Çay Demle</i>. Tezgahtaki bardaklara dokun → <i>Bardak Al</i> (tepsine boş bardak gelir). Elinde boş bardakla makineye dokun → çay dolar. Makinedeki lamba yeşilse tavşan kanı, turuncuysa açık, kırmızıysa acı.</li>
+      <li><b>☕ Diğerleri:</b> Cezveye dokun = kahve pişir / köpürünce al (bekletirsen taşar). Boş bardakla oralet kavanozuna dokun = oralet. Dolaptan soda ve su, tablaladan simit. Fazlasını çöp kovasına boşalt.</li>
       <li><b>🙋 Sipariş:</b> Müşteriler oturur, el kaldırır; başlarının üstünde ne istedikleri ve sabır çubuğu görünür. Masaya yaklaş, <i>Servis Et</i>.</li>
       <li><b>🀄 Oyunlar:</b> Bazı masalar okey, tavla ya da iskambil ister (🀄? 🎲? 🃏?). Arka sağdaki raftan takımı al, masaya ver. Oyun oynayan masa daha uzun oturur, daha çok çay içer ve masa ücreti öder.</li>
       <li><b>💰 Kasa:</b> Kalkan masadan biri sağ öndeki kasaya gelir. Kasanın arkasına geç, <i>Ödeme Al</i>. İyi çay ve hızlı servis bahşiş getirir.</li>
@@ -111,7 +112,7 @@
       <li><b>⭐ Popülerlik:</b> Memnun masalar popülerliği artırır; kaçan müşteri, kötü çay ve kapalı kıraathane düşürür. Popülerlik arttıkça daha çok müşteri gelir.</li>
       <li><b>🐴 Eşek:</b> Yanına git, <i>Eşeğe Bin</i>. Joystick = gaz/dönüş, <i>Fren</i> ile dur. Eşek kahvehaneye giremez!</li>
       <li><b>🌙 Gece & Ev:</b> Gül Sokak'taki evine git, yatakta uyu. Sabah gün özeti çıkar. Enerji biterse sokakta bayılırsın.</li>
-      <li><b>⌨️ Klavye:</b> E = eylem, R = ikinci eylem, ocakta 1-7 = düğmeler, Q = ocaktan çık, C = kamera, P = duraklat.</li>
+      <li><b>⌨️ Klavye:</b> E = baktığın nesneyle etkileşim, fare sürükle = bak, P = duraklat.</li>
     </ul>
   </template>
 
@@ -128,7 +129,7 @@
       <div class="pill money" id="moneyPill">💰 <span id="money">0</span> TL</div>
       <div class="pill clock" id="clockPill">☀️ 07:30</div>
       <div class="spacer"></div>
-      <button id="camBtn" class="icon-btn" aria-label="Kamera açısı">🎥</button>
+      <button id="camBtn" class="icon-btn hidden" aria-label="Kamera açısı">🎥</button>
       <button id="pauseBtn" class="icon-btn" aria-label="Duraklat">☰</button>
     </div>
     <div class="hud-sub">
@@ -141,20 +142,8 @@
     </div>
 
     <div id="orderCard" class="hidden"></div>
-    <div id="ocakPanel" class="hidden">
-      <div class="ocak-head"><b>🫖 OCAK</b><button id="ocakClose" class="shop-x" aria-label="Ocaktan çık">✕</button></div>
-      <div class="ocak-meter">
-        <div class="om-label">Demlik: <b id="teaLabel">Demlik boş</b></div>
-        <div class="om-bar tea"><span class="z a"></span><span class="z b"></span><span class="z c"></span><i id="teaNeedle"></i></div>
-      </div>
-      <div class="ocak-meter">
-        <div class="om-label">Cezve: <b id="coffeeLabel">Cezve boş</b></div>
-        <div class="om-bar coffee"><span class="z a"></span><span class="z b"></span><span class="z c"></span><i id="coffeeNeedle"></i></div>
-      </div>
-      <div id="ocakBtns"></div>
-      <div id="ocakTray" class="ocak-tray"></div>
-      <div id="ocakInfo" class="ocak-info"></div>
-    </div>
+    <div id="crosshair" class="hidden"></div>
+    <div id="aimPrompt" class="hidden"></div>
     <div id="hint" class="hidden"></div>
     <div id="toasts"></div>
 

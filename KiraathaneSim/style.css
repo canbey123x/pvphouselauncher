@@ -826,3 +826,16 @@ button { font-family: inherit; cursor: pointer; }
   #ocakBtns { grid-template-columns: repeat(8, 1fr); }
   .ocak-btn b { font-size: 9px; }
 }
+
+/* ============ Birinci şahıs: nişangah + bakılan nesne yazısı ============ */
+#crosshair {
+  position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px;
+  border-radius: 50%; background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45);
+  pointer-events: none; z-index: 6;
+}
+#aimPrompt {
+  position: absolute; left: 50%; top: calc(50% - 46px); transform: translateX(-50%);
+  color: #fff; font: 800 17px 'Nunito', sans-serif; white-space: nowrap;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9), 0 0 2px #000; pointer-events: none; z-index: 6;
+}
+#aimPrompt.info { opacity: 0.75; font-size: 14px; }
