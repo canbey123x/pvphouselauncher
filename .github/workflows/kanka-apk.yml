@@ -1,0 +1,66 @@
+name: Kanka APK
+
+# KankaSosyal/ klasörü her değiştiğinde Android APK'sını derler:
+#  - Actions sekmesinde "Kanka-apk" artifact'ı olarak
+#  - "kanka-latest" sürümünde (Releases) doğrudan indirilebilir Kanka.apk olarak
+
+on:
+  push:
+    paths:
+      - 'KankaSosyal/**'
+      - '.github/workflows/kanka-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kanka-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: KankaSosyal/android
+    steps:
+      - name: Kodu çek
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: APK derle
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: APK'yı adlandır
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/Kanka.apk"
+          ls -la "$GITHUB_WORKSPACE/Kanka.apk"
+
+      - name: Artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kanka-apk
+          path: Kanka.apk
+
+      - name: Releases'a yayınla (kanka-latest)
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete kanka-latest --cleanup-tag -y || true
+          gh release create kanka-latest Kanka.apk \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Kanka APK (son sürüm)" \
+            --notes "Telefona indir, aç, kur. Bilinmeyen kaynaklardan yüklemeye izin vermen gerekebilir. Derleme: ${GITHUB_SHA::7} (#${GITHUB_RUN_NUMBER})"

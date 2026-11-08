@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Kanka ikonu: iç içe iki halka (iki arkadaş), renk geçişli -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M18,18h72v72h-72z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="18" android:startY="90" android:endX="90" android:endY="18">
+                <item android:offset="0" android:color="#FFF9CE34" />
+                <item android:offset="0.5" android:color="#FFEE2A7B" />
+                <item android:offset="1" android:color="#FF6228D7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4.3" android:fillColor="#00000000"
+        android:pathData="M48,61m-14.4,0a14.4,14.4 0,1 1,28.8 0a14.4,14.4 0,1 1,-28.8 0" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4.3" android:fillColor="#00000000"
+        android:pathData="M61,67m-14.4,0a14.4,14.4 0,1 1,28.8 0a14.4,14.4 0,1 1,-28.8 0" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M67,40m-3.6,0a3.6,3.6 0,1 1,7.2 0a3.6,3.6 0,1 1,-7.2 0" />
+</vector>

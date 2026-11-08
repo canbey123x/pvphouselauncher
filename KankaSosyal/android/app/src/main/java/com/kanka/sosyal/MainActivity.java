@@ -1,0 +1,156 @@
+package com.kanka.sosyal;
+
+import android.annotation.SuppressLint;
+import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+
+import androidx.webkit.WebViewAssetLoader;
+
+/**
+ * Kanka web uygulamasını bir WebView içinde çalıştırır.
+ * Dosyalar APK'nın assets/www klasöründen https://appassets.androidplatform.net
+ * adresiyle sunulur. Foto/video/GIF seçmek için dosya seçici desteklenir.
+ */
+public class MainActivity extends Activity {
+
+    private static final String HOST = "appassets.androidplatform.net";
+    private static final String START_URL = "https://" + HOST + "/assets/www/index.html";
+    private static final int PICK = 41;
+
+    private WebView web;
+    private ValueCallback<Uri[]> pending;
+
+    @SuppressLint("SetJavaScriptEnabled")
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        web = new WebView(this);
+        web.setBackgroundColor(0xFF000000);
+        setContentView(web);
+
+        final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
+                .setDomain(HOST)
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
+
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setDatabaseEnabled(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(true);
+        s.setSupportZoom(false);
+        s.setTextZoom(100);
+
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                return loader.shouldInterceptRequest(request.getUrl());
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                Uri uri = request.getUrl();
+                if (HOST.equals(uri.getHost())) return false;
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, uri));
+                } catch (Exception ignored) {
+                    // açacak uygulama yok
+                }
+                return true;
+            }
+        });
+
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (pending != null) pending.onReceiveValue(null);
+                pending = callback;
+                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                String[] types = params.getAcceptTypes();
+                String accept = types != null && types.length > 0 ? String.join(",", types) : "";
+                if (accept.contains("video") && accept.contains("image")) {
+                    i.setType("*/*");
+                    i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*"});
+                } else if (accept.contains("video")) {
+                    i.setType("video/*");
+                } else if (accept.contains("gif")) {
+                    i.setType("image/gif");
+                } else {
+                    i.setType("image/*");
+                }
+                try {
+                    startActivityForResult(Intent.createChooser(i, "Seç"), PICK);
+                } catch (Exception e) {
+                    pending = null;
+                    return false;
+                }
+                return true;
+            }
+        });
+
+        if (savedInstanceState != null) web.restoreState(savedInstanceState);
+        else web.loadUrl(START_URL);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK || pending == null) return;
+        Uri[] result = null;
+        if (resultCode == RESULT_OK && data != null && data.getData() != null) result = new Uri[]{data.getData()};
+        pending.onReceiveValue(result);
+        pending = null;
+    }
+
+    /** Geri tuşu: uygulama içinde geri git; ana sayfadaysa çık. */
+    @SuppressWarnings("deprecation")
+    @Override
+    public void onBackPressed() {
+        if (web == null) {
+            super.onBackPressed();
+            return;
+        }
+        web.evaluateJavascript("(window.__androidBack ? window.__androidBack() : false)", value -> {
+            if (!"true".equals(value)) finish();
+        });
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (web != null) web.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (web != null) web.onResume();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (web != null) web.saveState(outState);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (web != null) {
+            web.destroy();
+            web = null;
+        }
+        super.onDestroy();
+    }
+}
