@@ -53,8 +53,8 @@ const DETAIL_CODE = {
     float n = dFbm(p * 0.35);
     float g = dHash(floor(p * 45.0));
     diffuseColor.rgb *= 0.8 + 0.26 * n + 0.14 * (g - 0.5);
-    float crack = (1.0 - smoothstep(0.0, 0.02, abs(dNoise(p * 0.9) - 0.5))) * step(0.62, dNoise(p * 0.19));
-    diffuseColor.rgb *= 1.0 - 0.4 * crack;
+    float crack = (1.0 - smoothstep(0.0, 0.006, abs(dNoise(p * 1.3) - 0.5))) * step(0.74, dNoise(p * 0.17));
+    diffuseColor.rgb *= 1.0 - 0.22 * crack;
     diffuseColor.rgb *= 1.0 - 0.12 * smoothstep(0.6, 0.8, dNoise(p * 0.12 + 7.0));
   }`,
   // Kaldırım taşı: şaşırtmalı 50 cm taşlar, derzler, taş başına ton farkı

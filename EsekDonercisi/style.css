@@ -726,3 +726,12 @@ button { font-family: inherit; cursor: pointer; }
 @media (max-height: 520px) and (orientation: landscape) {
   #cookMeter { bottom: calc(12px + var(--safe-b)); }
 }
+
+/* Kesim ekranında üst satır taşmasın; pişme göstergesi sipariş kartının altında */
+#hud[data-mode="cut"] #shopPill, #hud[data-mode="cut"] #queuePill { display: none; }
+#cookMeter { left: 50%; transform: translateX(-50%); bottom: auto; top: calc(200px + var(--safe-t)); width: min(92vw, 420px); }
+#hud[data-mode="cut"] #toasts { top: calc(268px + var(--safe-t)); }
+@media (max-height: 520px) and (orientation: landscape) {
+  #cookMeter { top: auto; bottom: calc(12px + var(--safe-b)); left: calc(12px + var(--safe-l)); transform: none; width: min(40vw, 260px); }
+  #hud[data-mode="cut"] #toasts { top: calc(170px + var(--safe-t)); }
+}

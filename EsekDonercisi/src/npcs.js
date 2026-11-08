@@ -29,8 +29,8 @@ const G = {
   mouth: new THREE.BoxGeometry(0.042, 0.008, 0.01),
   mustache: (() => { const g = cap(0.012, 0.05, 6); g.rotateZ(Math.PI / 2); return g; })(),
   beard: (() => { const g = new THREE.SphereGeometry(0.105, 14, 10, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.4); g.scale(1, 1.1, 1.05); return g; })(),
-  hair: new THREE.SphereGeometry(0.124, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
-  hairBack: new THREE.SphereGeometry(0.122, 16, 10, Math.PI * 0.15, Math.PI * 0.7, Math.PI * 0.35, Math.PI * 0.35),
+  hair: new THREE.SphereGeometry(0.124, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.42),
+  hairBack: new THREE.SphereGeometry(0.122, 16, 10, Math.PI * 1.1, Math.PI * 0.8, Math.PI * 0.3, Math.PI * 0.42),
   scarf: new THREE.SphereGeometry(0.135, 18, 14, Math.PI / 2 + 1.0, Math.PI * 2 - 2.0, 0, Math.PI * 0.82),
   scarfNeck: new THREE.CylinderGeometry(0.09, 0.14, 0.14, 14),
   kasket: (() => { const g = new THREE.SphereGeometry(0.13, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.42); g.scale(1, 0.75, 1.05); return g; })(),
@@ -146,7 +146,7 @@ export function createPerson(o = {}) {
     M(G.scarfNeck, sc, 0, -0.13, -0.01, head);
   } else {
     if (!o.bald) {
-      M(G.hair, hair, 0, 0.012, -0.006, head);
+      M(G.hair, hair, 0, 0.022, -0.012, head).rotation.x = -0.38;
       M(G.hairBack, hair, 0, 0.0, -0.004, head);
     }
     if (hat === 'kasket') {

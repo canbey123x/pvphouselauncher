@@ -16,6 +16,11 @@ Derleme yok, `npm install` yok: Three.js CDN üzerinden ES Module olarak yüklen
 - **Ev ve uyku:** Gül Sokak'ta bahçeli **Usta'nın Evi** var. *Eve Gir* ile içeri girersin: yatak, sedir, çay sehpası. Gece *Uyu* ile sabah 07:00'ye geçilir ve gün özeti çıkar (kazanç, servis, kira). Gündüz *Kestir* 2 saat sürer.
 - **Enerji:** Uyanık kaldıkça azalır. Çay içmek biraz verir, uyku tamamen doldurur. Biterse sokakta bayılırsın; bekçi seni eve taşır ama çay parası ister.
 - **Genişleyen kasaba:** Ana cadde, mahalle sokağı (Gül Sokak), Pazar Caddesi ve 3 ara sokak var. Ayrıca fırın, berber, eczane, hamam gibi tabelalı dükkânlar, pazar tezgahları, saat kulesi ve tarlalar.
+- **Gerçekçi grafik:** PBR malzemeler, filmik renk tonlama, renk geçişli gök kubbesi ve gökyüzünden yansıyan ortam ışığı, 2048'lik gölgeler. Asfalt, kaldırım taşı, çim ve sıva dokuları shader ile üretilir (doku dosyası yok). Duvar diplerinde kir ve gölgelenme var. Duraklat menüsünden *Grafik: Yüksek / Düşük* seçilebilir.
+- **Karakterler ve eşek:** Gerçek oranlı, eklemli insanlar (diz, dirsek, yüz: göz, kaş, burun, ağız, kulak). Eşeğin fıçı gövdesi, eklemli bacakları, uzun kulakları, yelesi ve kilim eyeri var; yürüyüşte ve tırısta adımları farklı.
+- **Döner pişirme:** Et ocakta pişer. Pişme göstergesi yeşildeyken (kıvamında) kes; çok hızlı kesersen çiğ katmana inersin, çok beklersen yanar. Çiğ ya da yanık dilim fiyatı düşürür. Dilimler kıvrık yaprak gibi kopar; yarım ekmek ve baskılı kağıtlı dürüm modelleri var.
+- **Mutfak:** Metro fayanslı duvarlar, davlumbaz, seramik ızgaralı dikey ocak, paslanmaz tezgahlar, salata küvetleri, soslar, ayranlar. Ekmek sepeti ve lavaş yığını stoğa göre dolup boşalır.
+- **Şehir hayatı:** Sağdan akan trafik: arabalar oyuncu ve eşek için durur, korna çalar, gece farlarını yakar. Ayrıca kaldırımlarda yaya kalabalığı ve sokak kedileri var. Ortam sesleri: şehir uğultusu, döner cızırtısı, gündüz kuşlar, gece cırcır böcekleri, yakından geçen araba motoru.
 - **Stok sistemi:** Her dilim döner etinden, her ekmek arası 1 ekmekten, her dürüm 1 lavaştan düşer. Şişteki döner, stoğa göre incelir. Stok azalınca uyarı çıkar, bitince sarı ok seni Kasap'a ya da Fırın'a götürür. Manav'dan salata alırsan her satış +10 TL getirir.
 - **Girilebilir dükkânlar (her biri tek):** Fırın, Kasap, Bakkal Nuri, Manav, Çay Ocağı, Lokanta, Tatlıcı, Eczane, Hamam, Berber, Nalbur. İçeride dükkân sahibi tezgahta bekler; *Alışveriş* ile ürün alırsın. Yiyecek ve içecekler enerji verir, hamam enerjiyi tamamen doldurur, berber görünüşünü değiştirir.
 - **Yükseltmeler (Nalbur):** Büyük tepsi (12 dilim), şam çeliği bıçak (daha kısa kaydırma), tabure ve masa (müşteriler %40 daha sabırlı), neon tabela (%30 daha çok müşteri), çelik nal (eşek %25 daha hızlı).
@@ -67,6 +72,7 @@ EsekDonercisi/
 │   ├── daynight.js             # Gece/gündüz: gökyüzü, güneş/ay, yıldızlar, ışıklar
 │   ├── house.js                # Ustanın evinin içi: yatak, sedir, çay, kapı
 │   ├── shops.js                # Dükkân kataloğu, stok, yükseltmeler ve dükkân içi
+│   ├── life.js                 # Trafik, yaya kalabalığı, sokak kedileri
 │   └── controls.js             # Sanal joystick, kamera sürükleme/zoom, klavye
 ├── .github/workflows/deploy.yml  # main dalına her push'ta GitHub Pages'e yayın
 └── README.md

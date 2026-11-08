@@ -1720,5 +1720,5 @@ window.__androidPause = () => {
   saveGame();
 };
 // Geliştirici kancası: ?debug ile konsoldan durum incelenebilir.
-if (new URLSearchParams(location.search).has('debug')) window.__dbg = { game, player, donkey, npcs, customers, cutting, city, home, cam, startSleep };
+if (new URLSearchParams(location.search).has('debug')) window.__dbg = { game, player, donkey, npcs, customers, cutting, city, home, cam, startSleep, life };
 frame();
