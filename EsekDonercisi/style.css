@@ -681,3 +681,19 @@ button { font-family: inherit; cursor: pointer; }
 .si-buy:active { transform: translateY(3px); box-shadow: 0 1px 0 #0f5c35; }
 .si-buy.poor { background: linear-gradient(180deg, #b9b6c8, #7d7a90); box-shadow: 0 4px 0 #4a4858; }
 .si-buy:disabled { background: #cfd8d3; color: #4a5a50; box-shadow: none; }
+
+/* ================= iOS kurulum ipucu ================= */
+.ios-tip {
+  position: relative;
+  margin-top: 14px;
+  padding: 10px 34px 10px 12px;
+  border-radius: 14px;
+  background: rgba(58, 134, 255, 0.18);
+  border: 2px solid rgba(106, 168, 255, 0.7);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: left;
+}
+.ios-tip .share-ico { display: inline-block; padding: 0 5px; border: 2px solid #fff; border-radius: 5px; font-size: 11px; }
+.ios-x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border: none; border-radius: 50%; background: rgba(255, 255, 255, 0.2); color: #fff; font-weight: 900; }

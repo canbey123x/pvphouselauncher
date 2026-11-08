@@ -43,7 +43,7 @@ android {
 tasks.register('copyWebAssets', Copy) {
     into webOut.get().dir('www')
     from(webRoot) {
-        include 'index.html', 'style.css', 'src/**'
+        include 'index.html', 'style.css', 'src/**', 'manifest.webmanifest', 'icons/**'
     }
     if (threeLocal.exists()) {
         from(threeLocal.parentFile) {

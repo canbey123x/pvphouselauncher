@@ -1,0 +1,18 @@
+{
+  "name": "EsekDonercisi",
+  "short_name": "EsekDöner",
+  "description": "Mobil öncelikli, low-poly 3D Türk kasabası dönerci simülasyonu.",
+  "lang": "tr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#1b1030",
+  "theme_color": "#1b1030",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

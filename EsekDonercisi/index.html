@@ -9,6 +9,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="description" content="EsekDonercisi — mobil öncelikli, low-poly 3D Türk kasabası dönerci simülasyonu.">
   <title>EsekDonercisi</title>
+  <meta name="apple-mobile-web-app-title" content="EsekDöner">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A5%99%3C/text%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -73,6 +77,10 @@
         <button id="btnStart" class="menu-btn primary">▶ Oyuna Başla</button>
         <button id="btnHow" class="menu-btn">📖 Nasıl Oynanır</button>
         <button id="btnAbout" class="menu-btn">ℹ️ Hakkında</button>
+      </div>
+      <div id="iosTip" class="ios-tip hidden">
+        <button class="ios-x" aria-label="Kapat">✕</button>
+        📲 <b>iPhone'a uygulama gibi kur:</b> Safari'de alttaki <b>Paylaş</b> <span class="share-ico">⬆︎</span> butonuna bas → <b>Ana Ekrana Ekle</b>. Sonra ana ekrandaki döner ikonundan tam ekran oyna!
       </div>
       <div class="menu-foot">Telefonda en iyi deneyim için yatay ya da dikey, fark etmez — sadece aç!</div>
     </div>
@@ -197,5 +205,26 @@
   </div>
 
   <script type="module" src="src/main.js"></script>
+  <script>
+    // Çevrimdışı çalışma (PWA). Android uygulamasının içinde gerekmez.
+    if ('serviceWorker' in navigator && location.protocol === 'https:' && location.hostname !== 'appassets.androidplatform.net') {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    }
+    // iPhone/iPad Safari'de, henüz ana ekrana eklenmemişse kurulum ipucunu göster.
+    (function () {
+      var ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      var standalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches;
+      var tip = document.getElementById('iosTip');
+      var dismissed = false;
+      try { dismissed = localStorage.getItem('esekdonercisi.iosTip') === '1'; } catch (e) {}
+      if (ios && !standalone && !dismissed && tip) {
+        tip.classList.remove('hidden');
+        tip.querySelector('.ios-x').addEventListener('click', function () {
+          tip.classList.add('hidden');
+          try { localStorage.setItem('esekdonercisi.iosTip', '1'); } catch (e) {}
+        });
+      }
+    })();
+  </script>
 </body>
 </html>
