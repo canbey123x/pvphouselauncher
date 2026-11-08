@@ -6,11 +6,12 @@ import * as THREE from 'three';
 import { buildCity, resolveCircle, pointBlocked } from './city.js';
 import { Donkey } from './donkey.js';
 import { Controls } from './controls.js';
-import { CuttingStation, ITEM_INFO, MAX_SLICES } from './cutting.js';
+import { CuttingStation, ITEM_INFO, COOK_RAW, COOK_BURNT } from './cutting.js';
 import { CustomerManager } from './customers.js';
 import { NPCManager, createPerson, animatePerson } from './npcs.js';
 import { DayNight, formatClock } from './daynight.js';
 import { Home } from './house.js';
+import { Life } from './life.js';
 import { CATALOG, ShopInterior, START_STOCK, STOCK_INFO } from './shops.js';
 
 const $ = (id) => document.getElementById(id);
@@ -106,8 +107,91 @@ function createSfx() {
     src.connect(f).connect(g).connect(master);
     src.start(a.currentTime + delay);
   };
+  // Ortam sesleri: şehir uğultusu, döner cızırtısı, gece cırcır böcekleri, yakın araba motoru, kuşlar
+  let amb = null;
+  const startAmb = () => {
+    const a = ac;
+    if (!a || amb) return;
+    const len = a.sampleRate * 2;
+    const brown = a.createBuffer(1, len, a.sampleRate);
+    const bd = brown.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02;
+      bd[i] = last * 3.5;
+    }
+    const crackle = a.createBuffer(1, len, a.sampleRate);
+    const cd = crackle.getChannelData(0);
+    for (let i = 0; i < len; i++) cd[i] = (Math.random() * 2 - 1) * (Math.random() < 0.015 ? 1 : 0.22);
+    const filt = (type, freq, q) => {
+      const f = a.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      if (q) f.Q.value = q;
+      return f;
+    };
+    const loop = (buf, f) => {
+      const src = a.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const g = a.createGain();
+      g.gain.value = 0;
+      src.connect(f).connect(g).connect(master);
+      src.start();
+      return g;
+    };
+    const city = loop(brown, filt('lowpass', 420));
+    const sizzle = loop(crackle, filt('bandpass', 3500, 0.7));
+    const cr = a.createOscillator();
+    cr.frequency.value = 4600;
+    const crAmp = a.createGain();
+    crAmp.gain.value = 0.5;
+    const am = a.createOscillator();
+    am.frequency.value = 27;
+    const amg = a.createGain();
+    amg.gain.value = 0.5;
+    am.connect(amg).connect(crAmp.gain);
+    const crickets = a.createGain();
+    crickets.gain.value = 0;
+    cr.connect(crAmp).connect(crickets).connect(master);
+    cr.start();
+    am.start();
+    const en = a.createOscillator();
+    en.type = 'sawtooth';
+    en.frequency.value = 50;
+    const engine = a.createGain();
+    engine.gain.value = 0;
+    en.connect(filt('lowpass', 260)).connect(engine).connect(master);
+    en.start();
+    amb = { city, sizzle, crickets, engine, en, birdT: 2 };
+  };
+  const setG = (g, v) => g.gain.setTargetAtTime(v, ac.currentTime, 0.4);
   return {
     unlock: ensure,
+    ambience(dt, o) {
+      if (!enabled || !ac || ac.state !== 'running') return;
+      if (!amb) startAmb();
+      if (!amb) return;
+      setG(amb.city, o.inside ? 0.008 : 0.05 - 0.03 * o.night);
+      setG(amb.sizzle, o.sizzle);
+      setG(amb.crickets, o.inside ? 0 : o.night * 0.012);
+      const near = Math.max(0, 1 - o.carDist / 25);
+      setG(amb.engine, o.inside ? 0 : near * 0.05);
+      amb.en.frequency.setTargetAtTime(46 + near * 30, ac.currentTime, 0.3);
+      amb.birdT -= dt;
+      if (amb.birdT <= 0) {
+        amb.birdT = 1.5 + Math.random() * 5;
+        if (!o.inside && o.night < 0.4) {
+          const f = 2600 + Math.random() * 1800;
+          const n = 2 + Math.floor(Math.random() * 3);
+          for (let i = 0; i < n; i++) tone(f + Math.random() * 400, 0.07, { type: 'sine', vol: 0.014, to: f * 1.3, delay: i * 0.11 });
+        }
+      }
+    },
+    horn: () => {
+      tone(415, 0.32, { type: 'square', vol: 0.035 });
+      tone(523, 0.32, { type: 'square', vol: 0.028 });
+    },
     get enabled() {
       return enabled;
     },
@@ -188,6 +272,10 @@ const ui = {
   joyZone: $('joyZone'),
   highScore: $('highScore'),
   btnSound: $('btnSound'),
+  btnQuality: $('btnQuality'),
+  cookMeter: $('cookMeter'),
+  cookLabel: $('cookLabel'),
+  cookNeedle: $('cookNeedle'),
   stockPill: $('stockPill'),
   shopPanel: $('shopPanel'),
   shopTitle: $('shopTitle'),
@@ -238,7 +326,12 @@ try {
   window.__showFatal?.('Tarayıcın WebGL desteklemiyor 😢 Güncel Chrome/Safari ile dene.');
   throw e;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+const QUALITY_KEY = 'esekdonercisi.quality';
+let quality = lsGet(QUALITY_KEY, 'high');
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 1.6 : 1));
+// Sinematik renk tonlama (filmik), gerçekçi ışık
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -253,7 +346,7 @@ const hemi = new THREE.HemisphereLight(0xfff4e0, 0x5a7d3c, 1.35);
 scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.mapSize.set(quality === 'high' ? 2048 : 1024, quality === 'high' ? 2048 : 1024);
 sun.shadow.camera.left = -34;
 sun.shadow.camera.right = 34;
 sun.shadow.camera.top = 34;
@@ -280,7 +373,8 @@ try {
    ========================================================= */
 const city = buildCity(scene);
 const home = new Home(scene);
-const dayNight = new DayNight(scene, sun, hemi);
+const dayNight = new DayNight(scene, sun, hemi, renderer);
+dayNight.envEnabled = quality === 'high';
 
 // Kasabadaki herkesin (eşek, NPC, müşteri) kullandığı dünya
 const cityWorld = {
@@ -338,6 +432,7 @@ const player = {
 scene.add(player.person.group);
 
 const donkey = new Donkey(ctx, city.donkeySpawn);
+const life = new Life(ctx, quality);
 const BASE_DONKEY_SPEED = donkey.maxSpeed;
 
 /** Berber vb. sonrası oyuncu modelini yeniden kur. */
@@ -361,7 +456,7 @@ const controls = new Controls({ zone: ui.joyZone, base: $('joyBase'), knob: $('j
 // Hedef işaretleri: hedefin üstünde zıplayan koni + oyuncunun başında yön oku
 const marker = new THREE.Mesh(
   new THREE.ConeGeometry(0.35, 0.7, 4),
-  new THREE.MeshLambertMaterial({ color: 0xffcf3f, emissive: 0x6b4a00, flatShading: true })
+  new THREE.MeshStandardMaterial({ color: 0xffcf3f, emissive: 0x6b4a00, flatShading: true })
 );
 marker.rotation.x = Math.PI;
 scene.add(marker);
@@ -562,6 +657,7 @@ function setMode(mode) {
   const showJoy = mode === 'walk' || mode === 'ride' || mode === 'home';
   show(ui.joyZone, showJoy);
   show(ui.order, mode === 'cut');
+  show(ui.cookMeter, mode === 'cut');
   controls.resetJoystick();
   controls.brakeHeld = false;
   actionsKey = '';
@@ -1085,6 +1181,21 @@ function resume() {
   game.state = 'playing';
 }
 
+function updateQualityBtn() {
+  ui.btnQuality.textContent = quality === 'high' ? '🎨 Grafik: Yüksek' : '🎨 Grafik: Düşük (hızlı)';
+}
+ui.btnQuality.addEventListener('click', () => {
+  quality = quality === 'high' ? 'low' : 'high';
+  lsSet(QUALITY_KEY, quality);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, quality === 'high' ? 1.6 : 1));
+  dayNight.envEnabled = quality === 'high';
+  dayNight.envTimer = 0;
+  onResize();
+  updateQualityBtn();
+  sfx.click();
+  toast('🎨 Grafik ayarı kaydedildi. Gölge ve kalabalık ayarı oyunu yeniden açınca uygulanır.', 'info', 'quality');
+});
+
 function updateSoundBtn() {
   ui.btnSound.textContent = sfx.enabled ? '🔊 Ses: Açık' : '🔇 Ses: Kapalı';
 }
@@ -1307,6 +1418,7 @@ function updateWalk(dt) {
     mag = 0;
   }
   world.resolve(player.pos, player.radius);
+  if (!game.inside) life.pushOut(player.pos, player.radius);
   if (!game.inside) {
     const ddx = player.pos.x - donkey.pos.x;
     const ddz = player.pos.z - donkey.pos.z;
@@ -1364,9 +1476,10 @@ function updatePlaying(dt) {
   } else if (game.mode === 'ride') {
     const mv = controls.getMove();
     donkey.update(dt, { throttle: mv.y, steer: mv.x, brake: controls.brake });
+    life.pushOut(donkey.pos, 0.7);
     donkey.seatWorld(tmpV);
     player.pos.copy(donkey.pos);
-    player.person.group.position.set(tmpV.x, tmpV.y - 0.86, tmpV.z);
+    player.person.group.position.set(tmpV.x, tmpV.y - 0.9, tmpV.z);
     player.person.group.rotation.set(0, donkey.heading, 0);
     animatePerson(player.person, 0, 0, 'ride');
   } else {
@@ -1529,6 +1642,10 @@ function frame() {
   const hour = game.state === 'menu' ? 18.4 : game.mode === 'sleep' && game.sleep ? ((game.sleep.from + (game.sleep.to - game.sleep.from) * game.sleep.t) % 1440) / 60 : hourNow();
   if (game.state !== 'paused') {
     cutting.update(dt, game.shopOpen || game.state === 'menu');
+    const blockers = [];
+    if (game.state === 'playing' && !game.inside && game.mode !== 'cut') blockers.push(player.pos);
+    blockers.push(donkey.pos);
+    life.update(dt, hour, blockers, camera.position, city.heightAt, dayNight.night);
     const playingOut = game.state === 'playing' && !game.inside && game.mode !== 'cut' && game.mode !== 'sleep';
     npcs.update(dt, game.mode === 'ride' ? donkey.pos : player.pos, playingOut, hour);
   }
@@ -1536,7 +1653,21 @@ function frame() {
   updateMarkers(dt);
   updateCamera(dt, look);
 
-  const n = dayNight.update(hour, camera.position, camLook);
+  const n = dayNight.update(hour, camera.position, camLook, dt);
+  if (game.state === 'playing') {
+    sfx.ambience(dt, {
+      night: n,
+      inside: !!game.inside || game.mode === 'sleep',
+      sizzle: game.shopOpen && !game.inside && distXZ(camera.position, city.shop.spitPos) < 9 ? (game.mode === 'cut' ? 0.05 : 0.025) : 0,
+      carDist: life.nearestCar,
+    });
+  }
+  if (game.mode === 'cut') {
+    const ci = cutting.cookInfo();
+    setText(ui.cookLabel, ci.label);
+    ui.cookNeedle.style.left = `${Math.min(100, (ci.v / 1.8) * 100)}%`;
+    ui.cookMeter.dataset.zone = ci.zone;
+  }
   city.setNight(n);
   home.setDaylight(dayNight.sky, n, game.inside === 'home');
   shopRoom.setDaylight(n, game.inside === 'shop');
@@ -1554,6 +1685,7 @@ function frame() {
 
 refreshMenu();
 updateSoundBtn();
+updateQualityBtn();
 setMode('walk');
 city.shop.setOpen(true, true);
 show(ui.loading, false);

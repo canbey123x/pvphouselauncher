@@ -198,8 +198,8 @@ export class ShopInterior {
     const col = (x0, x1, z0, z1) => this.colliders.push({ minX: o.x + x0, maxX: o.x + x1, minZ: o.z + z0, maxZ: o.z + z1, h: H });
 
     // Temaya göre rengi değişen malzemeler
-    this.wallMat = new THREE.MeshLambertMaterial({ color: 0xf3dcb2, flatShading: true });
-    this.goodMats = [0, 1, 2].map(() => new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }));
+    this.wallMat = new THREE.MeshStandardMaterial({ color: 0xf3dcb2, flatShading: true });
+    this.goodMats = [0, 1, 2].map(() => new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true }));
     const EXT = 7;
     addBox(g, W, 0.1, D + EXT, 0xcfc6b8, 0, 0.05, EXT / 2);
     for (let x = -W / 2 + 0.75; x < W / 2; x += 1.5) addBox(g, 0.03, 0.004, D + EXT, 0xb5ab9c, x, 0.102, EXT / 2, false);

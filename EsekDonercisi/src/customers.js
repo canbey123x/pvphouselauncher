@@ -19,6 +19,8 @@ const LINES = {
   perfect: ['Eline sağlık usta, tam istediğim gibi!', 'Bu döner değil, sanat eseri!', 'Annemin yaptığından güzel... Ona söyleme!', 'Eşeğin de sen de çok yaşayın!'],
   extra: ['Ooo bol etli! Batacaksın usta ama sağ ol!', 'Bu kadar et mi? Diyet yarın başlar!', 'Cömert dönerci, bereketli dükkân!'],
   less: ['Usta et nerede, ekmeğin içinde saklambaç mı var?', 'Eti mikroskopla mı arayacağım?', 'Hmm... Biraz cimri kesmişsin.'],
+  raw: ['Usta bu et çiğ kalmış! 🤢 Yarı fiyat veriyorum.', 'Pembe pembe döner mi olur? Ocağı aç biraz!', 'Çiğ et yedirirsen hastaneye seni gönderirim!'],
+  burnt: ['Bu döner mi kömür mü usta? 🔥', 'Yanık tadı var, ama açım işte...', 'Ocağın başından ayrılma usta, et yanmış!'],
   wrong: ['Ben başka bir şey istemiştim ama... neyse, açım.', 'Siparişi eşek mi aldı usta?', 'Yanlış oldu ama kokusu güzel, yerim.'],
 };
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
@@ -52,7 +54,7 @@ function makeBubble() {
   tex.colorSpace = THREE.SRGBColorSpace;
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
   sprite.scale.set(1.5, 0.94, 1);
-  sprite.position.y = 2.65;
+  sprite.position.y = 2.25;
   sprite.renderOrder = 10;
   return { canvas, g: canvas.getContext('2d'), tex, sprite, timer: 0, lastKey: '' };
 }
@@ -131,7 +133,7 @@ export class CustomerManager {
     const s = 0.92 + Math.random() * 0.14;
     person.group.scale.setScalar(s);
     const bubble = makeBubble();
-    bubble.sprite.position.y = 2.65 / s;
+    bubble.sprite.position.y = 2.25 / s;
     person.group.add(bubble.sprite);
     this.ctx.scene.add(person.group);
 
@@ -197,6 +199,20 @@ export class CustomerManager {
       pay = Math.round(base * 0.5);
       mood = 'meh';
       msg = pick(LINES.wrong);
+    }
+    // Pişme kalitesi: çiğ ya da yanık dilimler fiyatı düşürür, bahşişi yok eder
+    const rawF = (item.raw || 0) / Math.max(1, item.slices);
+    const burntF = (item.burnt || 0) / Math.max(1, item.slices);
+    if (rawF > 0 || burntF > 0) {
+      if (mood === 'love') this.perfect--;
+      pay = Math.round(Math.min(pay, base) * (1 - 0.5 * rawF - 0.35 * burntF));
+      if (rawF >= burntF) {
+        mood = 'meh';
+        msg = pick(LINES.raw);
+      } else {
+        mood = 'meh';
+        msg = pick(LINES.burnt);
+      }
     }
     if (item.salad) {
       pay += 10;
@@ -298,7 +314,7 @@ export class CustomerManager {
         c.bubble.timer = 0.3;
         this._drawBubble(c);
       }
-      c.bubble.sprite.position.y = 2.65 / c.person.group.scale.y + (c.mood ? Math.sin(c.phase * 0.5) * 0.05 : 0);
+      c.bubble.sprite.position.y = 2.25 / c.person.group.scale.y + (c.mood ? Math.sin(c.phase * 0.5) * 0.05 : 0);
     }
 
     for (let i = this.list.length - 1; i >= 0; i--) {

@@ -106,6 +106,7 @@
       <li><b>💬 Konuş:</b> Kasabalılara yaklaş, <i>Konuş</i> butonuna bas, iki cevaptan birini seç. Bazıları sadece gündüz, Bekçi Murtaza ise gece çıkar.</li>
       <li><b>🔓 Dükkân:</b> Sabah dükkânın önünde <i>Dükkânı Aç</i>, akşam <i>Dükkânı Kapat</i>. Kapalıyken müşteri gelmez; öğle (11-14) ve akşam (18-21) kalabalık olur.</li>
       <li><b>🌙 Gece & Ev:</b> Gece müşteri gelmez. Gül Sokak'taki evine git (sarı ok yolu gösterir), <i>Eve Gir</i>, yatakta <i>Uyu</i>. Sabah gün özeti çıkar.</li>
+      <li><b>🔥 Pişirme:</b> Döner ocakta yavaş yavaş pişer. Pişme çubuğu yeşildeyken (kıvamında) kes! Çok hızlı kesersen alttaki çiğ katmana inersin; çok beklersen yüzey yanar. Çiğ ya da yanık dilim müşteriyi kızdırır, fiyat düşer.</li>
       <li><b>📦 Stok:</b> Her dilim döner etinden, her ekmek arası 1 ekmekten, her dürüm 1 lavaştan düşer. Et <i>Kasap</i>'tan, ekmek ve lavaş <i>Fırın</i>'dan (acil durumda <i>Bakkal</i>'dan) alınır. <i>Manav</i>'dan salata alırsan her satış +10 TL getirir.</li>
       <li><b>🛒 Dükkânlar:</b> Tabelalı her dükkâna girebilirsin (kasabada her dükkândan bir tane var). Tezgaha yaklaş, <i>Alışveriş</i>'e bas. Lokanta, tatlıcı, çay ocağı, eczane ve hamam enerji verir. Berberde görünüşünü değiştirirsin. Nalburdan dükkân yükseltmeleri alınır: büyük tepsi, keskin bıçak, neon tabela, tabure ve eşeğe çelik nal.</li>
       <li><b>⚡ Enerji:</b> Zamanla azalır. Biterse sokakta bayılırsın! Evde çay içmek biraz enerji verir, uyku tamamen doldurur.</li>
@@ -143,6 +144,11 @@
     </div>
 
     <div id="orderCard" class="hidden"></div>
+    <div id="cookMeter" class="hidden">
+      <div class="cm-label">🔥 Pişme: <b id="cookLabel">Kıvamında</b></div>
+      <div class="cm-bar"><span class="z raw"></span><span class="z good"></span><span class="z burnt"></span><i id="cookNeedle"></i></div>
+      <div class="cm-legend"><span>Çiğ</span><span>Kıvamında</span><span>Yanık</span></div>
+    </div>
     <div id="hint" class="hidden"></div>
     <div id="toasts"></div>
 
@@ -200,6 +206,7 @@
       <div id="pauseStats" class="pause-stats"></div>
       <button id="btnResume" class="menu-btn primary">▶ Devam Et</button>
       <button id="btnSound" class="menu-btn">🔊 Ses: Açık</button>
+      <button id="btnQuality" class="menu-btn">🎨 Grafik: Yüksek</button>
       <button id="btnMenu" class="menu-btn">🏠 Ana Menü</button>
     </div>
   </div>

@@ -11,15 +11,86 @@ export const WORLD_BOUND = 104;
 /* ---------------- Ortak yardımcılar ---------------- */
 const matCache = new Map();
 
-/** Renk başına önbelleklenmiş düşük poligon (flat shading) malzeme. */
+/** Renk başına önbelleklenmiş fiziksel tabanlı (PBR) malzeme. */
 export function mat(color, extra = {}) {
   const key = color + '|' + JSON.stringify(extra);
   let m = matCache.get(key);
   if (!m) {
-    m = new THREE.MeshLambertMaterial({ color, flatShading: true, ...extra });
+    m = new THREE.MeshStandardMaterial({ color, roughness: 0.85, metalness: 0, ...extra });
     matCache.set(key, m);
   }
   return m;
+}
+
+/* ---------------- Yüzey detay shader'ları (doku dosyası yok, dünya koordinatından) ---------------- */
+const DETAIL_GLSL = `
+varying vec3 vDWorld;
+varying vec3 vDNormal;
+float dHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float dNoise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  float a = dHash(i), b = dHash(i + vec2(1.0, 0.0)), c = dHash(i + vec2(0.0, 1.0)), d = dHash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float dFbm(vec2 p) { return dNoise(p) * 0.6 + dNoise(p * 2.7) * 0.3 + dNoise(p * 7.3) * 0.1; }
+`;
+const DETAIL_CODE = {
+  // Sıva/boya: hafif renk dalgası, ince gren, duvar diplerinde kir/gölge (sahte AO)
+  surface: `{
+    vec3 wp = vDWorld; vec3 an = abs(vDNormal);
+    vec2 q = an.y > 0.5 ? wp.xz : (an.x > an.z ? wp.zy : wp.xy);
+    float n = dFbm(q * 1.3);
+    float g = dNoise(q * 11.0);
+    diffuseColor.rgb *= 0.87 + 0.2 * n + 0.07 * (g - 0.5);
+    if (an.y < 0.5) {
+      diffuseColor.rgb *= mix(0.62, 1.0, smoothstep(0.0, 1.2, wp.y));
+      diffuseColor.rgb *= 1.0 - 0.07 * smoothstep(0.55, 0.9, dNoise(vec2(q.x * 3.0, q.y * 0.35)));
+    }
+  }`,
+  // Asfalt: iri ve ince gren, yama izleri, çatlaklar
+  asphalt: `{
+    vec2 p = vDWorld.xz;
+    float n = dFbm(p * 0.35);
+    float g = dHash(floor(p * 45.0));
+    diffuseColor.rgb *= 0.8 + 0.26 * n + 0.14 * (g - 0.5);
+    float crack = (1.0 - smoothstep(0.0, 0.02, abs(dNoise(p * 0.9) - 0.5))) * step(0.62, dNoise(p * 0.19));
+    diffuseColor.rgb *= 1.0 - 0.4 * crack;
+    diffuseColor.rgb *= 1.0 - 0.12 * smoothstep(0.6, 0.8, dNoise(p * 0.12 + 7.0));
+  }`,
+  // Kaldırım taşı: şaşırtmalı 50 cm taşlar, derzler, taş başına ton farkı
+  paving: `{
+    vec2 p = vDWorld.xz / 0.5;
+    p.x += step(1.0, mod(floor(p.y), 2.0)) * 0.5;
+    vec2 f = fract(p); vec2 id = floor(p);
+    float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+    float line = 1.0 - smoothstep(0.02, 0.07, edge);
+    diffuseColor.rgb *= (0.88 + 0.18 * dHash(id)) * (1.0 - 0.38 * line) * (0.93 + 0.09 * dNoise(vDWorld.xz * 3.0));
+  }`,
+  // Çim: geniş lekeler + ince doku, iki yeşil tonu arasında
+  grass: `{
+    vec2 p = vDWorld.xz;
+    float n = dFbm(p * 0.07);
+    float m = dFbm(p * 0.8);
+    float g = dHash(floor(p * 30.0));
+    vec3 a = diffuseColor.rgb * vec3(0.78, 0.98, 0.7);
+    vec3 b = diffuseColor.rgb * vec3(1.18, 1.1, 0.78);
+    diffuseColor.rgb = mix(a, b, n) * (0.84 + 0.26 * m + 0.12 * (g - 0.5));
+  }`,
+};
+
+/** Malzemeye dünya koordinatlı yüzey detayı ekle (asfalt, kaldırım, çim, sıva). */
+export function applyDetail(material, kind) {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = 'varying vec3 vDWorld;\nvarying vec3 vDNormal;\n' + shader.vertexShader
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n  vDNormal = normalize(mat3(modelMatrix) * objectNormal);')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vDWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + DETAIL_GLSL)
+      .replace('#include <color_fragment>', '#include <color_fragment>\n' + DETAIL_CODE[kind]);
+  };
+  material.customProgramCacheKey = () => 'detail-' + kind;
+  material.userData.keep = true;
+  return material;
 }
 
 export function addMesh(parent, geo, material, x = 0, y = 0, z = 0, shadow = true) {
@@ -152,28 +223,46 @@ function turkishFlagTexture() {
 }
 
 function meatTexture() {
-  return canvasTexture(128, 256, (g, w, h) => {
+  // Nötr, katman katman üst üste dizilmiş et yaprakları; rengi pişme derecesi (malzeme rengi) verir
+  return canvasTexture(256, 512, (g, w, h) => {
     const r = rng(7);
-    for (let y = 0; y < h; y += 4) {
-      const shade = 90 + Math.floor(r() * 70);
-      g.fillStyle = `rgb(${shade + 50},${Math.floor(shade * 0.55)},${Math.floor(shade * 0.25)})`;
-      g.fillRect(0, y, w, 4);
+    let y = 0;
+    while (y < h) {
+      const th = 5 + Math.floor(r() * 9);
+      const v = 200 + Math.floor(r() * 50);
+      g.fillStyle = `rgb(${v},${v - 8},${v - 16})`;
+      g.fillRect(0, y, w, th);
+      // katman arası koyu derz (yağ çekmiş kenar)
+      g.fillStyle = 'rgba(70,40,25,.45)';
+      g.fillRect(0, y + th - 1, w, 1.5);
+      y += th;
     }
-    for (let i = 0; i < 160; i++) {
-      g.fillStyle = r() < 0.5 ? 'rgba(60,25,8,.55)' : 'rgba(230,160,90,.45)';
-      g.fillRect(r() * w, r() * h, 3 + r() * 10, 2 + r() * 3);
+    // yağ damarları ve kızarmış kenarlar
+    for (let i = 0; i < 260; i++) {
+      const fat = r() < 0.45;
+      g.fillStyle = fat ? 'rgba(255,245,225,.55)' : 'rgba(60,30,15,.35)';
+      g.beginPath();
+      g.ellipse(r() * w, r() * h, 3 + r() * 14, 1 + r() * 2.5, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    for (let i = 0; i < 900; i++) {
+      g.fillStyle = `rgba(${r() < 0.5 ? '40,20,10' : '255,240,220'},${0.08 + r() * 0.15})`;
+      g.fillRect(r() * w, r() * h, 1 + r() * 2, 1 + r() * 2);
     }
   });
 }
 
 /* ---------------- Geometri birleştirme (performans) ---------------- */
 // Düz renkli Lambert malzemeler köşe rengine (vertex color) çevrilip tek malzemede birleşir.
-const bakedMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+const bakedMat = applyDetail(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0 }), 'surface');
+// Hareketli modeller (karakter, eşek) için: dünya koordinatlı desen kaymasın diye detaysız
+const charMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0 });
 
 export function canBake(m) {
   return (
-    m && m.isMeshLambertMaterial && !m.map && !m.transparent && !m.vertexColors && !m.userData.keep &&
-    m.side === THREE.FrontSide && m.emissive.r + m.emissive.g + m.emissive.b === 0
+    m && (m.isMeshStandardMaterial || m.isMeshLambertMaterial) && !m.map && !m.transparent && !m.vertexColors && !m.userData.keep &&
+    m.side === THREE.FrontSide && m.emissive.r + m.emissive.g + m.emissive.b === 0 &&
+    (m.metalness ?? 0) === 0 && (m.roughness ?? 0.85) >= 0.7
   );
 }
 
@@ -224,7 +313,7 @@ export function bakeHierarchy(obj) {
       m.updateMatrix();
       return prepGeo(m.geometry, m.matrix, m.material.color);
     });
-    const merged = new THREE.Mesh(concatGeos(geos, true), bakedMat);
+    const merged = new THREE.Mesh(concatGeos(geos, true), charMat);
     merged.geometry.userData.owned = true;
     merged.castShadow = meshes.some((m) => m.castShadow);
     merged.receiveShadow = true;
@@ -275,12 +364,12 @@ function mergeStatic(root, chunk = 110) {
    Yol ağı
    ========================================================= */
 const EXT = 110;
-const H_ROADS = [
+export const H_ROADS = [
   { z: 0, hw: 5, sw: 3.6 },     // Ana cadde (dükkân burada)
   { z: -38, hw: 4, sw: 3 },     // Gül Sokak (mahalle, ev)
   { z: 48, hw: 4, sw: 3 },      // Pazar Caddesi
 ];
-const V_ROADS = [
+export const V_ROADS = [
   { x: -55, hw: 4, sw: 3 },
   { x: 22, hw: 4.5, sw: 2.5 },
   { x: 80, hw: 4, sw: 3 },
@@ -331,17 +420,19 @@ export function buildCity(scene) {
   };
 
   // Gece ışıkları için özel malzemeler
-  const lampMat = new THREE.MeshLambertMaterial({ color: 0xfff1b8, emissive: 0x7a6420, flatShading: true });
-  const glassLit = new THREE.MeshLambertMaterial({ color: 0x2f4f6a, emissive: 0x000000, flatShading: true });
+  const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff1b8, emissive: 0x7a6420, roughness: 0.4 });
+  const glassLit = new THREE.MeshStandardMaterial({ color: 0x2f4f6a, emissive: 0x000000, roughness: 0.08, metalness: 0.35 });
   lampMat.userData.keep = true;
   glassLit.userData.keep = true;
-  const glassDark = mat(0x2f4f6a);
+  const glassDark = new THREE.MeshStandardMaterial({ color: 0x27415a, roughness: 0.08, metalness: 0.4 });
+  glassDark.userData.keep = true;
 
   /* ---------- Zemin ve yollar ---------- */
-  flat(700, 700, 0x86b85a, 0, 0, 0);
-  const roadMat = mat(0x44454d);
-  const lineMat = mat(0xf4f1e8);
-  const walkMat = mat(0xd8d0c0);
+  flat(700, 700, applyDetail(new THREE.MeshStandardMaterial({ color: 0x7fae55, roughness: 0.95 }), 'grass'), 0, 0, 0);
+  const roadMat = applyDetail(new THREE.MeshStandardMaterial({ color: 0x4a4b52, roughness: 0.92 }), 'asphalt');
+  const lineMat = new THREE.MeshStandardMaterial({ color: 0xeeeae0, roughness: 0.6 });
+  lineMat.userData.keep = true;
+  const walkMat = applyDetail(new THREE.MeshStandardMaterial({ color: 0xcfc6b6, roughness: 0.9 }), 'paving');
   const curbMat = mat(0xa79f92);
 
   const sidewalk = (x0, x1, z0, z1) => {
@@ -708,36 +799,138 @@ export function buildCity(scene) {
     for (let i = 0; i < 8; i++) addBox(awning, 0.8, 0.06, 1.5, i % 2 ? 0xffffff : 0xd62828, -2.8 + i * 0.8, 0, 0.75);
     for (let i = 0; i < 16; i++) addBox(awning, 0.32, 0.18, 0.05, i % 2 ? 0xd62828 : 0xffffff, -3 + i * 0.4, -0.1, 1.5, false);
 
-    // Tezgah
-    addBox(g, 3.6, 1.0, 0.7, 0xdfe3e6, 0, 0.5, -9.1);
-    addBox(g, 3.6, 0.12, 0.05, 0xc1121f, 0, 0.72, -8.73, false);
-    addBox(g, 3.8, 0.08, 0.9, 0xb8c0c8, 0, 1.04, -9.1);
-    addBox(g, 1.4, 0.4, 0.5, mat(0xbfe6ff, { transparent: true, opacity: 0.35 }), -1.0, 1.28, -9.05, false);
-    [0x2a9d3f, 0xe63946, 0xf1f1e6, 0x7a1f5c].forEach((c, i) => addMesh(g, new THREE.CylinderGeometry(0.13, 0.11, 0.1, 8), c, -1.45 + i * 0.3, 1.13, -9.05, false));
-    for (let i = 0; i < 4; i++) addMesh(g, new THREE.CylinderGeometry(0.06, 0.06, 0.22, 8), 0xffffff, 1.0 + i * 0.17, 1.19, -9.2, false);
+    // ---- Gerçekçi mutfak malzemeleri ----
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0xd5dbe0, metalness: 0.85, roughness: 0.28 });
+    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x8f979e, metalness: 0.75, roughness: 0.42 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0xdff4ff, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0xb07a45, roughness: 0.7 });
 
-    // Döner şişi + ocak
+    // Beyaz metro fayans (iç duvarlar)
+    const tileTex = canvasTexture(128, 128, (c, w, h) => {
+      c.fillStyle = '#cfc9bf';
+      c.fillRect(0, 0, w, h);
+      for (let row = 0; row < 4; row++) {
+        for (let col = -1; col < 3; col++) {
+          const x = col * 64 + (row % 2) * 32;
+          const y = row * 32;
+          c.fillStyle = '#f6f4ef';
+          c.fillRect(x + 2, y + 2, 60, 28);
+          c.fillStyle = 'rgba(255,255,255,.7)';
+          c.fillRect(x + 4, y + 4, 56, 3);
+        }
+      }
+    });
+    tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping;
+    const tileMat = new THREE.MeshStandardMaterial({ map: tileTex, roughness: 0.22 });
+    const tilePlane = (w, h, x, y, z, ry) => {
+      const geo = new THREE.PlaneGeometry(w, h);
+      const uv = geo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) * w) / 0.6, (uv.getY(i) * h) / 0.3);
+      const m = new THREE.Mesh(geo, tileMat);
+      m.position.set(x, y, z);
+      m.rotation.y = ry;
+      m.receiveShadow = true;
+      g.add(m);
+    };
+    tilePlane(5.8, 2.4, 0, 1.3, ZB + 0.31, 0);
+    tilePlane(6.6, 2.4, -2.89, 1.3, cz + 0.25, Math.PI / 2);
+    tilePlane(6.6, 2.4, 2.89, 1.3, cz + 0.25, -Math.PI / 2);
+
+    // Ön tezgah: paslanmaz üst, cam vitrin, salata küvetleri
+    addBox(g, 3.6, 1.0, 0.7, 0xeceae6, 0, 0.5, -9.1);
+    addBox(g, 3.6, 0.12, 0.05, 0xc1121f, 0, 0.72, -8.73, false);
+    addBox(g, 3.8, 0.05, 0.9, steelMat, 0, 1.025, -9.1);
+    addBox(g, 1.6, 0.42, 0.04, glassMat, -1.0, 1.28, -8.72, false);
+    addBox(g, 1.6, 0.04, 0.46, glassMat, -1.0, 1.5, -8.95, false);
+    const bins = [
+      [0xd62828, 'cube'], [0xf1efe6, 'ring'], [0x3f8a33, 'leaf'], [0x9aa83a, 'pickle'], [0x7a1f5c, 'ring'],
+    ];
+    bins.forEach(([col, kind], i) => {
+      const bx = -1.62 + i * 0.31;
+      addBox(g, 0.29, 0.07, 0.3, steelMat, bx, 1.085, -9.0, false);
+      for (let k = 0; k < 7; k++) {
+        const px = bx - 0.09 + (k % 3) * 0.09;
+        const pz = -9.08 + Math.floor(k / 3) * 0.08;
+        if (kind === 'cube') addBox(g, 0.045, 0.04, 0.045, col, px, 1.135, pz, false);
+        else if (kind === 'ring') addMesh(g, new THREE.TorusGeometry(0.028, 0.008, 4, 10), col, px, 1.13, pz, false).rotation.x = Math.PI / 2;
+        else if (kind === 'leaf') addMesh(g, new THREE.IcosahedronGeometry(0.035, 0), col, px, 1.135, pz, false);
+        else addMesh(g, new THREE.CylinderGeometry(0.018, 0.018, 0.07, 6), col, px, 1.13, pz, false).rotation.z = Math.PI / 2;
+      }
+    });
+    // Sos şişeleri, peçetelik, ayran
+    [[0xc1121f, 0.55], [0xf5f0dc, 0.68], [0xe9a800, 0.81]].forEach(([col, x]) => {
+      addMesh(g, new THREE.CylinderGeometry(0.04, 0.045, 0.2, 10), col, x, 1.15, -9.25);
+      addMesh(g, new THREE.ConeGeometry(0.03, 0.07, 8), 0xffffff, x, 1.29, -9.25, false);
+    });
+    addBox(g, 0.18, 0.12, 0.08, steelMat, 1.05, 1.11, -9.25, false);
+    addBox(g, 0.15, 0.1, 0.02, 0xffffff, 1.05, 1.16, -9.25, false);
+    for (let i = 0; i < 4; i++) {
+      addMesh(g, new THREE.CylinderGeometry(0.045, 0.04, 0.11, 10), 0xffffff, 1.3 + i * 0.12, 1.1, -9.15);
+      addMesh(g, new THREE.CylinderGeometry(0.047, 0.047, 0.01, 10), 0x1d6fd1, 1.3 + i * 0.12, 1.16, -9.15, false);
+    }
+
+    // Döner ocağı: paslanmaz gövde, seramik ızgaralı dikey brülör, davlumbaz
     const spitPos = new THREE.Vector3(0, 0, -11.4);
-    addBox(g, 1.2, 1.0, 1.0, 0x9aa3ab, 0, 0.5, -11.4);
-    addBox(g, 1.5, 2.1, 0.18, 0x3a3a3a, 0, 2.0, -12.15);
-    const heatMat = new THREE.MeshLambertMaterial({ color: 0xff7a1a, emissive: 0xff4400, flatShading: true });
+    addBox(g, 1.2, 1.0, 1.0, darkSteel, 0, 0.5, -11.4);
+    addBox(g, 1.6, 2.2, 0.22, darkSteel, 0, 2.0, -12.18);
+    addBox(g, 1.3, 1.85, 0.05, 0x2a2420, 0, 1.95, -12.05, false);
+    const heatMat = new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff4400, emissiveIntensity: 1, roughness: 0.6 });
     heatMat.userData.keep = true;
-    for (let i = 0; i < 5; i++) addBox(g, 1.15, 0.1, 0.05, heatMat, 0, 1.25 + i * 0.36, -12.04, false);
+    for (let r = 0; r < 6; r++) for (let c2 = 0; c2 < 4; c2++) addBox(g, 0.27, 0.24, 0.03, heatMat, -0.45 + c2 * 0.3, 1.2 + r * 0.3, -12.02, false);
+    addBox(g, 1.9, 0.4, 1.3, steelMat, 0, 3.75, -11.55);
+    addBox(g, 0.5, 0.6, 0.5, steelMat, 0, 4.2, -11.9, false);
+    addBox(g, 1.3, 0.03, 0.9, darkSteel, 0, 1.0, -11.4, false);
 
     const spit = new THREE.Group();
     spit.position.copy(spitPos);
     spit.userData.dynamic = true;
     g.add(spit);
-    addMesh(spit, new THREE.CylinderGeometry(0.035, 0.035, 2.7, 6), 0xcfd6dc, 0, 2.2, 0);
-    addMesh(spit, new THREE.CylinderGeometry(0.42, 0.42, 0.05, 12), steel, 0, 1.06, 0);
-    addMesh(spit, new THREE.CylinderGeometry(0.3, 0.3, 0.05, 12), steel, 0, 2.63, 0);
-    const meatMat = new THREE.MeshLambertMaterial({ map: meatTexture(), flatShading: true });
-    const meat = addMesh(spit, new THREE.CylinderGeometry(0.5, 0.32, 1.5, 14, 4), meatMat, 0, 1.85, 0);
+    addMesh(spit, new THREE.CylinderGeometry(0.03, 0.03, 2.7, 8), steelMat, 0, 2.2, 0);
+    addMesh(spit, new THREE.CylinderGeometry(0.42, 0.42, 0.04, 20), steelMat, 0, 1.06, 0);
+    addMesh(spit, new THREE.CylinderGeometry(0.3, 0.3, 0.04, 20), steelMat, 0, 2.63, 0);
+    const meatMat = new THREE.MeshStandardMaterial({ map: meatTexture(), roughness: 0.5, color: 0xffffff });
+    const meat = addMesh(spit, new THREE.CylinderGeometry(0.5, 0.32, 1.5, 28, 6), meatMat, 0, 1.85, 0);
 
-    addBox(g, 2.4, 1.0, 0.55, 0xb0b8c0, 0, 0.5, -10.62);
-    addBox(g, 0.95, 0.05, 0.5, steel, -0.25, 1.025, -10.62);
-    addBox(g, 0.95, 0.08, 0.04, steel, -0.25, 1.07, -10.38, false);
-    addBox(g, 0.7, 0.05, 0.45, 0xc28e5c, 0.75, 1.025, -10.62);
+    // Hazırlık tezgahı: tepsi, kesme tahtası, lavaş yığını, ekmek sepeti
+    addBox(g, 3.0, 1.0, 0.55, darkSteel, 0, 0.5, -10.62);
+    addBox(g, 3.04, 0.04, 0.6, steelMat, 0, 1.0, -10.62, false);
+    addBox(g, 0.95, 0.04, 0.5, steelMat, -0.25, 1.04, -10.62);
+    addBox(g, 0.95, 0.06, 0.03, steelMat, -0.25, 1.07, -10.37, false);
+    addBox(g, 0.95, 0.06, 0.03, steelMat, -0.25, 1.07, -10.87, false);
+    addBox(g, 0.7, 0.04, 0.45, woodMat, 0.75, 1.04, -10.62);
+    const lavasStack = new THREE.Group();
+    lavasStack.position.set(-1.12, 1.03, -10.62);
+    lavasStack.userData.dynamic = true;
+    g.add(lavasStack);
+    const lavasGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.008, 18);
+    const lavasMat = new THREE.MeshStandardMaterial({ color: 0xead2a0, roughness: 0.9 });
+    const lavasItems = [];
+    for (let i = 0; i < 15; i++) {
+      const m = new THREE.Mesh(lavasGeo, lavasMat);
+      m.position.set((i % 3) * 0.004, 0.006 + i * 0.009, ((i * 7) % 3) * 0.004);
+      m.rotation.y = i;
+      m.castShadow = true;
+      lavasStack.add(m);
+      lavasItems.push(m);
+    }
+    const breadBasket = new THREE.Group();
+    breadBasket.position.set(1.28, 1.02, -10.62);
+    breadBasket.userData.dynamic = true;
+    g.add(breadBasket);
+    addBox(breadBasket, 0.42, 0.1, 0.5, 0x8b5a2b, 0, 0.05, 0);
+    const breadGeo = new THREE.CapsuleGeometry(0.05, 0.2, 4, 10);
+    breadGeo.rotateX(Math.PI / 2);
+    breadGeo.scale(1.15, 0.85, 1);
+    const breadMat = new THREE.MeshStandardMaterial({ color: 0xc8843f, roughness: 0.75 });
+    const breadItems = [];
+    for (let i = 0; i < 8; i++) {
+      const m = new THREE.Mesh(breadGeo, breadMat);
+      m.position.set(-0.12 + (i % 3) * 0.12, 0.13 + Math.floor(i / 3) * 0.08, -0.02 + (i % 2) * 0.04);
+      m.rotation.y = (i % 2 ? 0.15 : -0.1);
+      m.castShadow = true;
+      breadBasket.add(m);
+      breadItems.push(m);
+    }
 
     const menuTex = canvasTexture(512, 340, (c, w) => {
       c.fillStyle = '#1f2a1f';
@@ -759,7 +952,7 @@ export function buildCity(scene) {
       });
     });
     const board = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.46), new THREE.MeshBasicMaterial({ map: menuTex, toneMapped: false }));
-    board.position.set(-1.5, 2.75, ZB + 0.31);
+    board.position.set(-1.5, 2.85, ZB + 0.34);
     g.add(board);
 
     addBox(g, 0.9, 2.0, 0.7, 0xe8eef2, 2.3, 1.0, -14.9);
@@ -804,7 +997,7 @@ export function buildCity(scene) {
     g.add(shutter);
     const sGeo = new THREE.BoxGeometry(5.9, H - 1.1, 0.06);
     sGeo.translate(0, -(H - 1.1) / 2, 0);
-    const shutterMesh = new THREE.Mesh(sGeo, new THREE.MeshLambertMaterial({ map: shutterTex, flatShading: true }));
+    const shutterMesh = new THREE.Mesh(sGeo, new THREE.MeshStandardMaterial({ map: shutterTex, flatShading: true }));
     shutterMesh.castShadow = true;
     shutter.add(shutterMesh);
     const lock = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.1), mat(0xf2c037));
@@ -837,6 +1030,10 @@ export function buildCity(scene) {
     return {
       spit,
       meat,
+      meatMat,
+      heatMat,
+      lavasItems,
+      breadItems,
       spitPos,
       meatTopY: 2.55,
       meatBottomY: 1.15,
@@ -1101,8 +1298,9 @@ export function buildCity(scene) {
   function tree(x, z, s = 1) {
     addMesh(root, new THREE.CylinderGeometry(0.16 * s, 0.22 * s, 1.6 * s, 6), 0x7a5230, x, 0.8 * s, z);
     const greens = [0x4f9a3c, 0x5fae47, 0x3f8a33];
-    addMesh(root, new THREE.IcosahedronGeometry(1.25 * s, 0), greens[Math.floor(rand() * 3)], x, 2.3 * s, z);
-    addMesh(root, new THREE.IcosahedronGeometry(0.85 * s, 0), greens[Math.floor(rand() * 3)], x + 0.4 * s, 3.1 * s, z - 0.2 * s);
+    addMesh(root, new THREE.IcosahedronGeometry(1.25 * s, 1), greens[Math.floor(rand() * 3)], x, 2.3 * s, z);
+    addMesh(root, new THREE.IcosahedronGeometry(0.85 * s, 1), greens[Math.floor(rand() * 3)], x + 0.4 * s, 3.1 * s, z - 0.2 * s);
+    addMesh(root, new THREE.IcosahedronGeometry(0.75 * s, 1), greens[Math.floor(rand() * 3)], x - 0.5 * s, 2.8 * s, z + 0.35 * s);
     colBox(x, z, 0.5, 0.5, 3);
   }
   function cypress(x, z) {
@@ -1196,7 +1394,7 @@ export function buildCity(scene) {
     const geo = new THREE.PlaneGeometry(1.8, 1.2, 12, 6);
     geo.translate(0.9, 0, 0);
     const base = geo.attributes.position.array.slice();
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: turkishFlagTexture(), side: THREE.DoubleSide, flatShading: true }));
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: turkishFlagTexture(), side: THREE.DoubleSide, flatShading: true }));
     m.position.set(x + 0.05, y + poleH - 0.7, z);
     m.rotation.y = rotY;
     m.castShadow = true;
@@ -1226,7 +1424,7 @@ export function buildCity(scene) {
   const clouds = new THREE.Group();
   clouds.userData.dynamic = true;
   root.add(clouds);
-  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x333333, flatShading: true });
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x333333, flatShading: true });
   const cloudList = [];
   for (let i = 0; i < 16; i++) {
     const c = new THREE.Group();
@@ -1295,7 +1493,7 @@ export function buildCity(scene) {
     spots,
     benches,
     drawCalls,
-    donkeySpawn: { x: 7, z: -3.6, heading: Math.PI / 2 },
+    donkeySpawn: { x: 7, z: -4.45, heading: Math.PI / 2 },
     playerSpawn: new THREE.Vector3(3.6, 0, -5.6),
     update(dt, t) {
       for (const u of updaters) u(dt, t);

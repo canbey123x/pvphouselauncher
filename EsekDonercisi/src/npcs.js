@@ -4,33 +4,48 @@
 import * as THREE from 'three';
 import { mat, canvasTexture, bakeHierarchy } from './city.js';
 
-/* ---------------- Ortak insan modeli ---------------- */
+/* ---------------- Ortak insan modeli (gerçek oranlı, eklemli) ---------------- */
+// Ölçüler metre cinsinden: boy ~1.75 m. Kalça, diz, omuz, dirsek ve boyun pivotları ayrı gruplardır.
+export const HIP = 0.92;
+const cap = (r, len, seg = 10) => new THREE.CapsuleGeometry(r, len, 4, seg);
 const G = {
-  leg: new THREE.BoxGeometry(0.22, 0.8, 0.24).translate(0, -0.4, 0),
-  shoe: new THREE.BoxGeometry(0.24, 0.12, 0.34).translate(0, -0.8, 0.05),
-  torso: new THREE.BoxGeometry(0.62, 0.78, 0.36),
-  arm: new THREE.BoxGeometry(0.17, 0.62, 0.2).translate(0, -0.31, 0),
-  hand: new THREE.BoxGeometry(0.15, 0.14, 0.16).translate(0, -0.68, 0),
-  head: new THREE.BoxGeometry(0.44, 0.44, 0.42),
-  eye: new THREE.BoxGeometry(0.07, 0.08, 0.02),
-  nose: new THREE.BoxGeometry(0.08, 0.1, 0.08),
-  mustache: new THREE.BoxGeometry(0.3, 0.07, 0.04),
-  beard: new THREE.BoxGeometry(0.4, 0.16, 0.06),
-  hair: new THREE.BoxGeometry(0.46, 0.12, 0.44),
-  hairBack: new THREE.BoxGeometry(0.46, 0.3, 0.1),
-  scarfTop: new THREE.BoxGeometry(0.5, 0.14, 0.48),
-  scarfBack: new THREE.BoxGeometry(0.5, 0.52, 0.12),
-  scarfSide: new THREE.BoxGeometry(0.05, 0.46, 0.4),
-  kasket: new THREE.BoxGeometry(0.48, 0.1, 0.46),
-  brim: new THREE.BoxGeometry(0.46, 0.04, 0.18),
-  takke: new THREE.CylinderGeometry(0.2, 0.22, 0.12, 8),
-  chef: new THREE.CylinderGeometry(0.21, 0.23, 0.38, 8),
-  chefTop: new THREE.CylinderGeometry(0.28, 0.21, 0.14, 8),
-  sarik: new THREE.CylinderGeometry(0.27, 0.25, 0.22, 10),
-  sarikTop: new THREE.CylinderGeometry(0.14, 0.17, 0.1, 8),
-  apron: new THREE.BoxGeometry(0.56, 0.9, 0.04),
-  glasses: new THREE.BoxGeometry(0.38, 0.06, 0.02),
-  robe: new THREE.BoxGeometry(0.66, 0.8, 0.4),
+  thigh: cap(0.078, 0.3).translate(0, -0.22, 0),
+  shin: cap(0.062, 0.32).translate(0, -0.22, 0),
+  shoe: (() => { const g = cap(0.05, 0.16, 8); g.rotateX(Math.PI / 2); g.scale(1.15, 0.75, 1); g.translate(0, -0.45, 0.05); return g; })(),
+  pelvis: (() => { const g = cap(0.12, 0.14, 12); g.rotateZ(Math.PI / 2); g.scale(1, 1, 0.8); return g; })(),
+  torso: (() => { const g = cap(0.155, 0.3, 14); g.scale(1.18, 1, 0.78); return g; })(),
+  belly: (() => { const g = new THREE.SphereGeometry(0.16, 14, 10); g.scale(1.05, 0.95, 0.95); return g; })(),
+  neck: new THREE.CylinderGeometry(0.048, 0.055, 0.12, 10),
+  upperArm: cap(0.05, 0.2).translate(0, -0.15, 0),
+  forearm: cap(0.043, 0.19).translate(0, -0.14, 0),
+  hand: (() => { const g = new THREE.SphereGeometry(0.046, 10, 8); g.scale(0.85, 1.15, 0.6); g.translate(0, -0.3, 0); return g; })(),
+  head: (() => { const g = new THREE.SphereGeometry(0.115, 20, 16); g.scale(0.92, 1.1, 1.0); return g; })(),
+  jaw: (() => { const g = new THREE.SphereGeometry(0.09, 14, 10); g.scale(1, 0.75, 1); return g; })(),
+  ear: (() => { const g = new THREE.SphereGeometry(0.028, 8, 6); g.scale(0.5, 1, 0.8); return g; })(),
+  eyeWhite: new THREE.SphereGeometry(0.019, 10, 8),
+  iris: new THREE.SphereGeometry(0.011, 8, 6),
+  brow: new THREE.BoxGeometry(0.042, 0.009, 0.012),
+  nose: (() => { const g = new THREE.ConeGeometry(0.018, 0.045, 8); g.rotateX(Math.PI / 2 + 0.5); return g; })(),
+  mouth: new THREE.BoxGeometry(0.042, 0.008, 0.01),
+  mustache: (() => { const g = cap(0.012, 0.05, 6); g.rotateZ(Math.PI / 2); return g; })(),
+  beard: (() => { const g = new THREE.SphereGeometry(0.105, 14, 10, 0, Math.PI * 2, Math.PI * 0.45, Math.PI * 0.4); g.scale(1, 1.1, 1.05); return g; })(),
+  hair: new THREE.SphereGeometry(0.124, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5),
+  hairBack: new THREE.SphereGeometry(0.122, 16, 10, Math.PI * 0.15, Math.PI * 0.7, Math.PI * 0.35, Math.PI * 0.35),
+  scarf: new THREE.SphereGeometry(0.135, 18, 14, Math.PI / 2 + 1.0, Math.PI * 2 - 2.0, 0, Math.PI * 0.82),
+  scarfNeck: new THREE.CylinderGeometry(0.09, 0.14, 0.14, 14),
+  kasket: (() => { const g = new THREE.SphereGeometry(0.13, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.42); g.scale(1, 0.75, 1.05); return g; })(),
+  brim: (() => { const g = new THREE.CylinderGeometry(0.075, 0.08, 0.012, 14, 1, false, -Math.PI / 2, Math.PI); g.scale(1.1, 1, 0.9); return g; })(),
+  takke: new THREE.SphereGeometry(0.12, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.38),
+  chef: new THREE.CylinderGeometry(0.105, 0.115, 0.14, 16),
+  chefTop: (() => { const g = new THREE.SphereGeometry(0.14, 14, 10); g.scale(1, 0.6, 1); return g; })(),
+  sarik: new THREE.TorusGeometry(0.105, 0.045, 8, 18),
+  sarikTop: new THREE.SphereGeometry(0.1, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
+  apron: (() => { const g = new THREE.BoxGeometry(0.3, 0.62, 0.015); return g; })(),
+  apronStrap: new THREE.BoxGeometry(0.04, 0.2, 0.012),
+  glassRing: new THREE.TorusGeometry(0.024, 0.0045, 6, 14),
+  glassBridge: new THREE.BoxGeometry(0.03, 0.005, 0.005),
+  robe: (() => { const g = new THREE.CylinderGeometry(0.2, 0.3, 0.95, 16); return g; })(),
+  collar: (() => { const g = new THREE.TorusGeometry(0.06, 0.016, 6, 14); g.rotateX(Math.PI / 2); return g; })(),
 };
 
 export function createPerson(o = {}) {
@@ -38,6 +53,7 @@ export function createPerson(o = {}) {
   const shirt = o.shirt ?? 0x3d7dd8;
   const pants = o.pants ?? 0x2f3440;
   const hair = o.hair ?? 0x2b1d14;
+  const shoeCol = o.shoes ?? 0x2a2420;
   const g = new THREE.Group();
   const M = (geo, color, x, y, z, parent, shadow = true) => {
     const m = new THREE.Mesh(geo, mat(color));
@@ -46,102 +62,166 @@ export function createPerson(o = {}) {
     parent.add(m);
     return m;
   };
-  const HIP = 0.86;
+  const body = new THREE.Group(); // yürürken hafif zıplayan gövde
+  g.add(body);
 
-  const legL = new THREE.Group();
-  legL.position.set(-0.15, HIP, 0);
-  g.add(legL);
-  M(G.leg, pants, 0, 0, 0, legL);
-  M(G.shoe, 0x2a2420, 0, 0, 0, legL);
-  const legR = new THREE.Group();
-  legR.position.set(0.15, HIP, 0);
-  g.add(legR);
-  M(G.leg, pants, 0, 0, 0, legR);
-  M(G.shoe, 0x2a2420, 0, 0, 0, legR);
+  // Bacaklar: kalça → diz
+  const mkLeg = (side) => {
+    const hip = new THREE.Group();
+    hip.position.set(side * 0.095, HIP, 0);
+    body.add(hip);
+    M(G.thigh, pants, 0, 0, 0, hip);
+    const knee = new THREE.Group();
+    knee.position.set(0, -0.44, 0);
+    hip.add(knee);
+    M(G.shin, pants, 0, 0, 0, knee);
+    M(G.shoe, shoeCol, 0, 0, 0, knee);
+    return [hip, knee];
+  };
+  const [legL, kneeL] = mkLeg(-1);
+  const [legR, kneeR] = mkLeg(1);
+  M(G.pelvis, pants, 0, HIP + 0.02, 0, body);
+  // Kemer
+  M(new THREE.CylinderGeometry(0.15, 0.15, 0.035, 16).scale(1.1, 1, 0.82), 0x2a1d14, 0, HIP + 0.1, 0, body, false);
 
-  const torso = M(G.torso, shirt, 0, HIP + 0.39, 0, g);
-  if (o.robe) M(G.robe, o.robe, 0, HIP + 0.05, 0, g);
-  if (o.apron) M(G.apron, 0xffffff, 0, HIP + 0.22, 0.2, g, false);
+  // Gövde
+  const torso = M(G.torso, shirt, 0, HIP + 0.34, 0, body);
+  if (o.belly) M(G.belly, shirt, 0, HIP + 0.22, 0.05, body);
+  if (o.robe) M(G.robe, o.robe, 0, HIP - 0.08, 0, body);
+  M(G.collar, shirt, 0, HIP + 0.56, 0, body, false);
+  if (o.apron) {
+    M(G.apron, 0xf7f7f2, 0, HIP + 0.12, 0.125, body, false);
+    M(G.apronStrap, 0xf7f7f2, -0.08, HIP + 0.5, 0.11, body, false);
+    M(G.apronStrap, 0xf7f7f2, 0.08, HIP + 0.5, 0.11, body, false);
+  }
+  M(G.neck, skin, 0, HIP + 0.6, 0, body);
 
-  const armL = new THREE.Group();
-  armL.position.set(-0.4, HIP + 0.72, 0);
-  g.add(armL);
-  M(G.arm, shirt, 0, 0, 0, armL);
-  M(G.hand, skin, 0, 0, 0, armL);
-  const armR = new THREE.Group();
-  armR.position.set(0.4, HIP + 0.72, 0);
-  g.add(armR);
-  M(G.arm, shirt, 0, 0, 0, armR);
-  M(G.hand, skin, 0, 0, 0, armR);
+  // Kollar: omuz → dirsek
+  const mkArm = (side) => {
+    const sh = new THREE.Group();
+    sh.position.set(side * 0.215, HIP + 0.5, 0);
+    body.add(sh);
+    M(G.upperArm, shirt, 0, 0, 0, sh);
+    const elbow = new THREE.Group();
+    elbow.position.set(0, -0.3, 0);
+    sh.add(elbow);
+    M(G.forearm, o.shortSleeve ? skin : shirt, 0, 0, 0, elbow);
+    M(G.hand, skin, 0, 0, 0, elbow);
+    return [sh, elbow];
+  };
+  const [armL, elbowL] = mkArm(-1);
+  const [armR, elbowR] = mkArm(1);
 
+  // Kafa
   const head = new THREE.Group();
-  head.position.set(0, HIP + 0.78 + 0.24, 0);
-  g.add(head);
+  head.position.set(0, HIP + 0.77, 0);
+  body.add(head);
   M(G.head, skin, 0, 0, 0, head);
-  M(G.eye, 0x1a1a1a, -0.1, 0.05, 0.215, head, false);
-  M(G.eye, 0x1a1a1a, 0.1, 0.05, 0.215, head, false);
-  M(G.nose, skin, 0, -0.03, 0.24, head, false);
-  if (o.mustache) M(G.mustache, o.beardColor ?? hair, 0, -0.1, 0.225, head, false);
-  if (o.beard) M(G.beard, o.beardColor ?? hair, 0, -0.17, 0.2, head, false);
-  if (o.glasses) M(G.glasses, 0x111111, 0, 0.06, 0.225, head, false);
+  M(G.jaw, skin, 0, -0.05, 0.02, head);
+  M(G.ear, skin, -0.108, 0.0, -0.005, head, false);
+  M(G.ear, skin, 0.108, 0.0, -0.005, head, false);
+  for (const sx of [-1, 1]) {
+    M(G.eyeWhite, 0xf4f1ea, sx * 0.04, 0.022, 0.093, head, false);
+    M(G.iris, o.eyes ?? 0x3b2314, sx * 0.04, 0.022, 0.108, head, false);
+    const brow = M(G.brow, o.bald ? 0x5a4a3a : hair, sx * 0.042, 0.058, 0.103, head, false);
+    brow.rotation.z = sx * -0.12;
+  }
+  M(G.nose, skin, 0, -0.002, 0.115, head, false);
+  M(G.mouth, 0x8a3b3b, 0, -0.058, 0.098, head, false);
+  if (o.mustache) {
+    const ms = M(G.mustache, o.beardColor ?? hair, 0, -0.038, 0.104, head, false);
+    ms.scale.set(1, 1, 1);
+  }
+  if (o.beard) M(G.beard, o.beardColor ?? hair, 0, 0.005, 0.0, head, false);
+  if (o.glasses) {
+    M(G.glassRing, 0x111111, -0.04, 0.022, 0.118, head, false);
+    M(G.glassRing, 0x111111, 0.04, 0.022, 0.118, head, false);
+    M(G.glassBridge, 0x111111, 0, 0.024, 0.12, head, false);
+  }
 
   const hat = o.hat ?? 'none';
   if (hat === 'basortu') {
     const sc = o.scarf ?? 0x9b3a6b;
-    M(G.scarfTop, sc, 0, 0.24, -0.01, head);
-    M(G.scarfBack, sc, 0, 0.0, -0.2, head);
-    M(G.scarfSide, sc, -0.245, -0.02, -0.02, head);
-    M(G.scarfSide, sc, 0.245, -0.02, -0.02, head);
+    M(G.scarf, sc, 0, 0.01, -0.005, head);
+    M(G.scarfNeck, sc, 0, -0.13, -0.01, head);
   } else {
     if (!o.bald) {
-      M(G.hair, hair, 0, 0.25, 0, head);
-      M(G.hairBack, hair, 0, 0.08, -0.19, head);
+      M(G.hair, hair, 0, 0.012, -0.006, head);
+      M(G.hairBack, hair, 0, 0.0, -0.004, head);
     }
     if (hat === 'kasket') {
-      M(G.kasket, o.hatColor ?? 0x5a5148, 0, 0.3, 0, head);
-      M(G.brim, o.hatColor ?? 0x5a5148, 0, 0.27, 0.27, head);
+      M(G.kasket, o.hatColor ?? 0x5a5148, 0, 0.045, -0.005, head);
+      const br = M(G.brim, o.hatColor ?? 0x5a5148, 0, 0.06, 0.1, head);
+      br.rotation.x = 0.15;
     } else if (hat === 'takke') {
-      M(G.takke, 0xffffff, 0, 0.29, 0, head);
+      M(G.takke, 0xffffff, 0, 0.04, 0, head);
     } else if (hat === 'chef') {
-      M(G.chef, 0xffffff, 0, 0.42, 0, head);
-      M(G.chefTop, 0xffffff, 0, 0.66, 0, head);
+      M(G.chef, 0xffffff, 0, 0.13, 0, head);
+      M(G.chefTop, 0xffffff, 0, 0.22, 0, head);
     } else if (hat === 'sarik') {
-      M(G.sarik, 0xffffff, 0, 0.3, 0, head);
-      M(G.sarikTop, 0x7a1f2b, 0, 0.44, 0, head);
+      const t = M(G.sarik, 0xffffff, 0, 0.085, 0, head);
+      t.rotation.x = Math.PI / 2;
+      M(G.sarikTop, 0x7a1f2b, 0, 0.09, 0, head);
     }
   }
   bakeHierarchy(g);
-  return { group: g, legL, legR, armL, armR, head, torso };
+  return { group: g, body, legL, legR, kneeL, kneeR, armL, armR, elbowL, elbowR, head, torso };
 }
 
-/** Yürüme / oturma / binme pozları. */
+/** Yürüme / oturma / binme / el sallama pozları (dizler ve dirsekler bükülür). */
 export function animatePerson(p, phase, amount, pose = 'stand') {
+  const set = (o, x, y = 0, z = 0) => o && o.rotation.set(x, y, z);
   if (pose === 'sit') {
-    p.legL.rotation.set(-1.45, 0, 0);
-    p.legR.rotation.set(-1.45, 0, 0);
-    p.armL.rotation.set(-0.35, 0, 0.05);
-    p.armR.rotation.set(-0.35, 0, -0.05);
+    set(p.legL, -1.5, 0, 0.05);
+    set(p.legR, -1.5, 0, -0.05);
+    set(p.kneeL, 1.45);
+    set(p.kneeR, 1.45);
+    set(p.armL, -0.25, 0, 0.12);
+    set(p.armR, -0.25, 0, -0.12);
+    set(p.elbowL, -0.9);
+    set(p.elbowR, -0.9);
+    if (p.body) p.body.position.y = 0;
     return;
   }
   if (pose === 'ride') {
-    p.legL.rotation.set(-0.9, 0, -0.5);
-    p.legR.rotation.set(-0.9, 0, 0.5);
-    p.armL.rotation.set(-0.9, 0, 0.1);
-    p.armR.rotation.set(-0.9, 0, -0.1);
+    set(p.legL, -0.75, 0, -0.42);
+    set(p.legR, -0.75, 0, 0.42);
+    set(p.kneeL, 0.9);
+    set(p.kneeR, 0.9);
+    set(p.armL, -0.55, 0, 0.12);
+    set(p.armR, -0.55, 0, -0.12);
+    set(p.elbowL, -0.9);
+    set(p.elbowR, -0.9);
+    if (p.body) p.body.position.y = Math.abs(Math.sin(phase)) * 0.03;
     return;
   }
   if (pose === 'wave') {
-    p.legL.rotation.set(0, 0, 0);
-    p.legR.rotation.set(0, 0, 0);
-    p.armL.rotation.set(0, 0, 0.05);
-    p.armR.rotation.set(0, 0, -2.6 + Math.sin(phase * 2) * 0.35);
+    set(p.legL, 0);
+    set(p.legR, 0);
+    set(p.kneeL, 0.05);
+    set(p.kneeR, 0.05);
+    set(p.armL, 0.05, 0, 0.1);
+    set(p.elbowL, -0.15);
+    set(p.armR, -0.2, 0, -2.5 + Math.sin(phase * 2) * 0.3);
+    set(p.elbowR, -0.5);
+    if (p.body) p.body.position.y = 0;
     return;
   }
-  const s = Math.sin(phase) * 0.75 * amount;
-  p.legL.rotation.set(s, 0, 0);
-  p.legR.rotation.set(-s, 0, 0);
-  p.armL.rotation.set(-s * 0.9, 0, 0.05);
-  p.armR.rotation.set(s * 0.9, 0, -0.05);
+  // Yürüme döngüsü: kalça salınımı, diz bükülmesi, karşı kol salınımı, gövde inip kalkması
+  const a = amount;
+  const s = Math.sin(phase);
+  set(p.legL, s * 0.55 * a);
+  set(p.legR, -s * 0.55 * a);
+  set(p.kneeL, (0.08 + Math.max(0, Math.sin(phase + 1.3)) * 0.85) * a + 0.04);
+  set(p.kneeR, (0.08 + Math.max(0, Math.sin(phase + 1.3 + Math.PI)) * 0.85) * a + 0.04);
+  set(p.armL, -s * 0.5 * a, 0, 0.08);
+  set(p.armR, s * 0.5 * a, 0, -0.08);
+  set(p.elbowL, -0.18 - Math.max(0, -s) * 0.45 * a);
+  set(p.elbowR, -0.18 - Math.max(0, s) * 0.45 * a);
+  if (p.body) {
+    p.body.position.y = Math.abs(Math.cos(phase)) * 0.035 * a;
+    p.body.rotation.y = s * 0.06 * a;
+  }
 }
 
 /* ---------------- Diyalog verisi ---------------- */
@@ -529,7 +609,7 @@ export class NPCManager {
     this.ctx.scene.add(person.group);
     const indicator = new THREE.Sprite(this.indicatorMat);
     indicator.scale.set(0.6, 0.6, 1);
-    indicator.position.y = 2.55;
+    indicator.position.y = 2.15;
     indicator.renderOrder = 10;
     person.group.add(indicator);
     const spot = this.city.spots[def.place];
@@ -627,7 +707,7 @@ export class NPCManager {
       n.phase += dt * (moving ? 9 * (def.speed ? def.speed / 1.3 : 1) : 2);
       if (def.kind === 'sit') {
         animatePerson(n.person, n.phase, 0, 'sit');
-        n.person.group.position.set(n.pos.x, -0.32, n.pos.z);
+        n.person.group.position.set(n.pos.x, -0.36, n.pos.z);
         n.person.head.rotation.y = Math.sin(n.phase * 0.3) * 0.3;
       } else {
         if (n.talking) animatePerson(n.person, n.phase, 0, 'wave');
@@ -638,7 +718,7 @@ export class NPCManager {
 
       const showInd = playing && !n.talking && dPlayer < 8;
       n.indicator.visible = showInd;
-      if (showInd) n.indicator.position.y = 2.55 / (def.scale ?? 1) + Math.sin(n.phase * 1.3) * 0.08;
+      if (showInd) n.indicator.position.y = 2.15 / (def.scale ?? 1) + Math.sin(n.phase * 1.3) * 0.08;
     }
 
     // Yazı makinesi efekti

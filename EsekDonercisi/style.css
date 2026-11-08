@@ -697,3 +697,32 @@ button { font-family: inherit; cursor: pointer; }
 }
 .ios-tip .share-ico { display: inline-block; padding: 0 5px; border: 2px solid #fff; border-radius: 5px; font-size: 11px; }
 .ios-x { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border: none; border-radius: 50%; background: rgba(255, 255, 255, 0.2); color: #fff; font-weight: 900; }
+
+/* ================= v4: pişme göstergesi ================= */
+#cookMeter {
+  position: absolute;
+  left: calc(12px + var(--safe-l));
+  bottom: calc(24px + var(--safe-b));
+  width: min(46vw, 220px);
+  background: rgba(20, 10, 35, 0.8);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  padding: 8px 10px;
+  font-weight: 800;
+  font-size: 13px;
+  z-index: 3;
+  pointer-events: none;
+}
+#cookMeter .cm-label b { color: #7dffa0; }
+#cookMeter[data-zone="raw"] .cm-label b { color: #ffb3c1; }
+#cookMeter[data-zone="burnt"] .cm-label b { color: #ff6b6b; }
+#cookMeter[data-zone="burnt"] { animation: lowE 0.6s ease-in-out infinite; }
+.cm-bar { position: relative; display: flex; height: 12px; border-radius: 7px; overflow: hidden; margin-top: 6px; }
+.cm-bar .z.raw { flex: 0 0 30.5%; background: linear-gradient(90deg, #f4a6a6, #e8a07a); }
+.cm-bar .z.good { flex: 0 0 39%; background: linear-gradient(90deg, #d49a5e, #2ec27e 30%, #2ec27e 70%, #b46a33); }
+.cm-bar .z.burnt { flex: 1; background: linear-gradient(90deg, #87471f, #1f1208); }
+.cm-bar i { position: absolute; top: -3px; bottom: -3px; width: 4px; margin-left: -2px; background: #fff; border-radius: 2px; box-shadow: 0 0 6px #000; transition: left 0.2s linear; }
+.cm-legend { display: flex; justify-content: space-between; font-size: 10px; opacity: 0.7; margin-top: 3px; }
+@media (max-height: 520px) and (orientation: landscape) {
+  #cookMeter { bottom: calc(12px + var(--safe-b)); }
+}

@@ -51,7 +51,7 @@ export class Home {
         c.fillRect(cx - 4, h / 2 - 4, 8, 8);
       }
     });
-    const rug = new THREE.Mesh(new THREE.PlaneGeometry(4, 2.6), new THREE.MeshLambertMaterial({ map: kilim }));
+    const rug = new THREE.Mesh(new THREE.PlaneGeometry(4, 2.6), new THREE.MeshStandardMaterial({ map: kilim }));
     rug.rotation.x = -Math.PI / 2;
     rug.position.set(0.3, 0.106, 0.4);
     rug.receiveShadow = true;

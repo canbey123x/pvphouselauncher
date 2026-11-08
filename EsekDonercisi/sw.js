@@ -1,7 +1,7 @@
 // EsekDonercisi service worker: oyun bir kez açıldıktan sonra internetsiz de çalışsın.
 // Kendi dosyalarımız: önce ağ (güncellemeler hemen gelsin), ağ yoksa önbellek.
 // CDN (three.js) ve yazı tipleri: önce önbellek.
-const CACHE = 'esekdonercisi-v3';
+const CACHE = 'esekdonercisi-v4';
 const CORE = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const CORE = [
   './src/daynight.js',
   './src/donkey.js',
   './src/house.js',
+  './src/life.js',
   './src/npcs.js',
   './src/shops.js',
 ];
