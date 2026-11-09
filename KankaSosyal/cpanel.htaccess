@@ -1,0 +1,16 @@
+# Kanka - cPanel (Apache) ayarları
+# Her zaman https kullan
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Doğru dosya türleri
+AddType application/javascript .js
+AddType application/manifest+json .webmanifest
+
+# Uygulama dosyaları hep güncel gelsin (güncelleme sonrası eski sürüm kalmasın)
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|css|json|webmanifest)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>

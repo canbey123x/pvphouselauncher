@@ -1,0 +1,58 @@
+name: Kanka cPanel
+
+# KankaSosyal/ her değiştiğinde web sitesini FTP ile cPanel'e yükler.
+# Çalışması için GitHub'da: Settings > Secrets and variables > Actions > New repository secret
+#   FTP_SERVER    ör. ftp.alanadin.com
+#   FTP_USERNAME  cPanel > FTP Accounts'ta açtığın hesap (ör. kanka@alanadin.com)
+#   FTP_PASSWORD  o hesabın şifresi
+#   FTP_DIR       (isteğe bağlı) sitenin klasörü, ör. /public_html/  — boşsa FTP hesabının kök klasörü
+# Bu ayarlar yoksa iş atlanır, hata vermez.
+
+on:
+  push:
+    paths:
+      - 'KankaSosyal/**'
+      - '.github/workflows/kanka-cpanel.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: kanka-cpanel
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_FTP: ${{ secrets.FTP_SERVER != '' && secrets.FTP_USERNAME != '' && secrets.FTP_PASSWORD != '' }}
+    steps:
+      - name: FTP ayarı var mı?
+        run: |
+          if [ "$HAS_FTP" != "true" ]; then
+            echo "::notice::FTP_SERVER / FTP_USERNAME / FTP_PASSWORD ayarlanmamış, cPanel yüklemesi atlandı."
+          fi
+
+      - name: Kodu çek
+        if: env.HAS_FTP == 'true'
+        uses: actions/checkout@v4
+
+      - name: Site dosyalarını hazırla
+        if: env.HAS_FTP == 'true'
+        run: |
+          mkdir -p site/vendor
+          cd KankaSosyal
+          cp -r index.html style.css manifest.webmanifest sw.js server.json js icons ../site/
+          cp cpanel.htaccess ../site/.htaccess
+          cd ..
+          curl -fsSL --retry 4 https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js -o site/vendor/supabase.js
+          ls -la site
+
+      - name: cPanel'e yükle (FTP)
+        if: env.HAS_FTP == 'true'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./site/
+          server-dir: ${{ secrets.FTP_DIR || './' }}
+          dangerous-clean-slate: false

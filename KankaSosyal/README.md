@@ -55,6 +55,12 @@ GIPHY'den ücretsiz bir API anahtarı alıp `index.html` içine
 İlk seferde bir kez: GitHub'da depo > **Settings > Pages** > *Source*: **Deploy from a branch**,
 *Branch*: **gh-pages** ve **/ (root)** > **Save**. Web ve APK aynı Supabase sunucusunu kullanır; aynı hesaplarla girilir.
 
+## Kendi alan adın (cPanel)
+Site düz dosyalardan oluşur; PHP/MySQL gerekmez, veriler yine Supabase'dedir (APK ile aynı hesaplar).
+`.github/workflows/kanka-cpanel.yml` her değişiklikte siteyi **FTP ile cPanel'e otomatik yükler**.
+GitHub'da *Settings > Secrets and variables > Actions* altına `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`
+(ve istersen `FTP_DIR`, ör. `/public_html/`) ekle. `cpanel.htaccess` siteye `.htaccess` olarak yüklenir (https yönlendirmesi).
+
 ## APK
 `.github/workflows/kanka-apk.yml` bu klasör her değiştiğinde Android APK'sını derler ve
 **Releases > `kanka-latest`** altında `Kanka.apk` olarak yayınlar (paket: `com.kanka.sosyal`).
