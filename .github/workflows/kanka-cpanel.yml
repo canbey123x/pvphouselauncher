@@ -40,7 +40,9 @@ jobs:
           HOST=$(printf '%s' "$RAW" | tr -d '[:space:]' | sed -E 's#^[a-zA-Z]+://##; s#/.*$##; s#:[0-9]+$##')
           echo "FTP_HOST=$HOST" >> "$GITHUB_ENV"
           if [ "$HOST" != "$RAW" ]; then echo "::notice::FTP_SERVER içindeki fazlalıklar temizlendi (ftp://, /, port ya da boşluk)."; fi
-          if getent hosts "$HOST" > /dev/null; then
+          if printf '%s' "$HOST" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$|:'; then
+            echo "FTP sunucusu IP adresi olarak verilmiş, ad kontrolü atlandı."
+          elif getent ahosts "$HOST" > /dev/null; then
             echo "FTP sunucusu bulundu."
           else
             echo "::error::FTP_SERVER adresi internette bulunamadı. Sadece sunucu adını yaz (ör. ftp.alanadin.com ya da cPanel'deki sunucu adı / IP). Alan adın yeni alındıysa yönlenmesi birkaç saat sürebilir; bu sürede cPanel'in sunucu adını ya da IP adresini kullan."
