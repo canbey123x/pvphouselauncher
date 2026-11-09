@@ -18,10 +18,28 @@ android {
         versionName '1.0.' + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
     }
 
+    // Sabit imza anahtarı: her sürüm aynı anahtarla imzalanır, böylece uygulama içinden
+    // eskisinin üstüne güncellenebilir. Anahtar depoda DEĞİL; GitHub'daki gizli ayarlardan
+    // (KANKA_KEYSTORE_B64 / KANKA_KEYSTORE_PASSWORD) derleme sırasında çözülür.
+    def ksFile = System.getenv('KANKA_KEYSTORE_FILE')
+    def ksPass = System.getenv('KANKA_KEYSTORE_PASSWORD')
+    def hasKs = ksFile && ksPass && file(ksFile).exists()
+
+    signingConfigs {
+        kanka {
+            if (hasKs) {
+                storeFile file(ksFile)
+                storePassword ksPass
+                keyAlias 'kanka'
+                keyPassword ksPass
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig hasKs ? signingConfigs.kanka : signingConfigs.debug
         }
     }
 

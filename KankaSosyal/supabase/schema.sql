@@ -133,6 +133,10 @@ create table if not exists announcements (
   created_at timestamptz not null default now()
 );
 
+-- Düzenleyici bilgisi (yazı/çıkartma katmanları, filtre, konum)
+alter table posts add column if not exists meta jsonb not null default '{}'::jsonb;
+alter table stories add column if not exists meta jsonb not null default '{}'::jsonb;
+
 -- ---------- Yardımcı fonksiyonlar ----------
 create or replace function is_admin() returns boolean
 language sql stable security definer set search_path = public as $$

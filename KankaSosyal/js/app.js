@@ -5,6 +5,7 @@
 import * as A from './api.js';
 import { $, $$, esc, I, ic, TICK, avatar, uname, ago, num, toast, sheet, closeSheet, confirmSheet, promptSheet, pickFile, hydrate, mediaTag, autoplay, linkify } from './ui.js';
 import { renderAdmin } from './admin.js';
+import { openEditor, overlayHtml } from './editor.js';
 
 const app = $('#app');
 const tabbar = $('#tabbar');
@@ -192,6 +193,14 @@ function vServer() {
     };
 }
 
+/** Videonun filtre ayarı ve vinyet. */
+function vidAttrs(m) {
+  return m && m.filter ? `style="filter:${esc(m.filter)}"` : '';
+}
+function vigStyle(m) {
+  return m && m.vig ? `style="--vig:${((m.vig / 100) * 0.75).toFixed(2)}"` : '';
+}
+
 /* =========================================================
    Gönderi kartı
    ========================================================= */
@@ -201,9 +210,9 @@ function postHtml(p) {
     ${p.reposter ? `<div class="rp-line">${I.repost}<a href="#/u/${esc(p.reposter.username)}">${esc(p.reposter.username)}</a> repost etti</div>` : ''}
     ${p.suggested ? `<div class="sugg">Senin için önerilen</div>` : ''}
     <div class="post-head"><a href="#/u/${esc(p.author.username)}">${avatar(p.author, 34)}</a>
-      <a class="who" href="#/u/${esc(p.author.username)}">${uname(p.author)}<small>${ago(p.created_at, true)}</small></a>
+      <a class="who" href="#/u/${esc(p.author.username)}">${uname(p.author)}${p.meta?.location ? `<span class="post-loc">${esc(p.meta.location)}</span>` : `<small>${ago(p.created_at, true)}</small>`}</a>
       <button class="ibtn" data-a="more">${I.dots}</button></div>
-    <div class="media" data-a="dbl">${mediaTag(p.media, p.kind, '', p.kind === 'video' ? 'data-auto' : '')}<div class="heart-pop">${I.heartFill}</div>${p.kind === 'video' ? `<button class="mute" data-a="mute">${I.mute}</button>` : ''}</div>
+    <div class="media" data-a="dbl" ${vigStyle(p.meta)}>${mediaTag(p.media, p.kind, '', p.kind === 'video' ? 'data-auto ' + vidAttrs(p.meta) : '')}${p.kind === 'video' ? overlayHtml(p.meta) : ''}<div class="heart-pop">${I.heartFill}</div>${p.kind === 'video' ? `<button class="mute" data-a="mute">${I.mute}</button>` : ''}</div>
     <div class="acts"><button class="act ${p.liked ? 'on-like' : ''}" data-a="like">${I.heart}<span>${num(p.likeCount)}</span></button>
       <a class="act" href="#/p/${p.id}">${I.comment}<span>${num(p.commentCount)}</span></a>
       <button class="act ${p.reposted ? 'on-rp' : ''}" data-a="repost">${I.repost}<span>${num(p.repostCount)}</span></button>
@@ -280,6 +289,21 @@ function postMenu(p, onRemoved) {
   if (!mine) opts.push({ icon: I.user, label: `@${p.author.username} profiline git`, run: () => (location.hash = '#/u/' + p.author.username) });
   opts.push({ icon: I.comment, label: 'Yorumlar', run: () => (location.hash = '#/p/' + p.id) });
   if (!mine) opts.push({ icon: I.flag, label: 'Şikâyet et', red: true, run: () => reportFlow('post', p.id) });
+  if (mine)
+    opts.push({
+      icon: I.pen,
+      label: 'Açıklamayı düzenle',
+      run: () =>
+        promptSheet('Açıklama', 'Açıklama yaz...', async (t) => {
+          try {
+            await A.updateCaption(p, t);
+            toast('Açıklama güncellendi');
+            onRemoved?.();
+          } catch (er) {
+            toast(er.message, true);
+          }
+        }, true, p.caption),
+    });
   if (mine || admin)
     opts.push({
       icon: I.trash,
@@ -384,48 +408,93 @@ async function vSearch(_a, _b, tok) {
 async function vCreate(kind = 'post') {
   let mode = kind === 'story' ? 'story' : kind === 'reel' ? 'reel' : 'post';
   let file = null;
+  let ed = null; // düzenleyici sonucu
   app.innerHTML = `${topbar('Yeni paylaşım', true, '<button class="btn sm" id="share" disabled>Paylaş</button>')}<div class="create">
     <div class="seg" id="seg"><button data-m="post">Gönderi</button><button data-m="story">Hikâye</button><button data-m="reel">Reels</button></div>
     <button class="pick" id="pick">${I.image}<span id="pickTxt"></span></button>
+    <button class="btn block gray hidden" id="reedit">${ic('pen')} Düzenle (yazı, çıkartma, çizim, filtre)</button>
     <textarea class="field" id="cap" placeholder="Açıklama yaz... (@kullanıcı, #etiket)" maxlength="2200"></textarea>
+    <input class="field" id="loc" placeholder="Konum ekle (isteğe bağlı)" maxlength="60">
     <p class="small muted" id="hint"></p></div>`;
   const seg = () => {
     $$('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
-    $('#pickTxt').textContent = mode === 'reel' ? 'Video seç (dikey video önerilir)' : 'Fotoğraf ya da video seç';
+    if ($('#pickTxt')) $('#pickTxt').textContent = mode === 'reel' ? 'Video seç (dikey video önerilir)' : 'Fotoğraf ya da video seç';
     $('#cap').classList.toggle('hidden', mode === 'story');
+    $('#loc').classList.toggle('hidden', mode === 'story');
     $('#hint').textContent = mode === 'story' ? 'Hikâyeler 24 saat sonra kaybolur.' : mode === 'reel' ? 'Reels sekmesinde tam ekran, kaydırmalı görünür.' : '';
+  };
+  const aspectCss = (a) => (a === '1:1' ? '1' : a === '16:9' ? '16 / 9' : a === '9:16' ? '9 / 16' : a === 'orig' ? 'auto' : '4 / 5');
+  const showPreview = () => {
+    const pick = $('#pick');
+    pick.style.aspectRatio = aspectCss(ed.meta.aspect);
+    pick.style.position = 'relative';
+    pick.style.containerType = 'inline-size';
+    pick.innerHTML =
+      ed.kind === 'video'
+        ? `<video src="${ed.preview}" autoplay muted loop playsinline style="filter:${ed.meta.filter || 'none'}"></video>${ed.drawingBlob ? `<img class="ovl-draw" src="${URL.createObjectURL(ed.drawingBlob)}" style="position:absolute;inset:0;width:100%;height:100%">` : ''}${overlayHtml({ layers: ed.meta.layers })}`
+        : `<img src="${ed.preview}">`;
+    $('#reedit').classList.remove('hidden');
+    $('#share').disabled = false;
+  };
+  const edit = async () => {
+    const r = await openEditor(file, mode, ed?.state || null);
+    if (r) {
+      ed = r;
+      showPreview();
+    }
+  };
+  const clearPick = () => {
+    file = null;
+    ed = null;
+    $('#pick').innerHTML = `${I.image}<span id="pickTxt"></span>`;
+    $('#pick').style.aspectRatio = '';
+    $('#reedit').classList.add('hidden');
+    $('#share').disabled = true;
   };
   seg();
   $('#seg').onclick = (e) => {
     const b = e.target.closest('button');
-    if (!b) return;
+    if (!b || b.dataset.m === mode) return;
     mode = b.dataset.m;
-    seg();
+    if (file && (mode !== 'reel' || file.type.startsWith('video/'))) {
+      // oran değişti: yeniden düzenle
+      if (ed) ed.state.aspect = mode === 'post' ? '4:5' : '9:16';
+      seg();
+      edit();
+    } else {
+      clearPick();
+      seg();
+    }
   };
   $('#pick').onclick = async () => {
     const f = await pickFile(mode === 'reel' ? 'video/*' : 'image/*,video/*');
     if (!f) return;
     if (mode === 'reel' && !f.type.startsWith('video/')) return toast('Reels için video seç', true);
     file = f;
-    const url = URL.createObjectURL(f);
-    $('#pick').innerHTML = f.type.startsWith('video/') ? `<video src="${url}" autoplay muted loop playsinline></video>` : `<img src="${url}">`;
-    $('#share').disabled = false;
+    ed = null;
+    await edit();
   };
+  $('#reedit').onclick = edit;
   $('#share').onclick = async () => {
-    if (!file) return;
+    if (!file || !ed) return;
     const btn = $('#share');
     btn.disabled = true;
     btn.textContent = 'Yükleniyor...';
+    const meta = { ...ed.meta };
+    if (ed.kind === 'photo') delete meta.layers;
+    const loc = $('#loc').value.trim();
+    if (loc && mode !== 'story') meta.location = loc;
     try {
       if (mode === 'story') {
-        await A.addStory(file);
+        await A.addStory(ed.blob, meta, ed.drawingBlob);
         toast('Hikâyen paylaşıldı');
         location.hash = '#/home';
       } else {
-        await A.createPost({ file, caption: $('#cap').value.trim() });
+        await A.createPost({ file: ed.blob, caption: $('#cap').value.trim(), meta, drawingBlob: ed.drawingBlob });
         toast('Paylaşıldı');
         location.hash = mode === 'reel' ? '#/reels' : '#/home';
       }
+      if (A.metaMissing && meP.role === 'admin') toast('Sunucuda güncelleme gerekiyor: supabase/guncelleme-1.sql dosyasını çalıştır', true);
     } catch (er) {
       toast(er.message, true);
       btn.disabled = false;
@@ -453,7 +522,7 @@ async function vReels(startId, _b, tok) {
   const fol = new Set(await A.following());
   box.innerHTML = list
     .map(
-      (p) => `<section class="reel" data-k="${p.id}">${mediaTag(p.media, 'video', '', 'data-reel')}<div class="shade"></div><div class="paused hidden">${I.play}</div>
+      (p) => `<section class="reel" data-k="${p.id}" ${vigStyle(p.meta)}>${mediaTag(p.media, 'video', '', 'data-reel ' + vidAttrs(p.meta) + (p.meta?.muted ? ' data-mute' : ''))}${overlayHtml(p.meta)}<div class="shade"></div><div class="paused hidden">${I.play}</div>
     <div class="side"><button class="act ${p.liked ? 'on-like' : ''}" data-a="like">${I.heart}<span>${num(p.likeCount)}</span></button>
       <a class="act" href="#/p/${p.id}">${I.comment}<span>${num(p.commentCount)}</span></a>
       <button class="act ${p.reposted ? 'on-rp' : ''}" data-a="repost">${I.repost}<span>${num(p.repostCount)}</span></button>
@@ -466,7 +535,7 @@ async function vReels(startId, _b, tok) {
   hydrate(box);
   const vids = $$('video', box);
   vids.forEach((v) => {
-    v.muted = false;
+    v.muted = v.hasAttribute('data-mute');
     v.loop = true;
   });
   const io = new IntersectionObserver(
@@ -737,7 +806,7 @@ async function vStory(uid, _b, tok) {
     const mine = g.user.id === A.me();
     app.innerHTML = `<div class="story-view"><div class="bars">${g.stories.map((_, i) => `<i><b style="width:${i < si ? 100 : 0}%"></b></i>`).join('')}</div>
       <div class="shead">${avatar(g.user, 32)}${uname(g.user)}<span class="muted small">${ago(s.created_at)}</span><span style="flex:1"></span><button class="ibtn" id="sMore">${I.dots}</button><button class="ibtn" id="sX">${I.close}</button></div>
-      <div class="stage">${s.kind === 'video' ? `<video data-m="${esc(s.media)}" autoplay playsinline></video>` : `<img data-m="${esc(s.media)}">`}</div>
+      <div class="stage">${s.kind === 'video' ? `<video data-m="${esc(s.media)}" autoplay playsinline ${s.meta?.muted ? 'muted' : ''} ${vidAttrs(s.meta)}></video>${overlayHtml(s.meta)}` : `<img data-m="${esc(s.media)}">`}</div>
       <div class="tapL"></div><div class="tapR"></div>
       <div class="sfoot">${mine ? `<button class="btn gray" id="sViews">${ic('eye')} Görenler</button>` : `<input id="sRep" placeholder="Yanıt gönder..."><button class="ibtn" id="sLike">${I.heart}</button><button class="ibtn" id="sSend">${I.send}</button>`}</div></div>`;
     hydrate(app);
@@ -977,6 +1046,7 @@ async function vSettings() {
     <a class="list-row" href="#/notifs">${I.bell}<div class="grow">Bildirimler</div></a>
     <button class="list-row" id="pw" style="width:100%;text-align:left">${I.gear}<div class="grow">Şifre değiştir</div></button>
     <a class="list-row" href="#/server">${I.globe}<div class="grow">Sunucu<small>${local ? 'Yerel mod (sadece bu cihaz)' : 'Ortak sunucuya bağlı'}</small></div></a>
+    ${window.KankaAndroid ? `<button class="list-row" id="upd" style="width:100%;text-align:left">${I.reply}<div class="grow">Güncellemeleri denetle<small>Yüklü sürüm: ${window.KankaAndroid.version()}</small></div></button>` : ''}
     <button class="list-row" id="out" style="width:100%;text-align:left;color:#ff6b77">${I.close}<div class="grow">Çıkış yap</div></button>
     <p class="small muted" style="padding:14px">Kanka 1.0 · @${esc(meP.username)}</p>`;
   $('#vreq').onclick = () => {
@@ -996,6 +1066,7 @@ async function vSettings() {
       await A.db.changePassword(pw);
       toast('Şifre değişti');
     });
+  if ($('#upd')) $('#upd').onclick = () => window.KankaAndroid.checkUpdate();
   $('#out').onclick = () => confirmSheet('Çıkış yapılsın mı?', () => A.db.signOut(), 'Çıkış yap');
 }
 
@@ -1040,6 +1111,7 @@ async function vAdmin(section = 'dash', id, tok) {
 
 /* ---------- Android geri tuşu ---------- */
 window.__androidBack = () => {
+  if (window.__editorBack) return window.__editorBack();
   if (!$('#sheet').classList.contains('hidden')) {
     closeSheet();
     return true;

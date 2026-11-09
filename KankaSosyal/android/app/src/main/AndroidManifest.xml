@@ -3,6 +3,8 @@
 
     <!-- Sunucu (Supabase) ve yazı tipleri için -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Uygulama içinden güncelleme: yeni APK'yı kurmak için -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"

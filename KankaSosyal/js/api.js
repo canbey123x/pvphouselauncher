@@ -135,11 +135,38 @@ export async function uploadFile(file) {
 }
 
 /* ---------- Gönderiler ---------- */
-export async function createPost({ file, caption }) {
+/** Düzenleyici bilgisi (katmanlar, filtre, konum) ile kaydet. Sunucuda "meta" sütunu yoksa onsuz kaydeder. */
+async function insertWithMeta(table, row, meta) {
+  if (!meta || !Object.keys(meta).length) return db.insert(table, row);
+  try {
+    return await db.insert(table, { ...row, meta });
+  } catch (e) {
+    if (!/meta/i.test(e.message || '')) throw e;
+    metaMissing = true;
+    return db.insert(table, row);
+  }
+}
+export let metaMissing = false;
+async function buildMeta(meta, drawingBlob) {
+  const m = { ...(meta || {}) };
+  if (drawingBlob) m.drawing = await db.upload(drawingBlob, 'photo');
+  for (const k of Object.keys(m)) if (m[k] === '' || m[k] === null || (Array.isArray(m[k]) && !m[k].length)) delete m[k];
+  if (m.filter === 'none') delete m.filter;
+  if (!m.vig) delete m.vig;
+  if (!m.muted) delete m.muted;
+  return m;
+}
+export async function createPost({ file, caption, meta, drawingBlob }) {
   const p = await profile(me(), true);
   if (p?.banned) throw new Error('Hesabın askıya alındı, paylaşım yapamazsın.');
   const up = await uploadFile(file);
-  return db.insert('posts', { user_id: me(), kind: up.kind === 'video' ? 'video' : 'photo', media: up.url, caption });
+  const m = await buildMeta(meta, drawingBlob);
+  return insertWithMeta('posts', { user_id: me(), kind: up.kind === 'video' ? 'video' : 'photo', media: up.url, caption }, m);
+}
+export async function updateCaption(post, caption) {
+  const r = await db.update('posts', post.id, { caption });
+  if (!r) throw new Error('Açıklama değiştirilemedi');
+  post.caption = caption;
 }
 export async function deletePost(id) {
   for (const t of ['likes', 'reposts', 'comments']) await db.remove(t, { post_id: id });
@@ -292,9 +319,10 @@ export async function stats(uid) {
 }
 
 /* ---------- Hikâyeler ---------- */
-export async function addStory(file) {
+export async function addStory(file, meta, drawingBlob) {
   const up = await uploadFile(file);
-  return db.insert('stories', { user_id: me(), kind: up.kind === 'video' ? 'video' : 'photo', media: up.url });
+  const m = await buildMeta(meta, drawingBlob);
+  return insertWithMeta('stories', { user_id: me(), kind: up.kind === 'video' ? 'video' : 'photo', media: up.url }, m);
 }
 /** Son 24 saatteki hikâyeler, kullanıcıya göre gruplu. Önce sen, sonra görülmemişler. */
 export async function storyGroups() {

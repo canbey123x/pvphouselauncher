@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -28,6 +29,7 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private ValueCallback<Uri[]> pending;
+    private Updater updater;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -100,8 +102,26 @@ public class MainActivity extends Activity {
             }
         });
 
+        // Uygulama içinden güncelleme: açılışta sessizce kontrol et, web tarafına da aç
+        updater = new Updater(this);
+        web.addJavascriptInterface(new Bridge(), "KankaAndroid");
+
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
         else web.loadUrl(START_URL);
+        updater.check(true);
+    }
+
+    /** Web tarafından çağrılabilen küçük köprü (Ayarlar > Güncellemeleri denetle). */
+    private class Bridge {
+        @JavascriptInterface
+        public int version() {
+            return updater.currentVersion();
+        }
+
+        @JavascriptInterface
+        public void checkUpdate() {
+            runOnUiThread(() -> updater.check(false));
+        }
     }
 
     @Override
@@ -137,6 +157,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (web != null) web.onResume();
+        if (updater != null) updater.onResume();
     }
 
     @Override
@@ -147,6 +168,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (updater != null) updater.destroy();
         if (web != null) {
             web.destroy();
             web = null;

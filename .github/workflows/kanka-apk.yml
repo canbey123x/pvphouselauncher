@@ -45,12 +45,28 @@ jobs:
           curl -fsSL --retry 4 https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js -o vendor/supabase.js
           ls -la vendor
 
+      - name: İmza anahtarını gizli ayardan çöz
+        env:
+          KS_B64: ${{ secrets.KANKA_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.KANKA_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            printf '%s' "$KS_B64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/kanka.jks"
+            echo "KANKA_KEYSTORE_FILE=$RUNNER_TEMP/kanka.jks" >> "$GITHUB_ENV"
+            echo "KANKA_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+            echo "Sabit imza anahtarı kullanılacak."
+          else
+            echo "::warning::KANKA_KEYSTORE_B64 / KANKA_KEYSTORE_PASSWORD ayarlı değil; geçici anahtarla imzalanıyor (uygulama içi güncelleme çalışmaz)."
+          fi
+
       - name: APK derle
         run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: APK'yı adlandır
         run: |
           cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/Kanka.apk"
+          # uygulama içi güncelleme bu numaraya bakar (APK'daki versionCode ile aynı)
+          echo "$GITHUB_RUN_NUMBER" > "$GITHUB_WORKSPACE/version.txt"
           ls -la "$GITHUB_WORKSPACE/Kanka.apk"
 
       - name: Artifact olarak yükle
@@ -65,8 +81,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete kanka-latest --cleanup-tag -y || true
-          gh release create kanka-latest Kanka.apk \
+          gh release create kanka-latest Kanka.apk version.txt \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "Kanka APK (son sürüm)" \
-            --notes "Telefona indir, aç, kur. Bilinmeyen kaynaklardan yüklemeye izin vermen gerekebilir. Derleme: ${GITHUB_SHA::7} (#${GITHUB_RUN_NUMBER})"
+            --notes "Telefona indir, aç, kur. Bilinmeyen kaynaklardan yüklemeye izin vermen gerekebilir. Sonraki sürümler uygulamanın içinden güncellenir. Derleme: ${GITHUB_SHA::7} (#${GITHUB_RUN_NUMBER})"
