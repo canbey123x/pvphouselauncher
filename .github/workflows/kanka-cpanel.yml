@@ -31,6 +31,22 @@ jobs:
             echo "::notice::FTP_SERVER / FTP_USERNAME / FTP_PASSWORD ayarlanmamış, cPanel yüklemesi atlandı."
           fi
 
+      - name: FTP adresini temizle ve kontrol et
+        if: env.HAS_FTP == 'true'
+        env:
+          RAW: ${{ secrets.FTP_SERVER }}
+        run: |
+          # "ftp://", "https://", sondaki "/" ve ":21" gibi fazlalıkları ve boşlukları at
+          HOST=$(printf '%s' "$RAW" | tr -d '[:space:]' | sed -E 's#^[a-zA-Z]+://##; s#/.*$##; s#:[0-9]+$##')
+          echo "FTP_HOST=$HOST" >> "$GITHUB_ENV"
+          if [ "$HOST" != "$RAW" ]; then echo "::notice::FTP_SERVER içindeki fazlalıklar temizlendi (ftp://, /, port ya da boşluk)."; fi
+          if getent hosts "$HOST" > /dev/null; then
+            echo "FTP sunucusu bulundu."
+          else
+            echo "::error::FTP_SERVER adresi internette bulunamadı. Sadece sunucu adını yaz (ör. ftp.alanadin.com ya da cPanel'deki sunucu adı / IP). Alan adın yeni alındıysa yönlenmesi birkaç saat sürebilir; bu sürede cPanel'in sunucu adını ya da IP adresini kullan."
+            exit 1
+          fi
+
       - name: Kodu çek
         if: env.HAS_FTP == 'true'
         uses: actions/checkout@v4
@@ -50,7 +66,7 @@ jobs:
         if: env.HAS_FTP == 'true'
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
+          server: ${{ env.FTP_HOST }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           local-dir: ./site/
