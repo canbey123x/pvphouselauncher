@@ -1,0 +1,45 @@
+name: Kanka Web
+
+# KankaSosyal/ klasörü her değiştiğinde web sürümünü GitHub Pages'te yayınlar:
+#   https://canbey123x.github.io/pvphouselauncher/
+# İlk seferde bir kez: Settings > Pages > Source = "Deploy from a branch", Branch = gh-pages, / (root).
+
+on:
+  push:
+    paths:
+      - 'KankaSosyal/**'
+      - '.github/workflows/kanka-web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kanka-web
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodu çek
+        uses: actions/checkout@v4
+
+      - name: Site dosyalarını hazırla
+        run: |
+          mkdir -p site/vendor
+          cd KankaSosyal
+          cp -r index.html style.css manifest.webmanifest sw.js server.json js icons ../site/
+          cd ..
+          curl -fsSL --retry 4 https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js -o site/vendor/supabase.js
+          touch site/.nojekyll
+          ls -la site
+
+      - name: gh-pages dalına yayınla
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
+          force_orphan: true
+          commit_message: "Kanka web: ${{ github.sha }}"

@@ -265,3 +265,16 @@ textarea.field { height: auto; min-height: 80px; padding: 10px 12px; resize: ver
 .list-row > svg { width: 24px; height: 24px; }
 .topbar h1 > svg { width: 22px; height: 22px; flex: none; }
 .list-row > .tick { width: 24px; height: 24px; }
+
+/* ---------- Masaüstü (web sürümü) ---------- */
+@media (min-width: 700px) {
+  body { background: #000; }
+  #app:not(.fullscreen) { border-left: 1px solid var(--line); border-right: 1px solid var(--line); min-height: 100vh; }
+  #tabbar { max-width: 640px; margin: 0 auto; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .reel { width: min(100%, 56.25vh); margin: 0 auto; }
+  .reels-top { max-width: min(100%, 56.25vh); margin: 0 auto; }
+  .story-view .stage { max-width: 56.25vh; margin: 0 auto; width: 100%; }
+  .story-view .bars, .story-view .shead, .story-view .sfoot { max-width: 56.25vh; margin: 0 auto; }
+  .story-view .bars, .story-view .shead { left: 0; right: 0; }
+  #toast { bottom: 80px; }
+}

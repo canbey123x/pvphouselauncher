@@ -48,6 +48,13 @@ Herkesin birbirini görmesi için ortak bir sunucu gerekir. Supabase'in ücretsi
 GIPHY'den ücretsiz bir API anahtarı alıp `index.html` içine
 `<script>window.KANKA_GIPHY_KEY = 'ANAHTAR';</script>` eklersen GIF penceresinde arama da çıkar.
 
+## Web sürümü (ücretsiz, cPanel gerekmez)
+`.github/workflows/kanka-web.yml` bu klasör her değiştiğinde web sürümünü **GitHub Pages**'te yayınlar:
+**https://canbey123x.github.io/pvphouselauncher/**
+
+İlk seferde bir kez: GitHub'da depo > **Settings > Pages** > *Source*: **Deploy from a branch**,
+*Branch*: **gh-pages** ve **/ (root)** > **Save**. Web ve APK aynı Supabase sunucusunu kullanır; aynı hesaplarla girilir.
+
 ## APK
 `.github/workflows/kanka-apk.yml` bu klasör her değiştiğinde Android APK'sını derler ve
 **Releases > `kanka-latest`** altında `Kanka.apk` olarak yayınlar (paket: `com.kanka.sosyal`).
