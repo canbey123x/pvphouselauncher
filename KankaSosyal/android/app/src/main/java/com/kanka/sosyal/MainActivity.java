@@ -10,6 +10,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import android.widget.FrameLayout;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
@@ -45,16 +47,30 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         web = new WebView(this);
         web.setBackgroundColor(0xFF000000);
-        setContentView(web);
+        // WebView kendi iç boşluğunu (padding) dikkate almaz; bu yüzden onu siyah bir kapsayıcıya
+        // koyup boşluğu kapsayıcıya veriyoruz.
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(0xFF000000);
+        root.addView(web, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(root);
         // Android 15+ uygulamayı kenardan kenara çizer: durum çubuğu, gezinme çubuğu ve klavye
-        // kadar boşluk bırak ki içerik altlarında kalmasın.
+        // kadar boşluk bırak ki içerik (alt menü dahil) sistem çubuklarının altında kalmasın.
         if (Build.VERSION.SDK_INT >= 30) {
-            web.setOnApplyWindowInsetsListener((v, insets) -> {
+            root.setOnApplyWindowInsetsListener((v, insets) -> {
                 Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
                 Insets ime = insets.getInsets(WindowInsets.Type.ime());
                 v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
                 return WindowInsets.CONSUMED;
             });
+            root.requestApplyInsets();
+            // Siyah zemin üstünde açık renkli sistem simgeleri
+            WindowInsetsController c = getWindow().getInsetsController();
+            if (c != null) c.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            // Gezinme çubuğundaki yarı saydam gri katmanı kapat
+            getWindow().setNavigationBarContrastEnforced(false);
+            getWindow().setStatusBarContrastEnforced(false);
         }
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
