@@ -100,6 +100,33 @@ export async function createLocalDb() {
       await tx(db, 'media', 'readwrite', (s) => s.put(blob, id));
       return 'idb:' + id;
     },
+    async uploadPrivate(blob) {
+      return api.upload(blob, 'photo');
+    },
+    async signedUrl(path) {
+      return api.resolve(path);
+    },
+    async removePrivate(path) {
+      if (path && path.startsWith('idb:')) await tx(db, 'media', 'readwrite', (s) => s.delete(path.slice(4)));
+    },
+    async rpc() {
+      return null;
+    },
+    /** Hesabı ve tüm verisini bu cihazdan sil. */
+    async deleteAccount() {
+      const me = session?.uid;
+      if (!me) return;
+      const p = T('profiles').find((x) => x.id === me);
+      if (p && p.role === 'owner' && T('profiles').length > 1) throw new Error('Kurucu hesabı silinemez.');
+      const refs = ['user_id', 'follower_id', 'following_id', 'sender_id', 'actor_id', 'reporter_id', 'requester_id', 'target_id', 'blocker_id', 'blocked_id', 'a', 'b'];
+      const postIds = new Set(T('posts').filter((x) => x.user_id === me).map((x) => x.id));
+      const convIds = new Set(T('conversations').filter((c) => c.a === me || c.b === me).map((c) => c.id));
+      for (const t of Object.keys(data)) {
+        data[t] = data[t].filter((r) => !(r.id === me && (t === 'profiles' || t === 'accounts')) && !refs.some((k) => r[k] === me) && !postIds.has(r.post_id) && !convIds.has(r.conversation_id));
+      }
+      persist();
+      await api.signOut();
+    },
     /** idb:… adreslerini görüntülenebilir adrese çevir. */
     async resolve(url) {
       if (!url || !url.startsWith('idb:')) return url;
@@ -124,8 +151,8 @@ export async function createLocalDb() {
       }
       const id = uuid();
       T('accounts').push({ id, email, pass: await sha(password) });
-      const first = !T('profiles').some((p) => p.role === 'admin');
-      T('profiles').push({ id, username, name, bio: '', avatar: '', verified: first, role: first ? 'admin' : 'user', banned: false, created_at: new Date().toISOString() });
+      const first = !T('profiles').some((p) => p.role === 'admin' || p.role === 'owner');
+      T('profiles').push({ id, username, name, bio: '', avatar: '', verified: first, role: first ? 'owner' : 'user', banned: false, private: false, dm_policy: 'everyone', hide_likes: false, restricted: false, created_at: new Date().toISOString() });
       persist();
       session = { uid: id };
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));

@@ -58,10 +58,12 @@ jobs:
         run: |
           mkdir -p site/vendor
           cd KankaSosyal
-          cp -r index.html style.css manifest.webmanifest sw.js server.json js icons ../site/
+          cp -r index.html style.css manifest.webmanifest sw.js server.json js icons legal ../site/
           cp cpanel.htaccess ../site/.htaccess
           cd ..
           curl -fsSL --retry 4 https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js -o site/vendor/supabase.js
+          # web sürümü otomatik güncellemesi bu dosyaya bakar
+          printf '{"v":"%s","t":"%s"}\n' "${GITHUB_SHA::12}" "$(date -u +%FT%TZ)" > site/version.json
           ls -la site
 
       - name: cPanel'e yükle (FTP)

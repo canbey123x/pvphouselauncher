@@ -8,12 +8,12 @@ def webOut = layout.buildDirectory.dir('generated/webassets')
 
 android {
     namespace 'com.kanka.sosyal'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId 'com.kanka.sosyal'
         minSdk 26
-        targetSdk 34
+        targetSdk 35
         versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int)
         versionName '1.0.' + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
     }
@@ -43,6 +43,23 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig true
+    }
+
+    // İki dağıtım: github = uygulama içi güncellemeli APK, play = Google Play için (kendini güncellemez)
+    flavorDimensions 'dist'
+    productFlavors {
+        github {
+            dimension 'dist'
+            buildConfigField 'boolean', 'SELF_UPDATE', 'true'
+        }
+        play {
+            dimension 'dist'
+            buildConfigField 'boolean', 'SELF_UPDATE', 'false'
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -58,7 +75,7 @@ android {
 tasks.register('copyWebAssets', Copy) {
     into webOut.get().dir('www')
     from(webRoot) {
-        include 'index.html', 'style.css', 'js/**', 'manifest.webmanifest', 'icons/**'
+        include 'index.html', 'style.css', 'js/**', 'manifest.webmanifest', 'icons/**', 'legal/**'
     }
     // CI'da indirilen supabase-js (internet olmadan da yüklensin diye APK'ya gömülür)
     from(file('../vendor')) {
@@ -69,5 +86,5 @@ tasks.register('copyWebAssets', Copy) {
 preBuild.dependsOn 'copyWebAssets'
 
 dependencies {
-    implementation 'androidx.webkit:webkit:1.11.0'
+    implementation 'androidx.webkit:webkit:1.12.1'
 }

@@ -1,11 +1,17 @@
 package com.kanka.sosyal;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Insets;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -26,6 +32,8 @@ public class MainActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final String START_URL = "https://" + HOST + "/assets/www/index.html";
     private static final int PICK = 41;
+    private static final int CAM = 42;
+    private PermissionRequest pendingCam;
 
     private WebView web;
     private ValueCallback<Uri[]> pending;
@@ -38,6 +46,16 @@ public class MainActivity extends Activity {
         web = new WebView(this);
         web.setBackgroundColor(0xFF000000);
         setContentView(web);
+        // Android 15+ uygulamayı kenardan kenara çizer: durum çubuğu, gezinme çubuğu ve klavye
+        // kadar boşluk bırak ki içerik altlarında kalmasın.
+        if (Build.VERSION.SDK_INT >= 30) {
+            web.setOnApplyWindowInsetsListener((v, insets) -> {
+                Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                Insets ime = insets.getInsets(WindowInsets.Type.ime());
+                v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
+                return WindowInsets.CONSUMED;
+            });
+        }
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
                 .setDomain(HOST)
@@ -74,6 +92,23 @@ public class MainActivity extends Activity {
         });
 
         web.setWebChromeClient(new WebChromeClient() {
+            /** Kamera: sadece mavi tik selfie'si için, kullanıcı "Kamerayla çek"e basınca. */
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                boolean wantsCam = false;
+                for (String r : request.getResources()) if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) wantsCam = true;
+                if (!wantsCam || !HOST.equals(request.getOrigin().getHost())) {
+                    request.deny();
+                    return;
+                }
+                if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                } else {
+                    pendingCam = request;
+                    requestPermissions(new String[]{Manifest.permission.CAMERA}, CAM);
+                }
+            }
+
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (pending != null) pending.onReceiveValue(null);
@@ -111,8 +146,22 @@ public class MainActivity extends Activity {
         updater.check(true);
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
+        if (requestCode != CAM || pendingCam == null) return;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) pendingCam.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+        else pendingCam.deny();
+        pendingCam = null;
+    }
+
     /** Web tarafından çağrılabilen küçük köprü (Ayarlar > Güncellemeleri denetle). */
     private class Bridge {
+        @JavascriptInterface
+        public boolean selfUpdate() {
+            return BuildConfig.SELF_UPDATE;
+        }
+
         @JavascriptInterface
         public int version() {
             return updater.currentVersion();

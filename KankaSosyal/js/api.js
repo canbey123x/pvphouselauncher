@@ -78,6 +78,68 @@ export async function initDb() {
 
 export const me = () => db.userId();
 
+/* ---------- Roller ve hesap durumu ---------- */
+export const isAdminP = (p) => !!p && (p.role === 'admin' || p.role === 'owner');
+export const isOwnerP = (p) => !!p && p.role === 'owner';
+/** Yasak / kısıtlama şu an geçerli mi? (süresi dolmuşsa geçersiz) */
+export function banState(p) {
+  const now = Date.now();
+  const live = (on, until) => !!on && (!until || new Date(until).getTime() > now);
+  return {
+    banned: live(p?.banned, p?.banned_until),
+    restricted: live(p?.restricted, p?.restricted_until),
+    banReason: p?.ban_reason || '',
+    banUntil: p?.banned_until || null,
+    restrictReason: p?.restrict_reason || '',
+    restrictUntil: p?.restricted_until || null,
+  };
+}
+async function assertActive() {
+  const p = await profile(me(), true);
+  const b = banState(p);
+  if (b.banned) throw new Error('Hesabın yasaklandı.');
+  if (b.restricted) throw new Error('Hesabın kısıtlandı: şu an paylaşım, yorum, beğeni, takip ve mesaj yapamazsın.');
+}
+/** Sunucunun güvenlik kuralı reddederse anlaşılır mesaj ver. */
+function friendly(e, fallback) {
+  const m = e?.message || String(e);
+  if (/row-level security|violates|permission denied|42501/i.test(m)) return new Error(fallback);
+  return e instanceof Error ? e : new Error(m);
+}
+
+/* ---------- Görünürlük: gizli hesap ve engelleme ---------- */
+let vctx = null;
+let vctxAt = 0;
+export function resetViewer() {
+  vctx = null;
+}
+/** Takip ettiklerim ve engellediklerim (20 sn önbellek). */
+export async function viewer() {
+  if (vctx && Date.now() - vctxAt < 20000) return vctx;
+  const uid = me();
+  const [fol, bl, blMe, mine] = await Promise.all([
+    db.list('follows', { eq: { follower_id: uid } }),
+    db.list('blocks', { eq: { blocker_id: uid } }).catch(() => []),
+    db.list('blocks', { eq: { blocked_id: uid } }).catch(() => []),
+    profile(uid),
+  ]);
+  vctx = {
+    following: new Set(fol.map((f) => f.following_id)),
+    blocked: new Set(bl.map((b) => b.blocked_id)),
+    blockedMe: new Set(blMe.map((b) => b.blocker_id)),
+    admin: isAdminP(mine),
+  };
+  vctxAt = Date.now();
+  return vctx;
+}
+/** Bu kişinin içeriğini görebilir miyim? (sunucu da aynı kuralı uygular) */
+export function canSee(author, v) {
+  if (!author) return false;
+  if (author.id === me() || v.admin) return true;
+  if (v.blocked.has(author.id) || v.blockedMe.has(author.id)) return false;
+  return !author.private || v.following.has(author.id);
+}
+
 /* ---------- Profiller ---------- */
 export async function profile(id, fresh = false) {
   if (!id) return null;
@@ -157,8 +219,7 @@ async function buildMeta(meta, drawingBlob) {
   return m;
 }
 export async function createPost({ file, caption, meta, drawingBlob }) {
-  const p = await profile(me(), true);
-  if (p?.banned) throw new Error('Hesabın askıya alındı, paylaşım yapamazsın.');
+  await assertActive();
   const up = await uploadFile(file);
   const m = await buildMeta(meta, drawingBlob);
   return insertWithMeta('posts', { user_id: me(), kind: up.kind === 'video' ? 'video' : 'photo', media: up.url, caption }, m);
@@ -184,6 +245,7 @@ export async function decorate(posts) {
   ]);
   const pm = await profiles(posts.map((p) => p.user_id).concat(posts.map((p) => p.reposted_by).filter(Boolean)));
   const uid = me();
+  const v = await viewer();
   for (const p of posts) {
     const l = likes.filter((x) => x.post_id === p.id);
     const r = reposts.filter((x) => x.post_id === p.id);
@@ -194,8 +256,9 @@ export async function decorate(posts) {
     p.commentCount = comments.filter((x) => x.post_id === p.id).length;
     p.author = pm.get(p.user_id);
     if (p.reposted_by) p.reposter = pm.get(p.reposted_by);
+    p.hideLikes = !!p.author?.hide_likes && p.user_id !== uid;
   }
-  return posts.filter((p) => p.author && !p.author.banned);
+  return posts.filter((p) => p.author && !banState(p.author).banned && canSee(p.author, v) && (!p.reposter || canSee(p.reposter, v)));
 }
 
 export async function following(uid = me()) {
@@ -205,32 +268,125 @@ export async function followers(uid = me()) {
   return (await db.list('follows', { eq: { following_id: uid } })).map((f) => f.follower_id);
 }
 
-/** Ana sayfa: takip ettiklerin + kendi gönderilerin + takip ettiklerinin repostları. Kimseyi takip etmiyorsan herkes. */
-export async function feed() {
+/* =========================================================
+   Akış algoritması
+   Puan = (temel + etkileşim + yakınlık + ilişki) × tazelik × görülmüşlük × küçük rastgelelik
+   - etkileşim: log(1 + beğeni + 2·yorum + 3·repost)
+   - yakınlık: son zamanlarda bu kişinin gönderilerini beğenme/yorumlama sayın
+   - ilişki: takip ettiğin > kendin > keşif
+   - tazelik: yaklaşık 21 saatte yarıya inen üstel azalma
+   - görülmüşlük: daha önce ekranda gördüğün gönderiler geriye düşer
+   Sonra aynı kişinin gönderileri art arda gelmesin diye çeşitlendirilir.
+   ========================================================= */
+const SEEN_KEY = 'kanka.seen';
+let seenSet = null;
+function seen() {
+  if (!seenSet) {
+    try {
+      seenSet = new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'));
+    } catch {
+      seenSet = new Set();
+    }
+  }
+  return seenSet;
+}
+export function markSeen(id) {
+  const s = seen();
+  if (s.has(id)) return;
+  s.add(id);
+  const arr = [...s].slice(-1500);
+  seenSet = new Set(arr);
+  try {
+    localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
+  } catch {
+    /* dolu */
+  }
+}
+let affCache = null;
+let affAt = 0;
+/** Kimin gönderileriyle ne kadar etkileşime girdin? */
+async function affinity() {
+  if (affCache && Date.now() - affAt < 60000) return affCache;
   const uid = me();
-  const fol = await following(uid);
-  const all = await db.list('posts', { order: ['created_at', false], limit: 150 });
+  const [lk, cm] = await Promise.all([
+    db.list('likes', { eq: { user_id: uid }, order: ['created_at', false], limit: 300 }),
+    db.list('comments', { eq: { user_id: uid }, order: ['created_at', false], limit: 200 }),
+  ]);
+  const ids = [...new Set([...lk, ...cm].map((x) => x.post_id))];
+  const posts = ids.length ? await db.list('posts', { in: ['id', ids.slice(0, 300)] }) : [];
+  const owner = new Map(posts.map((p) => [p.id, p.user_id]));
+  const m = new Map();
+  for (const x of lk) owner.has(x.post_id) && m.set(owner.get(x.post_id), (m.get(owner.get(x.post_id)) || 0) + 1);
+  for (const x of cm) owner.has(x.post_id) && m.set(owner.get(x.post_id), (m.get(owner.get(x.post_id)) || 0) + 2);
+  affCache = m;
+  affAt = Date.now();
+  return m;
+}
+function score(p, v, aff) {
+  const ageH = Math.max(0, (Date.now() - new Date(p.sort_at || p.created_at).getTime()) / 3.6e6);
+  const eng = Math.log1p((p.likeCount || 0) + 2 * (p.commentCount || 0) + 3 * (p.repostCount || 0));
+  const near = Math.log1p(aff.get(p.user_id) || 0);
+  const rel = p.user_id === me() ? 0.6 : v.following.has(p.user_id) ? 1 : 0.3;
+  const fresh = Math.exp(-ageH / 30);
+  const seenF = seen().has(p.id) ? 0.35 : 1;
+  const bonus = (p.author?.verified ? 0.1 : 0) + (p.kind === 'video' ? 0.08 : 0) + (p.reposted_by ? 0.15 : 0);
+  return (0.8 + eng * 0.6 + near * 0.7 + rel * 1.2 + bonus) * (0.2 + fresh) * seenF * (0.95 + Math.random() * 0.1);
+}
+function diversify(list) {
+  const out = [];
+  const pool = list.slice();
+  while (pool.length) {
+    const recent = out.slice(-2).map((x) => x.user_id);
+    let i = pool.findIndex((x) => !recent.includes(x.user_id));
+    if (i < 0) i = 0;
+    out.push(pool.splice(i, 1)[0]);
+  }
+  return out;
+}
+async function rank(items) {
+  const [v, aff] = await Promise.all([viewer(), affinity()]);
+  items.forEach((p) => (p._score = score(p, v, aff)));
+  items.sort((a, b) => b._score - a._score);
+  return diversify(items);
+}
+
+/**
+ * Ana sayfa. mode = 'foryou' (algoritmik, keşif dahil) | 'following' (takip ettiklerin, en yeni üstte).
+ */
+export async function feed(mode = 'foryou') {
+  const uid = me();
+  const v = await viewer();
+  const fol = [...v.following];
+  const all = await db.list('posts', { order: ['created_at', false], limit: 200 });
   const set = new Set([uid, ...fol]);
-  let items = fol.length ? all.filter((p) => set.has(p.user_id)) : all.slice();
+  let items = all.filter((p) => set.has(p.user_id));
   if (fol.length) {
     const rp = await db.list('reposts', { in: ['user_id', fol], order: ['created_at', false], limit: 60 });
     for (const r of rp) {
       const p = all.find((x) => x.id === r.post_id);
-      if (p && p.user_id !== r.user_id) items.push({ ...p, reposted_by: r.user_id, sort_at: r.created_at, feedKey: 'r' + r.id });
+      if (p && p.user_id !== r.user_id && !items.some((x) => x.id === p.id && !x.reposted_by)) items.push({ ...p, reposted_by: r.user_id, sort_at: r.created_at, feedKey: 'r' + r.id });
     }
-    // az içerik varsa keşfetten ekle
-    if (items.length < 6) for (const p of all) if (!items.some((x) => x.id === p.id)) items.push({ ...p, suggested: true });
   }
-  items.forEach((p) => (p.sort_at = p.sort_at || p.created_at));
-  items.sort((a, b) => (a.sort_at < b.sort_at ? 1 : -1));
-  return decorate(items.slice(0, 80));
+  if (mode === 'following') {
+    items.forEach((p) => (p.sort_at = p.sort_at || p.created_at));
+    items.sort((a, b) => (a.sort_at < b.sort_at ? 1 : -1));
+    return decorate(items.slice(0, 80));
+  }
+  // Senin için: takip + keşif (takip etmediğin, herkese açık, son gönderiler)
+  const discover = all.filter((p) => !set.has(p.user_id)).slice(0, 60).map((p) => ({ ...p, suggested: true }));
+  items = await decorate([...items, ...discover]);
+  return (await rank(items)).slice(0, 80);
 }
 export async function reels() {
-  const v = await db.list('posts', { eq: { kind: 'video' }, order: ['created_at', false], limit: 60 });
-  return decorate(v);
+  const v = await db.list('posts', { eq: { kind: 'video' }, order: ['created_at', false], limit: 80 });
+  return (await rank(await decorate(v))).slice(0, 60);
 }
 export async function explore() {
-  return decorate(await db.list('posts', { order: ['created_at', false], limit: 60 }));
+  const v = await viewer();
+  const posts = await decorate(await db.list('posts', { order: ['created_at', false], limit: 120 }));
+  const ranked = await rank(posts.filter((p) => p.user_id !== me()));
+  // keşfette önce takip etmediklerin
+  return [...ranked.filter((p) => !v.following.has(p.user_id)), ...ranked.filter((p) => v.following.has(p.user_id))].slice(0, 60);
 }
 export async function userPosts(uid) {
   return decorate(await db.list('posts', { eq: { user_id: uid }, order: ['created_at', false] }));
@@ -257,6 +413,7 @@ async function notify(userId, type, extra = {}) {
 export async function toggleLike(post) {
   if (post.liked) await db.remove('likes', { post_id: post.id, user_id: me() });
   else {
+    await assertActive();
     await db.insert('likes', { post_id: post.id, user_id: me() });
     notify(post.user_id, 'like', { post_id: post.id });
   }
@@ -265,6 +422,8 @@ export async function toggleLike(post) {
 }
 export async function toggleRepost(post) {
   if (post.user_id === me()) throw new Error('Kendi gönderini repost edemezsin.');
+  if (post.author?.private) throw new Error('Gizli hesapların gönderileri repost edilemez.');
+  if (!post.reposted) await assertActive();
   if (post.reposted) await db.remove('reposts', { post_id: post.id, user_id: me() });
   else {
     await db.insert('reposts', { post_id: post.id, user_id: me() });
@@ -278,12 +437,12 @@ export async function toggleRepost(post) {
 export async function comments(postId) {
   const c = await db.list('comments', { eq: { post_id: postId }, order: ['created_at', true] });
   const pm = await profiles(c.map((x) => x.user_id));
+  const v = await viewer();
   c.forEach((x) => (x.author = pm.get(x.user_id)));
-  return c.filter((x) => x.author && !x.author.banned);
+  return c.filter((x) => x.author && !banState(x.author).banned && !v.blocked.has(x.user_id) && !v.blockedMe.has(x.user_id));
 }
 export async function addComment(post, { text, file, gifUrl }) {
-  const p = await profile(me(), true);
-  if (p?.banned) throw new Error('Hesabın askıya alındı.');
+  await assertActive();
   let media = '';
   let media_kind = '';
   if (file) {
@@ -294,25 +453,107 @@ export async function addComment(post, { text, file, gifUrl }) {
     media = gifUrl;
     media_kind = 'gif';
   }
-  const c = await db.insert('comments', { post_id: post.id, user_id: me(), text, media, media_kind });
+  let c;
+  try {
+    c = await db.insert('comments', { post_id: post.id, user_id: me(), text, media, media_kind });
+  } catch (e) {
+    throw friendly(e, 'Bu gönderiye yorum yapamazsın.');
+  }
   notify(post.user_id, 'comment', { post_id: post.id, text: text.slice(0, 80) });
   return c;
 }
 export const deleteComment = (id) => db.remove('comments', { id });
 
-/* ---------- Takip ---------- */
+/* ---------- Takip (gizli hesaplar için istek) ---------- */
 export async function isFollowing(uid) {
   return (await db.list('follows', { eq: { follower_id: me(), following_id: uid } })).length > 0;
 }
-export async function toggleFollow(uid) {
-  if (await isFollowing(uid)) {
-    await db.remove('follows', { follower_id: me(), following_id: uid });
-    return false;
-  }
-  await db.insert('follows', { follower_id: me(), following_id: uid });
-  notify(uid, 'follow');
-  return true;
+/** 'self' | 'following' | 'requested' | 'none' */
+export async function followState(uid) {
+  if (uid === me()) return 'self';
+  if (await isFollowing(uid)) return 'following';
+  const r = await db.list('follow_requests', { eq: { requester_id: me(), target_id: uid } }).catch(() => []);
+  return r.length ? 'requested' : 'none';
 }
+export async function follow(uid) {
+  await assertActive();
+  const t = await profile(uid, true);
+  try {
+    if (t?.private) {
+      await db.insert('follow_requests', { requester_id: me(), target_id: uid });
+      notify(uid, 'follow_request');
+      return 'requested';
+    }
+    await db.insert('follows', { follower_id: me(), following_id: uid });
+  } catch (e) {
+    throw friendly(e, 'Bu hesabı takip edemezsin.');
+  }
+  notify(uid, 'follow');
+  resetViewer();
+  return 'following';
+}
+export async function unfollow(uid) {
+  await db.remove('follows', { follower_id: me(), following_id: uid });
+  resetViewer();
+  return 'none';
+}
+export async function cancelRequest(uid) {
+  await db.remove('follow_requests', { requester_id: me(), target_id: uid });
+  return 'none';
+}
+/** Eski çağrılar için: takip et / bırak (gizli hesapta istek). */
+export async function toggleFollow(uid) {
+  const st = await followState(uid);
+  if (st === 'following') return (await unfollow(uid), false);
+  if (st === 'requested') return (await cancelRequest(uid), false);
+  return (await follow(uid)) === 'following';
+}
+export async function incomingRequests() {
+  const r = await db.list('follow_requests', { eq: { target_id: me() }, order: ['created_at', false] }).catch(() => []);
+  const pm = await profiles(r.map((x) => x.requester_id));
+  r.forEach((x) => (x.user = pm.get(x.requester_id)));
+  return r.filter((x) => x.user);
+}
+export async function acceptRequest(req) {
+  await db.insert('follows', { follower_id: req.requester_id, following_id: me() });
+  await db.remove('follow_requests', { id: req.id });
+  notify(req.requester_id, 'follow_accept');
+}
+export const declineRequest = (req) => db.remove('follow_requests', { id: req.id });
+export async function removeFollower(uid) {
+  await db.remove('follows', { follower_id: uid, following_id: me() });
+}
+
+/* ---------- Engelleme ---------- */
+export async function blockUser(uid) {
+  await db.insert('blocks', { blocker_id: me(), blocked_id: uid });
+  await db.remove('follows', { follower_id: me(), following_id: uid }).catch(() => {});
+  await db.remove('follows', { follower_id: uid, following_id: me() }).catch(() => {});
+  await db.remove('follow_requests', { requester_id: uid, target_id: me() }).catch(() => {});
+  await db.remove('follow_requests', { requester_id: me(), target_id: uid }).catch(() => {});
+  resetViewer();
+}
+export async function unblockUser(uid) {
+  await db.remove('blocks', { blocker_id: me(), blocked_id: uid });
+  resetViewer();
+}
+export async function blockedUsers() {
+  const b = await db.list('blocks', { eq: { blocker_id: me() } }).catch(() => []);
+  const pm = await profiles(b.map((x) => x.blocked_id));
+  return b.map((x) => pm.get(x.blocked_id)).filter(Boolean);
+}
+
+/* ---------- Gizlilik ayarları ---------- */
+export async function setPrivacy(patch) {
+  const before = await profile(me(), true);
+  const p = await updateProfile(patch);
+  if (!p) throw new Error('Ayar kaydedilemedi. Sunucu güncellemesi (guncelleme-2.sql) yapılmış mı?');
+  // Hesap herkese açık olunca bekleyen istekler kabul edilir
+  if (before?.private && patch.private === false) for (const r of await incomingRequests()) await acceptRequest(r).catch(() => {});
+  resetViewer();
+  return p;
+}
+
 export async function stats(uid) {
   const [posts, fers, fing] = await Promise.all([db.list('posts', { eq: { user_id: uid } }), followers(uid), following(uid)]);
   return { posts: posts.length, followers: fers.length, following: fing.length };
@@ -320,6 +561,7 @@ export async function stats(uid) {
 
 /* ---------- Hikâyeler ---------- */
 export async function addStory(file, meta, drawingBlob) {
+  await assertActive();
   const up = await uploadFile(file);
   const m = await buildMeta(meta, drawingBlob);
   return insertWithMeta('stories', { user_id: me(), kind: up.kind === 'video' ? 'video' : 'photo', media: up.url }, m);
@@ -333,10 +575,11 @@ export async function storyGroups() {
   const seen = new Set(views.map((v) => v.story_id));
   const fol = new Set([me(), ...(await following())]);
   const pm = await profiles(st.map((s) => s.user_id));
+  const v = await viewer();
   const groups = new Map();
   for (const s of st) {
     const u = pm.get(s.user_id);
-    if (!u || u.banned) continue;
+    if (!u || banState(u).banned || !canSee(u, v)) continue;
     if (!fol.has(s.user_id) && fol.size > 1) continue;
     s.seen = seen.has(s.id);
     if (!groups.has(s.user_id)) groups.set(s.user_id, { user: u, stories: [] });
@@ -384,7 +627,16 @@ export async function conversationWith(uid) {
   const m = me();
   const ex = (await db.list('conversations', { eq: { a: m, b: uid } }))[0] || (await db.list('conversations', { eq: { a: uid, b: m } }))[0];
   if (ex) return ex;
-  return db.insert('conversations', { a: m, b: uid, last_at: new Date().toISOString() });
+  await assertActive();
+  const t = await profile(uid, true);
+  const v = await viewer();
+  if (v.blocked.has(uid)) throw new Error('Bu kişiyi engelledin. Mesaj atmak için önce engeli kaldır.');
+  if (!v.admin && t?.dm_policy === 'none') throw new Error('Bu kişi mesaj almıyor.');
+  try {
+    return await db.insert('conversations', { a: m, b: uid, last_at: new Date().toISOString() });
+  } catch (e) {
+    throw friendly(e, 'Bu kişiye mesaj gönderemezsin (mesaj izni kapalı ya da engellenmiş).');
+  }
 }
 export async function messages(convId, since) {
   const q = { eq: { conversation_id: convId }, order: ['created_at', true] };
@@ -392,8 +644,7 @@ export async function messages(convId, since) {
   return db.list('messages', q);
 }
 export async function sendMessage(conv, { text, file, gifUrl }) {
-  const p = await profile(me(), true);
-  if (p?.banned) throw new Error('Hesabın askıya alındı.');
+  await assertActive();
   let media = '';
   let media_kind = '';
   if (file) {
@@ -404,7 +655,12 @@ export async function sendMessage(conv, { text, file, gifUrl }) {
     media = gifUrl;
     media_kind = 'gif';
   }
-  const msg = await db.insert('messages', { conversation_id: conv.id, sender_id: me(), text, media, media_kind });
+  let msg;
+  try {
+    msg = await db.insert('messages', { conversation_id: conv.id, sender_id: me(), text, media, media_kind });
+  } catch (e) {
+    throw friendly(e, 'Bu kişiye mesaj gönderemezsin (mesaj izni kapalı ya da engellenmiş).');
+  }
   db.update('conversations', conv.id, { last_at: msg.created_at }).catch(() => {});
   return msg;
 }
@@ -427,10 +683,47 @@ export async function markAllRead() {
 
 /* ---------- Şikâyet ve mavi tik başvurusu ---------- */
 export const report = (target_type, target_id, reason) => db.insert('reports', { reporter_id: me(), target_type, target_id, reason, status: 'open' });
-export async function requestVerify(note) {
+/** Yasak/kısıtlamaya itiraz: yöneticilere şikâyet kuyruğunda görünür. */
+export const appeal = (text) => db.insert('reports', { reporter_id: me(), target_type: 'appeal', target_id: me(), reason: text.slice(0, 500), status: 'open' });
+
+export function ageOf(birth) {
+  if (!birth) return null;
+  const b = new Date(birth);
+  const n = new Date();
+  let a = n.getFullYear() - b.getFullYear();
+  if (n.getMonth() < b.getMonth() || (n.getMonth() === b.getMonth() && n.getDate() < b.getDate())) a--;
+  return a;
+}
+export const MIN_AGE = 13;
+export const VERIFY_MIN_AGE = 18;
+/** Kayıtta doğum tarihi ve sözleşme onayı (herkese kapalı tabloya). */
+export async function savePrivateInfo(birthDate) {
+  try {
+    await db.insert('private_info', { user_id: me(), birth_date: birthDate, terms_accepted_at: new Date().toISOString() });
+  } catch {
+    /* sunucu güncellemesi yapılmamışsa kayıt yine de tamamlanır */
+  }
+}
+/** Mavi tik başvurusu: ad soyad, doğum tarihi (18+), yüz fotoğrafı (gizli depoya). */
+export async function requestVerify({ fullName, birthDate, selfie, note }) {
   const ex = await db.list('verify_requests', { eq: { user_id: me(), status: 'open' } });
   if (ex.length) throw new Error('Zaten bekleyen bir başvurun var.');
-  return db.insert('verify_requests', { user_id: me(), note, status: 'open' });
+  const age = ageOf(birthDate);
+  if (age === null || age < VERIFY_MIN_AGE) throw new Error(`Mavi tik için en az ${VERIFY_MIN_AGE} yaşında olmalısın.`);
+  if (!selfie) throw new Error('Yüz fotoğrafı gerekli.');
+  const path = await db.uploadPrivate(await prepareImage(selfie, 900));
+  try {
+    return await db.insert('verify_requests', { user_id: me(), note, status: 'open', full_name: fullName, birth_date: birthDate, selfie: path });
+  } catch (e) {
+    await db.removePrivate(path).catch(() => {});
+    if (/column|full_name|selfie|birth_date/i.test(e.message || '')) throw new Error('Sunucu güncellemesi gerekiyor (guncelleme-2.sql).');
+    throw e;
+  }
+}
+export async function deleteMyAccount() {
+  await db.deleteAccount();
+  clearCache();
+  resetViewer();
 }
 export async function activeAnnouncements() {
   return db.list('announcements', { eq: { active: true }, order: ['created_at', false], limit: 3 });
@@ -451,8 +744,9 @@ export async function adminStats() {
   return {
     users: users.length,
     verified: users.filter((u) => u.verified).length,
-    banned: users.filter((u) => u.banned).length,
-    admins: users.filter((u) => u.role === 'admin').length,
+    banned: users.filter((u) => banState(u).banned).length,
+    restricted: users.filter((u) => banState(u).restricted).length,
+    admins: users.filter((u) => isAdminP(u)).length,
     posts: posts.length,
     videos: posts.filter((p) => p.kind === 'video').length,
     comments: comments.length,
@@ -474,15 +768,58 @@ async function searchAll(q) {
   return a;
 }
 export async function adminSet(uid, patch) {
-  const p = await db.update('profiles', uid, patch);
+  const target = await profile(uid, true);
+  const mine = await profile(me(), true);
+  if (isOwnerP(target) && uid !== me()) throw new Error('Kurucu hesabı değiştirilemez.');
+  if (isAdminP(target) && uid !== me() && !isOwnerP(mine)) throw new Error('Yönetici hesaplarını sadece kurucu düzenleyebilir.');
+  if ('role' in patch && !isOwnerP(mine)) throw new Error('Yönetici yetkisini sadece kurucu verebilir.');
+  let p;
+  try {
+    p = await db.update('profiles', uid, patch);
+  } catch (e) {
+    throw friendly(e, 'Bu değişikliğe yetkin yok.');
+  }
   if (!p) throw new Error('Değiştirilemedi (yetki?)');
   profileCache.set(uid, p);
   if ('verified' in patch && patch.verified) notify(uid, 'verified', { text: 'Hesabın onaylandı, mavi tik aldın!' });
   return p;
 }
-/** Hesabı kapat: askıya al + tüm içeriğini sil. */
+/**
+ * Yasakla / kısıtla / kaldır. days: süre (gün), boş = süresiz.
+ * Yöneticiler ve kurucu korumalıdır (sunucu da reddeder).
+ */
+export async function adminModerate(uid, action, reason = '', days = null) {
+  const target = await profile(uid, true);
+  if (isAdminP(target) && (action === 'ban' || action === 'restrict')) throw new Error('Yöneticiler kısıtlanamaz veya yasaklanamaz (yönetici koruması).');
+  const until = days ? new Date(Date.now() + days * 86400000).toISOString() : null;
+  const patch =
+    action === 'ban'
+      ? { banned: true, ban_reason: reason, banned_until: until }
+      : action === 'restrict'
+        ? { restricted: true, restrict_reason: reason, restricted_until: until }
+        : action === 'unban'
+          ? { banned: false, ban_reason: '', banned_until: null }
+          : { restricted: false, restrict_reason: '', restricted_until: null };
+  let p;
+  try {
+    p = await adminSet(uid, patch);
+  } catch (e) {
+    // eski sunucu (guncelleme-2 yok): sadece yasak alanı
+    if (/ban_reason|restrict|column/i.test(e.message || '') && (action === 'ban' || action === 'unban')) p = await adminSet(uid, { banned: action === 'ban' });
+    else throw e;
+  }
+  const txt = {
+    ban: `Hesabın yasaklandı${days ? ` (${days} gün)` : ''}. Sebep: ${reason || 'belirtilmedi'}`,
+    restrict: `Hesabın kısıtlandı${days ? ` (${days} gün)` : ''}. Sebep: ${reason || 'belirtilmedi'}`,
+    unban: 'Hesabının yasağı kaldırıldı.',
+    unrestrict: 'Hesabının kısıtlaması kaldırıldı.',
+  }[action];
+  notify(uid, 'system', { text: txt });
+  return p;
+}
+/** Hesabı kapat: yasakla + tüm içeriğini sil. */
 export async function adminWipeUser(uid) {
-  await adminSet(uid, { banned: true });
+  await adminModerate(uid, 'ban', 'Hesap yönetici tarafından kapatıldı');
   const posts = await db.list('posts', { eq: { user_id: uid } });
   for (const p of posts) await deletePost(p.id);
   for (const t of ['comments', 'stories', 'likes', 'reposts']) await db.remove(t, { user_id: uid });
@@ -494,7 +831,7 @@ export async function adminReports() {
     x.reporter = pm.get(x.reporter_id);
     if (x.target_type === 'post') x.target = await db.get('posts', x.target_id);
     else if (x.target_type === 'comment') x.target = await db.get('comments', x.target_id);
-    else if (x.target_type === 'user') x.target = await profile(x.target_id);
+    else if (x.target_type === 'user' || x.target_type === 'appeal') x.target = await profile(x.target_id, true);
     else if (x.target_type === 'story') x.target = await db.get('stories', x.target_id);
     if (x.target && x.target.user_id) x.targetUser = await profile(x.target.user_id);
   }
@@ -504,13 +841,21 @@ export const closeReport = (id) => db.update('reports', id, { status: 'closed' }
 export async function adminVerifyRequests() {
   const r = await db.list('verify_requests', { order: ['created_at', false] });
   const pm = await profiles(r.map((x) => x.user_id));
-  r.forEach((x) => (x.user = pm.get(x.user_id)));
+  for (const x of r) {
+    x.user = pm.get(x.user_id);
+    x.age = ageOf(x.birth_date);
+    x.selfieUrl = x.selfie && x.status === 'open' ? await db.signedUrl(x.selfie).catch(() => '') : '';
+  }
   return r.filter((x) => x.user);
 }
-export async function decideVerify(req, ok) {
-  await db.update('verify_requests', req.id, { status: ok ? 'approved' : 'rejected' });
+/** Karar ver; gizlilik için yüz fotoğrafı karardan sonra silinir. */
+export async function decideVerify(req, ok, reason = '') {
+  const patch = { status: ok ? 'approved' : 'rejected' };
+  if (req.selfie !== undefined) Object.assign(patch, { reject_reason: ok ? '' : reason, reviewed_by: me(), selfie: '' });
+  await db.update('verify_requests', req.id, patch).catch(() => db.update('verify_requests', req.id, { status: patch.status }));
+  if (req.selfie) await db.removePrivate(req.selfie).catch(() => {});
   if (ok) await adminSet(req.user_id, { verified: true });
-  else notify(req.user_id, 'system', { text: 'Mavi tik başvurun reddedildi.' });
+  else notify(req.user_id, 'system', { text: `Mavi tik başvurun reddedildi.${reason ? ' Sebep: ' + reason : ''}` });
 }
 export async function adminComments() {
   const c = await db.list('comments', { order: ['created_at', false], limit: 100 });

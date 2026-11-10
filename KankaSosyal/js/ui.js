@@ -50,7 +50,8 @@ export const I = {
   device: P('<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/>'),
   link: P('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
   reply: P('<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v5"/>'),
-  dotOn: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#2ecc71"/></svg>',
+  lock: P('<rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>'),
+    dotOn: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#2ecc71"/></svg>',
   dotOff: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="none" stroke="#777" stroke-width="2"/></svg>',
 };
 /** Satır içi küçük ikon. */

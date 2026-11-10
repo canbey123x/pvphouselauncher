@@ -43,8 +43,12 @@ async function route() {
   const tok = ++viewToken;
   const h = location.hash.slice(2) || 'home';
   const [page, a, b] = h.split('/').map(decodeURIComponent);
-  const authPages = ['login', 'signup', 'server'];
+  const authPages = ['login', 'signup', 'server', 'legal'];
   if (!A.me() && !authPages.includes(page)) return (location.hash = '#/login');
+  if (!A.me() && page === 'legal') {
+    tabbar.classList.add('hidden');
+    return vLegal(a, b, tok);
+  }
   if (A.me() && !meP) meP = await A.profile(A.me(), true);
   if (A.me() && !meP) {
     // profil henüz oluşmadıysa (sunucu tetikleyicisi) kısa bekle
@@ -52,12 +56,17 @@ async function route() {
     meP = await A.profile(A.me(), true);
     if (!meP) return renderMsg('Profil bulunamadı', 'Sunucu kurulumu eksik olabilir (supabase/schema.sql).', true);
   }
+  if (A.me() && meP && !authPages.includes(page) && page !== 'legal') {
+    const bs = A.banState(meP);
+    if (bs.banned) return vBanned(bs);
+    if (bs.restricted) restrictNotice(bs);
+  }
   app.classList.toggle('fullscreen', page === 'reels' || page === 'story');
   document.body.style.overflow = page === 'reels' ? 'hidden' : '';
   showTabs(!authPages.includes(page) && page !== 'story' && !(page === 'dm' && a) && page !== 'p', page);
   window.scrollTo(0, 0);
   try {
-    const views = { login: vLogin, signup: vSignup, server: vServer, home: vHome, search: vSearch, create: vCreate, reels: vReels, u: vProfile, p: vPost, story: vStory, dm: a ? vChat : vInbox, notifs: vNotifs, settings: vSettings, edit: vEdit, follows: vFollows, admin: vAdmin };
+    const views = { login: vLogin, signup: vSignup, server: vServer, home: vHome, search: vSearch, create: vCreate, reels: vReels, u: vProfile, p: vPost, story: vStory, dm: a ? vChat : vInbox, notifs: vNotifs, settings: vSettings, edit: vEdit, follows: vFollows, admin: vAdmin, privacy: vPrivacy, requests: vRequests, blocked: vBlocked, verify: vVerify, legal: vLegal };
     const fn = views[page] || vHome;
     await fn(a, b, tok);
   } catch (e) {
@@ -96,6 +105,16 @@ async function refreshBadges() {
   if (!A.me() || badgeBusy) return;
   badgeBusy = true;
   try {
+    const fresh = await A.profile(A.me(), true);
+    if (fresh) {
+      const was = A.banState(meP);
+      const now = A.banState(fresh);
+      meP = fresh;
+      if (now.banned !== was.banned || now.restricted !== was.restricted) {
+        if (!now.restricted) restrictShown = false;
+        route();
+      }
+    }
     const n = await A.unreadCount();
     $$('.nbadge').forEach((el) => {
       el.textContent = n > 9 ? '9+' : n;
@@ -124,7 +143,7 @@ function vLogin() {
     <form class="form" id="f"><input class="field" name="email" type="email" placeholder="E-posta" autocomplete="email" required>
     <input class="field" name="pass" type="password" placeholder="Şifre" autocomplete="current-password" required>
     <div class="err" id="err"></div><button class="btn block">Giriş yap</button></form>
-    <div class="alt">Hesabın yok mu? <a href="#/signup">Kaydol</a></div>${modeBadge()}</div>`;
+    <div class="alt">Hesabın yok mu? <a href="#/signup">Kaydol</a></div>${modeBadge()}<div class="alt small"><a href="#/legal" style="color:var(--muted);font-weight:400">Sözleşmeler ve gizlilik</a></div></div>`;
   bindRetry();
   $('#f').onsubmit = async (e) => {
     e.preventDefault();
@@ -145,6 +164,8 @@ function vSignup() {
     <input class="field" name="name" placeholder="Adı Soyadı" required maxlength="40">
     <input class="field" name="username" placeholder="Kullanıcı adı" required maxlength="24" autocapitalize="off">
     <input class="field" name="pass" type="password" placeholder="Şifre (en az 6 karakter)" minlength="6" required>
+    <label class="small muted" style="margin-bottom:-6px">Doğum tarihi</label><input class="field" name="birth" type="date" required max="${new Date().toISOString().slice(0, 10)}">
+    <label class="check"><input type="checkbox" name="terms" required> <span><a href="#/legal/kullanim-kosullari">Kullanım Koşulları</a>, <a href="#/legal/topluluk-kurallari">Topluluk Kuralları</a> ve <a href="#/legal/gizlilik-politikasi">Gizlilik Politikası</a>'nı okudum, kabul ediyorum.</span></label>
     <div class="err" id="err"></div><button class="btn block">Kaydol</button></form>
     <div class="alt">Hesabın var mı? <a href="#/login">Giriş yap</a></div>${modeBadge()}</div>`;
   bindRetry();
@@ -153,10 +174,14 @@ function vSignup() {
     const f = e.target;
     const username = f.username.value.trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
     if (username.length < 3) return ($('#err').textContent = 'Kullanıcı adı en az 3 karakter olmalı (harf, rakam, _ ve .).');
+    const age = A.ageOf(f.birth.value);
+    if (age === null || age < A.MIN_AGE) return ($('#err').textContent = `Kanka'yı kullanmak için en az ${A.MIN_AGE} yaşında olmalısın.`);
+    if (!f.terms.checked) return ($('#err').textContent = 'Devam etmek için sözleşmeleri kabul etmelisin.');
     const btn = $('button', f);
     btn.disabled = true;
     try {
       await A.db.signUp({ email: f.email.value, password: f.pass.value, username, name: f.name.value.trim() });
+      await A.savePrivateInfo(f.birth.value);
       toast('Hoş geldin!');
     } catch (er) {
       $('#err').textContent = er.message;
@@ -213,9 +238,9 @@ function postHtml(p) {
       <a class="who" href="#/u/${esc(p.author.username)}">${uname(p.author)}${p.meta?.location ? `<span class="post-loc">${esc(p.meta.location)}</span>` : `<small>${ago(p.created_at, true)}</small>`}</a>
       <button class="ibtn" data-a="more">${I.dots}</button></div>
     <div class="media" data-a="dbl" ${vigStyle(p.meta)}>${mediaTag(p.media, p.kind, '', p.kind === 'video' ? 'data-auto ' + vidAttrs(p.meta) : '')}${p.kind === 'video' ? overlayHtml(p.meta) : ''}<div class="heart-pop">${I.heartFill}</div>${p.kind === 'video' ? `<button class="mute" data-a="mute">${I.mute}</button>` : ''}</div>
-    <div class="acts"><button class="act ${p.liked ? 'on-like' : ''}" data-a="like">${I.heart}<span>${num(p.likeCount)}</span></button>
+    <div class="acts"><button class="act ${p.liked ? 'on-like' : ''}" data-a="like">${I.heart}<span>${p.hideLikes ? '' : num(p.likeCount)}</span></button>
       <a class="act" href="#/p/${p.id}">${I.comment}<span>${num(p.commentCount)}</span></a>
-      <button class="act ${p.reposted ? 'on-rp' : ''}" data-a="repost">${I.repost}<span>${num(p.repostCount)}</span></button>
+      ${p.author.private ? '' : `<button class="act ${p.reposted ? 'on-rp' : ''}" data-a="repost">${I.repost}<span>${num(p.repostCount)}</span></button>`}
       <button class="act" data-a="share">${I.send}</button></div>
     ${p.caption ? `<div class="cap"><b>${esc(p.author.username)}</b>${linkify(p.caption)}</div>` : ''}
     ${p.commentCount ? `<a class="vc" href="#/p/${p.id}">${p.commentCount} yorumun tümünü gör</a>` : ''}
@@ -279,12 +304,12 @@ async function likeAnim(p, card, dbl) {
   }
   const btn = $('[data-a="like"]', card);
   btn.classList.toggle('on-like', p.liked);
-  $('span', btn).textContent = num(p.likeCount);
+  $('span', btn).textContent = p.hideLikes ? '' : num(p.likeCount);
 }
 
 function postMenu(p, onRemoved) {
   const mine = p.user_id === A.me();
-  const admin = meP.role === 'admin';
+  const admin = A.isAdminP(meP);
   const opts = [];
   if (!mine) opts.push({ icon: I.user, label: `@${p.author.username} profiline git`, run: () => (location.hash = '#/u/' + p.author.username) });
   opts.push({ icon: I.comment, label: 'Yorumlar', run: () => (location.hash = '#/p/' + p.id) });
@@ -319,7 +344,7 @@ function postMenu(p, onRemoved) {
   sheet(opts);
 }
 function reportFlow(type, id) {
-  const reasons = ['Spam', 'Çıplaklık / müstehcenlik', 'Nefret söylemi', 'Zorbalık / taciz', 'Şiddet', 'Sahte hesap', 'Diğer'];
+  const reasons = ['Spam', 'Çıplaklık / müstehcenlik', 'Reşit olmayanlarla ilgili uygunsuz içerik', 'Nefret söylemi', 'Zorbalık / taciz', 'Şiddet veya tehdit', 'Kendine zarar verme', 'Sahte hesap / kimliğe bürünme', 'Telif hakkı ihlali', 'Diğer'];
   sheet(
     reasons.map((r) => ({
       label: r,
@@ -352,11 +377,32 @@ async function shareSheet(p) {
 /* =========================================================
    Ana sayfa
    ========================================================= */
+let homeMode = (() => {
+  try {
+    return localStorage.getItem('kanka.home') || 'foryou';
+  } catch {
+    return 'foryou';
+  }
+})();
 async function vHome(_a, _b, tok) {
-  app.innerHTML = `${topbar('<span class="logo">Kanka</span>', false, `<a class="ibtn" href="#/notifs">${I.heart}<span class="dot nbadge hidden"></span></a><a class="ibtn" href="#/dm">${I.send}</a>`, false)}<div id="ann"></div><div class="stories" id="stories"></div><div id="feed"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
-  const [groups, items, ann] = await Promise.all([A.storyGroups(), A.feed(), A.activeAnnouncements()]);
+  app.innerHTML = `${topbar('<span class="logo">Kanka</span>', false, `<a class="ibtn" href="#/notifs">${I.heart}<span class="dot nbadge hidden"></span></a><a class="ibtn" href="#/dm">${I.send}</a>`, false)}<div id="ann"></div><div class="stories" id="stories"></div>
+    <div class="feed-tabs" id="ftabs"><button data-m="foryou">Senin için</button><button data-m="following">Takip ettiklerin</button></div><div id="feed"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
+  $$('#ftabs button').forEach((b) => b.classList.toggle('on', b.dataset.m === homeMode));
+  $('#ftabs').onclick = (e) => {
+    const b = e.target.closest('[data-m]');
+    if (!b || b.dataset.m === homeMode) return;
+    homeMode = b.dataset.m;
+    try {
+      localStorage.setItem('kanka.home', homeMode);
+    } catch {
+      /* yok */
+    }
+    route();
+  };
+  const [groups, items, ann] = await Promise.all([A.storyGroups(), A.feed(homeMode), A.activeAnnouncements()]);
   if (stale(tok)) return;
-  $('#ann').innerHTML = ann.map((x) => `<div class="announce">${ic('megaphone', 18)}<span>${linkify(x.text)}</span></div>`).join('');
+  $('#ann').innerHTML = restrictBanner(A.banState(meP)) + ann.map((x) => `<div class="announce">${ic('megaphone', 18)}<span>${linkify(x.text)}</span></div>`).join('');
+  if ($('#rBanner')) $('#rBanner').onclick = () => ((restrictShown = false), restrictNotice(A.banState(meP)));
   if (A.db.mode === 'local') $('#ann').insertAdjacentHTML('afterbegin', `<a class="announce" href="#/server" style="border-color:#5a1a22;background:#1a0a0d">${ic('device', 18)}<span><b>Sunucuya bağlı değilsin.</b> Arkadaşlarını göremezsin. Ayrıntı için dokun.</span></a>`);
   const mine = groups.find((g) => g.user.id === A.me());
   $('#stories').innerHTML =
@@ -374,6 +420,28 @@ async function vHome(_a, _b, tok) {
   bindPosts(feed, items, () => route());
   hydrate(app);
   autoplay(feed);
+  trackSeen(feed, items);
+}
+/** Ekranda 1 saniyeden uzun kalan gönderiler "görüldü" sayılır (algoritma bunları geriye atar). */
+let seenIO = null;
+function trackSeen(root, items) {
+  seenIO?.disconnect();
+  const timers = new Map();
+  seenIO = new IntersectionObserver(
+    (ents) => {
+      for (const e of ents) {
+        const k = e.target.dataset.k;
+        if (e.isIntersecting && e.intersectionRatio > 0.6) {
+          if (!timers.has(k)) timers.set(k, setTimeout(() => A.markSeen(items.find((p) => (p.feedKey || p.id) === k)?.id || k), 1000));
+        } else {
+          clearTimeout(timers.get(k));
+          timers.delete(k);
+        }
+      }
+    },
+    { threshold: [0, 0.6] }
+  );
+  $$('.post[data-k]', root).forEach((el) => seenIO.observe(el));
 }
 
 /* =========================================================
@@ -494,7 +562,7 @@ async function vCreate(kind = 'post') {
         toast('Paylaşıldı');
         location.hash = mode === 'reel' ? '#/reels' : '#/home';
       }
-      if (A.metaMissing && meP.role === 'admin') toast('Sunucuda güncelleme gerekiyor: supabase/guncelleme-1.sql dosyasını çalıştır', true);
+      if (A.metaMissing && A.isAdminP(meP)) toast('Sunucuda güncelleme gerekiyor: supabase/guncelleme-1.sql dosyasını çalıştır', true);
     } catch (er) {
       toast(er.message, true);
       btn.disabled = false;
@@ -586,9 +654,13 @@ async function vProfile(username, tab = 'posts', tok) {
   if (stale(tok)) return;
   if (!u) return renderMsg('Kullanıcı bulunamadı', 'Bu hesap yok ya da silinmiş.', true);
   const mine = u.id === A.me();
-  const admin = meP.role === 'admin';
-  const [st, isF, groups] = await Promise.all([A.stats(u.id), mine ? false : A.isFollowing(u.id), A.storyGroups()]);
+  const admin = A.isAdminP(meP);
+  const [st, fstate, groups, v] = await Promise.all([A.stats(u.id), A.followState(u.id), A.storyGroups(), A.viewer()]);
   if (stale(tok)) return;
+  const iBlocked = v.blocked.has(u.id);
+  const locked = !mine && !admin && (iBlocked || v.blockedMe.has(u.id) || (u.private && fstate !== 'following'));
+  const bs = A.banState(u);
+  const fLabel = { following: 'Takip ediliyor', requested: 'İstek gönderildi', none: 'Takip et', self: '' };
   const g = groups.find((x) => x.user.id === u.id);
   const right = mine
     ? `<a class="ibtn" href="#/create">${I.plus}</a><a class="ibtn" href="#/settings">${I.menu}</a>`
@@ -596,12 +668,14 @@ async function vProfile(username, tab = 'posts', tok) {
   app.innerHTML = `${topbar(`${esc(u.username)}${u.verified ? TICK : ''}`, !mine, right)}<div class="prof">
     <div class="prof-top"><a ${g ? `href="#/story/${u.id}"` : ''}>${avatar(u, 86, g ? (g.allSeen ? 'seen' : 'new') : '')}</a>
       <div class="prof-stats"><div><b>${num(st.posts)}</b><span>gönderi</span></div><a href="#/follows/${u.id}/followers"><b id="fc">${num(st.followers)}</b><span>takipçi</span></a><a href="#/follows/${u.id}/following"><b>${num(st.following)}</b><span>takip</span></a></div></div>
-    <div class="prof-name">${esc(u.name)} ${u.role === 'admin' ? '<span class="role-chip">YÖNETİCİ</span>' : ''} ${u.banned ? '<span class="ban-chip">ASKIDA</span>' : ''}</div>
+    <div class="prof-name">${esc(u.name)} ${u.private ? `<span class="lock-chip">${ic('lock', 12)} Gizli</span>` : ''} ${u.role === 'owner' ? '<span class="role-chip">KURUCU</span>' : u.role === 'admin' ? '<span class="role-chip">YÖNETİCİ</span>' : ''} ${admin && bs.banned ? '<span class="ban-chip">YASAKLI</span>' : ''} ${admin && bs.restricted ? '<span class="ban-chip">KISITLI</span>' : ''}</div>
     ${u.bio ? `<div class="prof-bio">${linkify(u.bio)}</div>` : ''}
     <div class="prof-btns">${
       mine
         ? `<a class="btn gray" href="#/edit">Profili düzenle</a><a class="btn gray" href="#/settings">Ayarlar</a>`
-        : `<button class="btn ${isF ? 'gray' : ''}" id="fol">${isF ? 'Takip ediliyor' : 'Takip et'}</button><button class="btn gray" id="msg">Mesaj</button>`
+        : iBlocked
+          ? `<button class="btn gray" id="unb">Engeli kaldır</button>`
+          : `<button class="btn ${fstate === 'none' ? '' : 'gray'}" id="fol">${fLabel[fstate]}</button><button class="btn gray" id="msg">Mesaj</button>`
     }</div>
     ${mine && admin ? `<div class="prof-btns"><a class="btn green" href="#/admin">${I.shield} Yönetim paneli</a></div>` : ''}
   </div>
@@ -609,28 +683,84 @@ async function vProfile(username, tab = 'posts', tok) {
   <div id="pgrid"></div>`;
   $$('.tabs2 button').forEach((b) => (b.onclick = () => (location.hash = `#/u/${encodeURIComponent(u.username)}/${b.dataset.t}`)));
   if (!mine) {
-    $('#fol').onclick = async (e) => {
-      const now = await A.toggleFollow(u.id);
-      e.target.textContent = now ? 'Takip ediliyor' : 'Takip et';
-      e.target.classList.toggle('gray', now);
-      const s = await A.stats(u.id);
-      $('#fc').textContent = num(s.followers);
-    };
-    $('#msg').onclick = async () => {
-      const c = await A.conversationWith(u.id);
-      location.hash = '#/dm/' + c.id;
-    };
+    if ($('#unb'))
+      $('#unb').onclick = async () => {
+        await A.unblockUser(u.id);
+        toast('Engel kaldırıldı');
+        route();
+      };
+    if ($('#fol'))
+      $('#fol').onclick = async (e) => {
+        const btn = e.currentTarget;
+        const cur = await A.followState(u.id);
+        const apply = (st) => {
+          btn.textContent = fLabel[st];
+          btn.classList.toggle('gray', st !== 'none');
+        };
+        try {
+          if (cur === 'following') {
+            if (u.private) return confirmSheet(`@${u.username} takipten çıkılsın mı? Hesap gizli olduğu için gönderilerini tekrar görmek için istek göndermen gerekir.`, async () => (await A.unfollow(u.id), route()), 'Takipten çık');
+            apply(await A.unfollow(u.id));
+          } else if (cur === 'requested') apply(await A.cancelRequest(u.id));
+          else {
+            const st = await A.follow(u.id);
+            apply(st);
+            if (st === 'requested') toast('Takip isteği gönderildi');
+            else if (u.private) route();
+          }
+          const s2 = await A.stats(u.id);
+          $('#fc').textContent = num(s2.followers);
+        } catch (er) {
+          toast(er.message, true);
+        }
+      };
+    if ($('#msg'))
+      $('#msg').onclick = async () => {
+        try {
+          const c = await A.conversationWith(u.id);
+          location.hash = '#/dm/' + c.id;
+        } catch (er) {
+          toast(er.message, true);
+        }
+      };
     $('#umore').onclick = () => {
-      const opts = [{ icon: I.flag, label: 'Hesabı şikâyet et', red: true, run: () => reportFlow('user', u.id) }];
+      const opts = [];
+      opts.push({ icon: I.flag, label: 'Hesabı şikâyet et', red: true, run: () => reportFlow('user', u.id) });
+      opts.push(
+        iBlocked
+          ? { icon: I.ban, label: 'Engeli kaldır', run: async () => (await A.unblockUser(u.id), toast('Engel kaldırıldı'), route()) }
+          : {
+              icon: I.ban,
+              label: 'Engelle',
+              red: true,
+              run: () =>
+                confirmSheet(`@${u.username} engellensin mi? Seni bulamaz, gönderilerini göremez ve sana yazamaz. Takip bağlantılarınız kaldırılır.`, async () => {
+                  try {
+                    await A.blockUser(u.id);
+                    toast('Engellendi');
+                    route();
+                  } catch (er) {
+                    toast(er.message, true);
+                  }
+                }, 'Engelle'),
+            }
+      );
       if (admin) {
+        const prot = A.isAdminP(u);
         opts.unshift(
-          { icon: I.shield, label: u.verified ? 'Mavi tiki kaldır' : 'Mavi tik ver', run: async () => (await A.adminSet(u.id, { verified: !u.verified }), toast('Güncellendi'), route()) },
-          { icon: I.shield, label: u.banned ? 'Askıyı kaldır' : 'Hesabı askıya al', red: !u.banned, run: async () => (await A.adminSet(u.id, { banned: !u.banned }), toast('Güncellendi'), route()) },
+          { icon: I.shield, label: u.verified ? 'Mavi tiki kaldır' : 'Mavi tik ver', run: async () => (await A.adminSet(u.id, { verified: !u.verified }).catch((er) => toast(er.message, true)), route()) },
+          prot ? { icon: I.shield, label: 'Yönetici koruması: kısıtlanamaz', run: () => toast('Yöneticiler kısıtlanamaz veya yasaklanamaz', true) } : { icon: I.ban, label: 'Kısıtla / yasakla', red: true, run: () => (location.hash = '#/admin/users/' + u.id) },
           { icon: I.gear, label: 'Yönetim panelinde aç', run: () => (location.hash = '#/admin/users/' + u.id) }
         );
       }
       sheet(opts);
     };
+  }
+  if (locked) {
+    $('#pgrid').innerHTML = iBlocked
+      ? `<div class="empty"><div class="ico">${I.ban}</div><h3>Bu hesabı engelledin</h3><p>Gönderilerini görmek için engeli kaldır.</p></div>`
+      : `<div class="empty"><div class="ico">${ic('lock', 36)}</div><h3>Bu hesap gizli</h3><p>Gönderilerini, reels ve hikâyelerini görmek için takip et.</p></div>`;
+    return;
   }
   const posts = tab === 'reposts' ? await A.userReposts(u.id) : (await A.userPosts(u.id)).filter((p) => tab !== 'reels' || p.kind === 'video');
   if (stale(tok)) return;
@@ -671,7 +801,7 @@ async function vPost(id, _b, tok) {
           .map(
             (c) => `<div class="cmt" data-c="${c.id}"><a href="#/u/${esc(c.author.username)}">${avatar(c.author, 34)}</a><div class="body"><a href="#/u/${esc(c.author.username)}">${uname(c.author)}</a> <span class="muted small">${ago(c.created_at)}</span>
         ${c.text ? `<p>${linkify(c.text)}</p>` : ''}${c.media ? `<div class="att">${mediaTag(c.media, 'photo')}</div>` : ''}
-        <div class="meta"><button data-r="${c.author.username}">Yanıtla</button>${c.user_id === A.me() || meP.role === 'admin' || p.user_id === A.me() ? `<button data-d="${c.id}">Sil</button>` : `<button data-rep="${c.id}">Şikâyet et</button>`}</div></div></div>`
+        <div class="meta"><button data-r="${c.author.username}">Yanıtla</button>${c.user_id === A.me() || A.isAdminP(meP) || p.user_id === A.me() ? `<button data-d="${c.id}">Sil</button>` : `<button data-rep="${c.id}">Şikâyet et</button>`}</div></div></div>`
           )
           .join('')
       : '<div class="empty" style="padding:30px">Henüz yorum yok. İlk yorumu sen yap!</div>';
@@ -840,7 +970,7 @@ async function vStory(uid, _b, tok) {
     $('#sMore').onclick = () => {
       hold(true);
       const opts = [];
-      if (mine || meP.role === 'admin') opts.push({ icon: I.trash, label: 'Hikâyeyi sil', red: true, run: async () => (await A.deleteStory(s.id), toast('Silindi'), (location.hash = '#/home')) });
+      if (mine || A.isAdminP(meP)) opts.push({ icon: I.trash, label: 'Hikâyeyi sil', red: true, run: async () => (await A.deleteStory(s.id), toast('Silindi'), (location.hash = '#/home')) });
       if (!mine) opts.push({ icon: I.flag, label: 'Şikâyet et', red: true, run: () => reportFlow('story', s.id) });
       sheet(opts.length ? opts : [{ label: 'Kapat' }]);
       $('.sheet-bg').addEventListener('click', () => hold(false), { once: true });
@@ -1008,19 +1138,22 @@ async function vChat(convId, _b, tok) {
    ========================================================= */
 async function vNotifs(_a, _b, tok) {
   app.innerHTML = `${topbar('Bildirimler', true)}<div id="nl"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
-  const ns = await A.notifications();
+  const [ns, reqs] = await Promise.all([A.notifications(), A.incomingRequests()]);
   if (stale(tok)) return;
+  const reqRow = reqs.length ? `<a class="list-row" href="#/requests" style="background:#0d0d14">${avatar(reqs[0].user, 44)}<div class="grow"><b>Takip istekleri</b><small>${reqs.length} kişi seni takip etmek istiyor</small></div><span class="dot" style="position:static">${reqs.length}</span></a>` : '';
   const posts = new Map();
   for (const n of ns) if (n.post_id && !posts.has(n.post_id)) posts.set(n.post_id, await A.db.get('posts', n.post_id));
   const txt = {
     like: 'gönderini beğendi.',
     comment: 'yorum yaptı:',
     follow: 'seni takip etmeye başladı.',
+    follow_request: 'seni takip etmek istiyor.',
+    follow_accept: 'takip isteğini kabul etti.',
     repost: 'gönderini repost etti.',
     verified: '',
     system: '',
   };
-  $('#nl').innerHTML = ns.length
+  $('#nl').innerHTML = reqRow + (ns.length
     ? ns
         .map((n) => {
           const p = posts.get(n.post_id);
@@ -1028,7 +1161,7 @@ async function vNotifs(_a, _b, tok) {
           return `<a class="list-row" href="${href}" style="${n.read ? '' : 'background:#0a0f1a'}">${avatar(n.actor, 44)}<div class="grow" style="white-space:normal">${n.type === 'verified' || n.type === 'system' ? `${TICK} ${esc(n.text)}` : `<b>${esc(n.actor.username)}</b> ${txt[n.type] || ''} ${esc(n.text || '')}`} <span class="muted small">${ago(n.created_at)}</span></div>${p ? `<span style="width:44px;height:44px;flex:none;overflow:hidden;border-radius:4px">${mediaTag(p.media, p.kind)}</span>` : ''}</a>`;
         })
         .join('')
-    : `<div class="empty"><div class="ico">${I.heart}</div><h3>Bildirim yok</h3><p>Beğeniler, yorumlar ve yeni takipçiler burada görünür.</p></div>`;
+    : `<div class="empty"><div class="ico">${I.heart}</div><h3>Bildirim yok</h3><p>Beğeniler, yorumlar ve yeni takipçiler burada görünür.</p></div>`);
   hydrate($('#nl'));
   A.markAllRead().then(refreshBadges);
 }
@@ -1037,29 +1170,22 @@ async function vNotifs(_a, _b, tok) {
    Ayarlar & profil düzenle
    ========================================================= */
 async function vSettings() {
-  const admin = meP.role === 'admin';
+  const admin = A.isAdminP(meP);
   const local = A.db.mode === 'local';
   app.innerHTML = `${topbar('Ayarlar', true)}
     ${admin ? `<a class="list-row" href="#/admin">${I.shield}<div class="grow"><b>Yönetim paneli</b><small>Kullanıcılar, mavi tik, şikâyetler, içerik denetimi</small></div></a>` : ''}
     <a class="list-row" href="#/edit">${I.user}<div class="grow">Profili düzenle</div></a>
-    <button class="list-row" id="vreq" style="width:100%;text-align:left">${TICK}<div class="grow">Mavi tik başvurusu<small>${meP.verified ? 'Hesabın zaten onaylı' : 'Yöneticiler başvurunu inceler'}</small></div></button>
+    <a class="list-row" href="#/privacy">${ic('lock', 24)}<div class="grow">Gizlilik<small>${meP.private ? 'Gizli hesap' : 'Herkese açık hesap'} · mesaj izni · engellenenler</small></div></a>
+    <a class="list-row" href="#/verify">${TICK}<div class="grow">Mavi tik başvurusu<small>${meP.verified ? 'Hesabın zaten onaylı' : 'Yüz fotoğrafı ve yaş doğrulaması ile'}</small></div></a>
     <a class="list-row" href="#/notifs">${I.bell}<div class="grow">Bildirimler</div></a>
     <button class="list-row" id="pw" style="width:100%;text-align:left">${I.gear}<div class="grow">Şifre değiştir</div></button>
     <a class="list-row" href="#/server">${I.globe}<div class="grow">Sunucu<small>${local ? 'Yerel mod (sadece bu cihaz)' : 'Ortak sunucuya bağlı'}</small></div></a>
-    ${window.KankaAndroid ? `<button class="list-row" id="upd" style="width:100%;text-align:left">${I.reply}<div class="grow">Güncellemeleri denetle<small>Yüklü sürüm: ${window.KankaAndroid.version()}</small></div></button>` : ''}
+    ${window.KankaAndroid && (!window.KankaAndroid.selfUpdate || window.KankaAndroid.selfUpdate()) ? `<button class="list-row" id="upd" style="width:100%;text-align:left">${I.reply}<div class="grow">Güncellemeleri denetle<small>Yüklü sürüm: ${window.KankaAndroid.version()}</small></div></button>` : ''}
+    <a class="list-row" href="#/legal">${I.bookmark}<div class="grow">Sözleşmeler ve kurallar<small>Gizlilik, kullanım koşulları, topluluk kuralları</small></div></a>
+    <button class="list-row" id="del" style="width:100%;text-align:left;color:#ff6b77">${I.trash}<div class="grow">Hesabımı sil</div></button>
     <button class="list-row" id="out" style="width:100%;text-align:left;color:#ff6b77">${I.close}<div class="grow">Çıkış yap</div></button>
     <p class="small muted" style="padding:14px">Kanka 1.0 · @${esc(meP.username)}</p>`;
-  $('#vreq').onclick = () => {
-    if (meP.verified) return toast('Zaten mavi tikin var');
-    promptSheet('Mavi tik başvurusu', 'Neden onaylanmalısın? (ör. tanınan kişi, içerik üreticisi...)', async (note) => {
-      try {
-        await A.requestVerify(note);
-        toast('Başvurun alındı, yöneticiler inceleyecek');
-      } catch (er) {
-        toast(er.message, true);
-      }
-    }, true);
-  };
+  $('#del').onclick = deleteAccountFlow;
   $('#pw').onclick = () =>
     promptSheet('Yeni şifre', 'En az 6 karakter', async (pw) => {
       if (pw.length < 6) return toast('En az 6 karakter', true);
@@ -1105,9 +1231,296 @@ async function vEdit() {
    Yönetim paneli
    ========================================================= */
 async function vAdmin(section = 'dash', id, tok) {
-  if (meP.role !== 'admin') return renderMsg('Yetkin yok', 'Bu sayfa sadece yöneticiler içindir.', true);
+  if (!A.isAdminP(meP)) return renderMsg('Yetkin yok', 'Bu sayfa sadece yöneticiler içindir.', true);
   await renderAdmin(app, { section, id, me: meP, topbar, stale: () => stale(tok), reroute: route });
 }
+
+/* =========================================================
+   Yasak / kısıtlama ekranı
+   ========================================================= */
+const fmtDate = (iso) => new Date(iso).toLocaleString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+function vBanned(b) {
+  tabbar.classList.add('hidden');
+  app.innerHTML = `<div class="ban-screen"><div class="ban-ico">${I.ban}</div>
+    <h2>Hesabın yasaklandı</h2>
+    <p class="muted">Kanka topluluk kurallarını ihlal ettiğin için hesabın ${b.banUntil ? `<b>${fmtDate(b.banUntil)}</b> tarihine kadar` : '<b>süresiz</b> olarak'} yasaklandı.</p>
+    <div class="ban-reason"><small>Sebep</small><div>${esc(b.banReason || 'Belirtilmedi')}</div></div>
+    <p class="small muted">Bu süre boyunca uygulamayı kullanamazsın. Hata olduğunu düşünüyorsan itiraz edebilirsin; yöneticiler inceler.</p>
+    <button class="btn block" id="bAppeal">İtiraz et</button>
+    <a class="btn block gray" href="#/legal/topluluk-kurallari">Topluluk kuralları</a>
+    <button class="btn block gray" id="bOut">Çıkış yap</button></div>`;
+  $('#bAppeal').onclick = () =>
+    promptSheet('İtiraz', 'Neden yanlış olduğunu kısaca yaz...', async (t) => {
+      if (!t) return;
+      try {
+        await A.appeal(t);
+        toast('İtirazın yöneticilere iletildi');
+      } catch (er) {
+        toast(er.message, true);
+      }
+    }, true);
+  $('#bOut').onclick = () => A.db.signOut();
+}
+let restrictShown = false;
+function restrictNotice(b) {
+  if (restrictShown) return;
+  restrictShown = true;
+  sheet(`<div class="ban-screen in-sheet"><div class="ban-ico warn">${I.ban}</div><h2>Hesabın kısıtlandı</h2>
+    <p class="muted">${b.restrictUntil ? `<b>${fmtDate(b.restrictUntil)}</b> tarihine kadar` : 'Yöneticiler kaldırana kadar'} paylaşım, yorum, beğeni, takip ve mesaj gönderemezsin. Gönderileri görmeye devam edebilirsin.</p>
+    <div class="ban-reason"><small>Sebep</small><div>${esc(b.restrictReason || 'Belirtilmedi')}</div></div>
+    <button class="btn block" id="rOk">Anladım</button><button class="btn block gray" id="rAppeal">İtiraz et</button></div>`, (c, close) => {
+    $('#rOk', c).onclick = close;
+    $('#rAppeal', c).onclick = () => {
+      close();
+      promptSheet('İtiraz', 'Neden yanlış olduğunu kısaca yaz...', async (t) => t && (await A.appeal(t), toast('İtirazın yöneticilere iletildi')), true);
+    };
+  });
+}
+function restrictBanner(b) {
+  return b.restricted ? `<a class="announce" id="rBanner" style="border-color:#5a3a12;background:#1a1206">${ic('ban', 18)}<span><b>Hesabın kısıtlı.</b> ${b.restrictUntil ? fmtDate(b.restrictUntil) + ' tarihine kadar' : 'Süresiz'} paylaşım ve etkileşim kapalı. Ayrıntı için dokun.</span></a>` : '';
+}
+
+/* =========================================================
+   Gizlilik ayarları
+   ========================================================= */
+async function vPrivacy(_a, _b, tok) {
+  const p = await A.profile(A.me(), true);
+  const [reqs, blocked] = await Promise.all([A.incomingRequests(), A.blockedUsers()]);
+  if (stale(tok)) return;
+  const tg = (id, on, title, sub) => `<label class="list-row toggle-row"><div class="grow">${title}<small>${sub}</small></div><input type="checkbox" class="sw" id="${id}" ${on ? 'checked' : ''}></label>`;
+  app.innerHTML = `${topbar('Gizlilik', true)}
+    ${tg('pPriv', p.private, 'Gizli hesap', 'Gönderilerini, reels ve hikâyelerini sadece onayladığın takipçiler görür')}
+    ${tg('pLikes', p.hide_likes, 'Beğeni sayılarını gizle', 'Başkaları gönderilerindeki beğeni sayısını göremez')}
+    <div class="section-t">Sana kimler mesaj atabilir?</div>
+    <div class="seg" style="margin:0 14px" id="pDm"><button data-v="everyone">Herkes</button><button data-v="following">Takip ettiklerim</button><button data-v="none">Kimse</button></div>
+    <div class="section-t">Bağlantılar</div>
+    <a class="list-row" href="#/requests">${I.users}<div class="grow">Takip istekleri<small>${reqs.length ? reqs.length + ' bekleyen istek' : 'Bekleyen istek yok'}</small></div></a>
+    <a class="list-row" href="#/blocked">${I.ban}<div class="grow">Engellenen hesaplar<small>${blocked.length ? blocked.length + ' hesap' : 'Kimseyi engellemedin'}</small></div></a>`;
+  const dmSeg = () => $$('#pDm button').forEach((b) => b.classList.toggle('on', b.dataset.v === (p.dm_policy || 'everyone')));
+  dmSeg();
+  const save = async (patch, msg) => {
+    try {
+      Object.assign(p, await A.setPrivacy(patch));
+      meP = p;
+      toast(msg);
+    } catch (er) {
+      toast(er.message, true);
+      route();
+    }
+  };
+  $('#pPriv').onchange = (e) => save({ private: e.target.checked }, e.target.checked ? 'Hesabın artık gizli' : 'Hesabın artık herkese açık');
+  $('#pLikes').onchange = (e) => save({ hide_likes: e.target.checked }, 'Kaydedildi');
+  $('#pDm').onclick = (e) => {
+    const b = e.target.closest('[data-v]');
+    if (!b) return;
+    p.dm_policy = b.dataset.v;
+    dmSeg();
+    save({ dm_policy: b.dataset.v }, 'Mesaj izni kaydedildi');
+  };
+}
+async function vRequests(_a, _b, tok) {
+  const reqs = await A.incomingRequests();
+  if (stale(tok)) return;
+  app.innerHTML = `${topbar('Takip istekleri', true)}<div id="rq">${
+    reqs.length
+      ? reqs.map((r) => `<div class="list-row" data-r="${r.id}"><a href="#/u/${esc(r.user.username)}">${avatar(r.user, 44)}</a><div class="grow">${uname(r.user)}<small>${esc(r.user.name)}</small></div><button class="btn sm" data-ok>Onayla</button><button class="btn sm gray" data-no>Sil</button></div>`).join('')
+      : `<div class="empty"><div class="ico">${I.users}</div><h3>İstek yok</h3><p>Hesabın gizliyken seni takip etmek isteyenler burada görünür.</p></div>`
+  }</div>`;
+  $('#rq').onclick = async (e) => {
+    const row = e.target.closest('[data-r]');
+    if (!row) return;
+    const r = reqs.find((x) => x.id === row.dataset.r);
+    try {
+      if (e.target.closest('[data-ok]')) {
+        await A.acceptRequest(r);
+        toast(`@${r.user.username} artık seni takip ediyor`);
+      } else if (e.target.closest('[data-no]')) await A.declineRequest(r);
+      else return;
+      row.remove();
+    } catch (er) {
+      toast(er.message, true);
+    }
+  };
+}
+async function vBlocked(_a, _b, tok) {
+  const list = await A.blockedUsers();
+  if (stale(tok)) return;
+  app.innerHTML = `${topbar('Engellenen hesaplar', true)}<div id="bl">${
+    list.length
+      ? list.map((u) => `<div class="list-row" data-u="${u.id}">${avatar(u, 44)}<div class="grow">${uname(u)}<small>${esc(u.name)}</small></div><button class="btn sm gray">Engeli kaldır</button></div>`).join('')
+      : `<div class="empty"><div class="ico">${I.ban}</div><h3>Engellenen yok</h3><p>Engellediğin kişiler seni bulamaz, gönderilerini göremez ve sana yazamaz.</p></div>`
+  }</div>`;
+  $('#bl').onclick = async (e) => {
+    const row = e.target.closest('[data-u]');
+    if (!row || !e.target.closest('button')) return;
+    await A.unblockUser(row.dataset.u);
+    row.remove();
+    toast('Engel kaldırıldı');
+  };
+}
+
+/* =========================================================
+   Mavi tik başvurusu: ad, doğum tarihi (18+), yüz fotoğrafı
+   ========================================================= */
+async function vVerify(_a, _b, tok) {
+  if (meP.verified) return renderMsg('Hesabın onaylı', 'Zaten mavi tikin var.', true);
+  const mine = await A.db.list('verify_requests', { eq: { user_id: A.me() }, order: ['created_at', false], limit: 1 }).catch(() => []);
+  if (stale(tok)) return;
+  if (mine[0]?.status === 'open') return renderMsg('Başvurun inceleniyor', 'Yöneticiler başvurunu inceliyor. Sonuç bildirim olarak gelecek.', true);
+  let selfie = null;
+  let stream = null;
+  app.innerHTML = `${topbar('Mavi tik başvurusu', true)}<div class="create">
+    <p class="muted">Mavi tik, hesabın gerçekten sana ait olduğunu gösterir. Yaşını ve kimliğini doğrulamak için bir <b>yüz fotoğrafı</b> çek. Fotoğraf sadece yöneticilere görünür ve karar verildikten sonra silinir.</p>
+    ${mine[0]?.status === 'rejected' ? `<div class="ban-reason"><small>Önceki başvuru reddedildi</small><div>${esc(mine[0].reject_reason || 'Sebep belirtilmedi')}</div></div>` : ''}
+    <label class="small muted">Ad soyad (kimlikteki gibi)</label><input class="field" id="vName" maxlength="60" value="${esc(meP.name)}">
+    <label class="small muted">Doğum tarihi (en az ${A.VERIFY_MIN_AGE} yaş)</label><input class="field" id="vBirth" type="date" max="${new Date().toISOString().slice(0, 10)}">
+    <label class="small muted">Yüz fotoğrafı</label>
+    <div class="selfie" id="selfie"><div class="selfie-guide"></div><span class="muted small" id="sHint">Yüzün ortadaki çerçevede, iyi ışıkta ve aksesuarsız olsun.</span></div>
+    <div class="prof-btns" style="margin-top:0"><button class="btn" id="sCam">${ic('camera')} Kamerayla çek</button><button class="btn gray" id="sPick">${ic('image')} Galeriden seç</button></div>
+    <label class="small muted">Neden onaylanmalısın? (isteğe bağlı)</label><textarea class="field" id="vNote" maxlength="300" placeholder="ör. içerik üreticisiyim, tanınan bir kişiyim..."></textarea>
+    <label class="check"><input type="checkbox" id="vOk"> Bilgilerimin doğru olduğunu ve yüz fotoğrafımın doğrulama için yöneticilerce görülmesini kabul ediyorum (<a href="#/legal/gizlilik-politikasi">Gizlilik Politikası</a>).</label>
+    <button class="btn block" id="vSend">Başvur</button></div>`;
+  const box = $('#selfie');
+  const showSel = (blob) => {
+    selfie = blob;
+    box.innerHTML = `<img src="${URL.createObjectURL(blob)}">`;
+  };
+  const stop = () => stream && stream.getTracks().forEach((t) => t.stop());
+  $('#sPick').onclick = async () => {
+    stop();
+    const f = await pickFile('image/*');
+    if (f) showSel(f);
+  };
+  $('#sCam').onclick = async () => {
+    if (stream) {
+      // fotoğrafı çek
+      const v = $('video', box);
+      const c = document.createElement('canvas');
+      c.width = v.videoWidth;
+      c.height = v.videoHeight;
+      const g = c.getContext('2d');
+      g.translate(c.width, 0);
+      g.scale(-1, 1);
+      g.drawImage(v, 0, 0);
+      stop();
+      stream = null;
+      $('#sCam').innerHTML = `${ic('camera')} Yeniden çek`;
+      c.toBlob((b) => b && showSel(b), 'image/jpeg', 0.9);
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 960 } }, audio: false });
+    } catch {
+      return toast('Kameraya erişilemedi. İzin ver ya da galeriden seç.', true);
+    }
+    box.innerHTML = `<video autoplay playsinline muted style="transform:scaleX(-1)"></video><div class="selfie-guide"></div>`;
+    $('video', box).srcObject = stream;
+    $('#sCam').innerHTML = `${ic('camera')} Fotoğrafı çek`;
+  };
+  $('#vSend').onclick = async () => {
+    const fullName = $('#vName').value.trim();
+    const birthDate = $('#vBirth').value;
+    if (fullName.length < 3) return toast('Ad soyad yaz', true);
+    if (!birthDate) return toast('Doğum tarihini seç', true);
+    if (!selfie) return toast('Yüz fotoğrafı çek ya da seç', true);
+    if (!$('#vOk').checked) return toast('Onay kutusunu işaretle', true);
+    $('#vSend').disabled = true;
+    $('#vSend').textContent = 'Gönderiliyor...';
+    try {
+      await A.requestVerify({ fullName, birthDate, selfie, note: $('#vNote').value.trim() });
+      stop();
+      toast('Başvurun alındı, yöneticiler inceleyecek');
+      location.hash = '#/settings';
+    } catch (er) {
+      toast(er.message, true);
+      $('#vSend').disabled = false;
+      $('#vSend').textContent = 'Başvur';
+    }
+  };
+  const myTok = tok;
+  const watch = setInterval(() => {
+    if (stale(myTok)) {
+      stop();
+      clearInterval(watch);
+    }
+  }, 500);
+}
+
+/* =========================================================
+   Sözleşmeler (uygulama içinde) ve hesap silme
+   ========================================================= */
+const LEGAL = [
+  ['gizlilik-politikasi', 'Gizlilik Politikası'],
+  ['kullanim-kosullari', 'Kullanım Koşulları'],
+  ['topluluk-kurallari', 'Topluluk Kuralları'],
+  ['cocuk-guvenligi', 'Çocuk Güvenliği Standartları'],
+  ['hesap-silme', 'Hesap ve Veri Silme'],
+];
+async function vLegal(doc, _b, tok) {
+  if (!doc) {
+    app.innerHTML = `${topbar('Sözleşmeler ve kurallar', true)}${LEGAL.map(([k, t]) => `<a class="list-row" href="#/legal/${k}">${I.bookmark}<div class="grow">${t}</div></a>`).join('')}`;
+    return;
+  }
+  const t = (LEGAL.find((x) => x[0] === doc) || [doc, 'Belge'])[1];
+  app.innerHTML = `${topbar(esc(t), true)}<div class="legal" id="lg"><div class="spin" style="margin:40px auto"></div></div>`;
+  try {
+    const html = await fetch(`legal/${doc}.html`, { cache: 'no-cache' }).then((r) => (r.ok ? r.text() : Promise.reject()));
+    if (stale(tok)) return;
+    const m = html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+    $('#lg').innerHTML = (m ? m[1] : html).replace(/href="([a-z-]+)\.html"/g, 'href="#/legal/$1"');
+  } catch {
+    $('#lg').innerHTML = '<p class="muted">Belge yüklenemedi.</p>';
+  }
+}
+function deleteAccountFlow() {
+  if (A.isOwnerP(meP)) return toast('Kurucu hesabı silinemez. Önce başka birini kurucu yapman gerekir.', true);
+  sheet(`<h3>Hesabını sil</h3><div class="inner form"><p class="muted small">Hesabın, gönderilerin, reels ve hikâyelerin, yorumların, beğenilerin, mesajların ve takip bilgilerin <b>kalıcı olarak silinir</b>. Bu işlem geri alınamaz.</p>
+    <input class="field" id="dConfirm" placeholder='Onaylamak için "SİL" yaz' autocapitalize="characters">
+    <button class="btn block red" id="dGo">Hesabımı kalıcı olarak sil</button><button class="btn block gray" id="dNo">Vazgeç</button></div>`, (c, close) => {
+    $('#dNo', c).onclick = close;
+    $('#dGo', c).onclick = async () => {
+      if ($('#dConfirm', c).value.trim().toLocaleUpperCase('tr-TR') !== 'SİL') return toast('"SİL" yaz', true);
+      $('#dGo', c).disabled = true;
+      try {
+        await A.deleteMyAccount();
+        close();
+        toast('Hesabın silindi');
+      } catch (er) {
+        toast(er.message, true);
+        $('#dGo', c).disabled = false;
+      }
+    };
+  });
+}
+
+/* =========================================================
+   Web sürümü: otomatik güncelleme
+   Site her açılışta ve birkaç dakikada bir version.json'a bakar; yeni sürüm
+   yayınlandıysa sayfayı kendiliğinden yeniler. (APK kendi güncelleyicisini kullanır.)
+   ========================================================= */
+let webVersion = null;
+async function checkWebUpdate() {
+  if (window.KankaAndroid || location.hostname === 'appassets.androidplatform.net') return;
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    const v = (await r.json()).v;
+    if (!v) return;
+    if (webVersion === null) webVersion = v;
+    else if (v !== webVersion) {
+      const busy = document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName);
+      if (busy || $('.ed')) return; // yazarken ya da düzenleyicideyken bölme
+      toast('Yeni sürüm yükleniyor...');
+      if (navigator.serviceWorker) (await navigator.serviceWorker.getRegistrations()).forEach((x) => x.update());
+      setTimeout(() => location.reload(), 800);
+    }
+  } catch {
+    /* çevrimdışı */
+  }
+}
+checkWebUpdate();
+setInterval(checkWebUpdate, 3 * 60 * 1000);
+document.addEventListener('visibilitychange', () => !document.hidden && checkWebUpdate());
 
 /* ---------- Android geri tuşu ---------- */
 window.__androidBack = () => {

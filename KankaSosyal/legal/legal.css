@@ -1,0 +1,9 @@
+/* Kanka sözleşme sayfaları (tarayıcıda doğrudan açılınca) */
+:root { color-scheme: dark; }
+body { margin: 0; background: #000; color: #f5f5f5; font: 15px/1.65 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; }
+h1 { font-size: 26px; line-height: 1.25; }
+h2 { font-size: 18px; margin-top: 28px; }
+a { color: #4fb4ff; }
+li { margin: 5px 0; }
+.meta { color: #a8a8a8; font-size: 13px; }

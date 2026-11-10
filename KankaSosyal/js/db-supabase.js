@@ -64,6 +64,40 @@ export async function createSupabaseDb(url, key) {
     async resolve(u) {
       return u;
     },
+    /** Gizli depoya yükle (mavi tik selfie'si). Dönen değer depodaki yol. */
+    async uploadPrivate(blob) {
+      const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      chk(await sb.storage.from('verify').upload(path, blob, { contentType: blob.type, upsert: false }));
+      return path;
+    },
+    /** Gizli dosya için kısa süreli bağlantı (sadece sahibi ve yöneticiler alabilir). */
+    async signedUrl(path) {
+      if (!path) return '';
+      const r = await sb.storage.from('verify').createSignedUrl(path, 600);
+      return r.data?.signedUrl || '';
+    },
+    async removePrivate(path) {
+      if (path) await sb.storage.from('verify').remove([path]);
+    },
+    async rpc(name, args = {}) {
+      return chk(await sb.rpc(name, args));
+    },
+    /** Hesabı sil: önce kendi dosyalarını, sonra hesabı (sunucudaki delete_my_account). */
+    async deleteAccount() {
+      for (const bucket of ['media', 'verify']) {
+        try {
+          const { data } = await sb.storage.from(bucket).list(uid, { limit: 1000 });
+          if (data?.length) await sb.storage.from(bucket).remove(data.map((f) => `${uid}/${f.name}`));
+        } catch {
+          /* dosya yoksa sorun değil */
+        }
+      }
+      chk(await sb.rpc('delete_my_account'));
+      await sb.auth.signOut();
+      uid = null;
+      listeners.forEach((f) => f());
+    },
     userId: () => uid,
     onAuth(fn) {
       listeners.add(fn);

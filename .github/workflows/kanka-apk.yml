@@ -60,11 +60,12 @@ jobs:
           fi
 
       - name: APK derle
-        run: gradle assembleRelease --no-daemon --stacktrace
+        run: gradle assembleGithubRelease bundlePlayRelease --no-daemon --stacktrace
 
       - name: APK'yı adlandır
         run: |
-          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/Kanka.apk"
+          cp app/build/outputs/apk/github/release/app-github-release.apk "$GITHUB_WORKSPACE/Kanka.apk"
+          cp app/build/outputs/bundle/playRelease/app-play-release.aab "$GITHUB_WORKSPACE/Kanka-play.aab"
           # uygulama içi güncelleme bu numaraya bakar (APK'daki versionCode ile aynı)
           echo "$GITHUB_RUN_NUMBER" > "$GITHUB_WORKSPACE/version.txt"
           ls -la "$GITHUB_WORKSPACE/Kanka.apk"
@@ -73,7 +74,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Kanka-apk
-          path: Kanka.apk
+          path: |
+            Kanka.apk
+            Kanka-play.aab
 
       - name: Releases'a yayınla (kanka-latest)
         working-directory: ${{ github.workspace }}
@@ -81,8 +84,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete kanka-latest --cleanup-tag -y || true
-          gh release create kanka-latest Kanka.apk version.txt \
+          gh release create kanka-latest Kanka.apk Kanka-play.aab version.txt \
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "Kanka APK (son sürüm)" \
-            --notes "Telefona indir, aç, kur. Bilinmeyen kaynaklardan yüklemeye izin vermen gerekebilir. Sonraki sürümler uygulamanın içinden güncellenir. Derleme: ${GITHUB_SHA::7} (#${GITHUB_RUN_NUMBER})"
+            --notes "Kanka.apk: telefona indir, aç, kur (sonraki sürümler uygulamanın içinden güncellenir). Kanka-play.aab: Google Play Console'a yüklenecek dosya. Derleme: ${GITHUB_SHA::7} (#${GITHUB_RUN_NUMBER})"

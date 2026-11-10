@@ -18,7 +18,21 @@ Arkadaşlar için siyah temalı sosyal medya uygulaması. Android APK olarak kur
   gönderi, yorum ve hikâye denetimi, ana sayfa duyuruları, herkese toplu bildirim
 - **İkonlar:** hepsi uygulamaya özel çizilmiş SVG; hiçbir yerde emoji yok
 
-**İlk açılan hesap otomatik yönetici olur** ve mavi tik alır.
+**İlk açılan hesap otomatik kurucu (en yetkili yönetici) olur** ve mavi tik alır.
+
+### Güvenlik, gizlilik ve moderasyon
+- **Sunucu tarafı kurallar (RLS):** kimse kendi mavi tikini, rolünü, yasağını değiştiremez; başkasının verisini düzenleyemez; gizli hesapların gönderilerini takipçi olmadan çekemez; sahte sistem bildirimi gönderemez.
+- **Gizli hesap + takip istekleri**, mesaj izni (herkes / takip ettiklerim / kimse), beğeni sayısını gizleme, **engelleme**.
+- **Kısıtlama ve yasak:** sebep ve süreyle (1/3/7/30 gün, süresiz); kullanıcıya tam ekran bildirim ve **itiraz**.
+- **Kurucu ve yönetici koruması:** yöneticiler kısıtlanamaz/yasaklanamaz; yöneticiliği sadece kurucu verip alır; kurucu hesabı değiştirilemez ve silinemez.
+- **Mavi tik:** ad soyad + doğum tarihi (18+) + yüz fotoğrafı (gizli depoda, karar sonrası silinir).
+- **Algoritma:** "Senin için" akışı etkileşim, yakınlık, ilişki, tazelik ve görülmüşlüğe göre sıralar; "Takip ettiklerin" kronolojiktir.
+- **Yaş sınırı 13**, kayıtta sözleşme onayı, uygulama içinden **hesap silme**.
+
+Mevcut sunucuya bu özellikler için **`supabase/guncelleme-2.sql`** bir kez çalıştırılmalı (sıfırdan kurulumda `schema.sql` yeterli).
+
+### Google Play
+`google-play/` klasöründe adım adım yükleme rehberi, mağaza metinleri, veri güvenliği formu ve içerik derecelendirme cevapları var. Sözleşmeler `legal/` klasöründe (uygulamada: Ayarlar > Sözleşmeler).
 
 ## İki çalışma modu
 
@@ -62,8 +76,11 @@ GitHub'da *Settings > Secrets and variables > Actions* altına `FTP_SERVER`, `FT
 (ve istersen `FTP_DIR`, ör. `/public_html/`) ekle. `cpanel.htaccess` siteye `.htaccess` olarak yüklenir (https yönlendirmesi).
 
 ## APK
-`.github/workflows/kanka-apk.yml` bu klasör her değiştiğinde Android APK'sını derler ve
-**Releases > `kanka-latest`** altında `Kanka.apk` olarak yayınlar (paket: `com.kanka.sosyal`).
+`.github/workflows/kanka-apk.yml` bu klasör her değiştiğinde derler ve **Releases > `kanka-latest`** altında yayınlar (paket: `com.kanka.sosyal`):
+- `Kanka.apk`: doğrudan kurulum; açılışta yeni sürümü kontrol eder ve uygulamanın içinden güncellenir.
+- `Kanka-play.aab`: Google Play'e yüklenecek dosya (kendini güncelleme özelliği ve paket yükleme izni yok).
+
+İmza anahtarı depoda değildir; GitHub gizli ayarlarında `KANKA_KEYSTORE_B64` ve `KANKA_KEYSTORE_PASSWORD` olarak durur.
 
 ## Dosyalar
 ```
