@@ -29,7 +29,7 @@ jobs:
         run: |
           mkdir -p site/vendor
           cd KankaSosyal
-          cp -r index.html style.css manifest.webmanifest sw.js server.json js icons legal ../site/
+          cp -r index.html 404.html style.css manifest.webmanifest sw.js server.json js icons legal ../site/
           cd ..
           curl -fsSL --retry 4 https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js -o site/vendor/supabase.js
           touch site/.nojekyll

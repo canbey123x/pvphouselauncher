@@ -109,9 +109,49 @@ export async function createLocalDb() {
     async removePrivate(path) {
       if (path && path.startsWith('idb:')) await tx(db, 'media', 'readwrite', (s) => s.delete(path.slice(4)));
     },
-    async rpc() {
+    async rpc(name, args = {}) {
+      if (name === 'post_insights') {
+        const pid = args.pid;
+        const count = (t, f) => T(t).filter((r) => r.post_id === pid && (!f || f(r))).length;
+        const owner = T('posts').find((p) => p.id === pid)?.user_id;
+        return {
+          views: count('post_views'),
+          follower_views: count('post_views', (v) => T('follows').some((f) => f.follower_id === v.user_id && f.following_id === owner)),
+          saves: count('saved_posts'),
+          likes: count('likes'),
+          comments: count('comments'),
+          reposts: count('reposts'),
+          shares: 0,
+        };
+      }
       return null;
     },
+    async upsert(table, row, onConflict) {
+      const keys = (onConflict || 'id').split(',');
+      const ex = T(table).find((r) => keys.every((k) => r[k] === row[k]));
+      if (ex) {
+        Object.assign(ex, row);
+        persist();
+        return { ...ex };
+      }
+      return api.insert(table, row);
+    },
+    subscribe() {
+      return () => {};
+    },
+    /** Yerel mod: aynı tarayıcıdaki sekmeler arası (deneme için). */
+    channel(name) {
+      const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('kanka:' + name) : null;
+      const handlers = new Map();
+      if (bc) bc.onmessage = (e) => handlers.get(e.data.ev)?.(e.data.payload);
+      return {
+        on: (ev, fn) => handlers.set(ev, fn),
+        join: async () => {},
+        send: async (ev, payload) => bc?.postMessage({ ev, payload }),
+        close: () => bc?.close(),
+      };
+    },
+    realtime: false,
     /** Hesabı ve tüm verisini bu cihazdan sil. */
     async deleteAccount() {
       const me = session?.uid;

@@ -5,8 +5,17 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Sadece mavi tik başvurusunda yüz fotoğrafı çekmek için (kullanıcı istediğinde sorulur) -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Sesli arama ve sesli mesaj -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Bildirimler ve kilit ekranında tam ekran gelen arama -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <application
         android:allowBackup="false"
@@ -26,6 +35,45 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- kankaa.com.tr/@kullanici bağlantıları uygulamada açılsın -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="kankaa.com.tr" android:pathPrefix="/@" />
+                <data android:scheme="https" android:host="www.kankaa.com.tr" android:pathPrefix="/@" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kanka" />
+            </intent-filter>
         </activity>
+
+        <!-- Gelen arama: telefon kilitliyken de ekranı açıp tam ekran gösterilir -->
+        <activity
+            android:name=".IncomingCallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:screenOrientation="portrait"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity="com.kanka.sosyal.call"
+            android:theme="@style/CallTheme" />
+
+        <receiver android:name=".CallActionReceiver" android:exported="false" />
+
+        <service
+            android:name=".KankaMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_kanka" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="kanka_genel" />
     </application>
 </manifest>

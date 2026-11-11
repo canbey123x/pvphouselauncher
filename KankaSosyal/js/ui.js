@@ -50,6 +50,11 @@ export const I = {
   device: P('<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18.5h2"/>'),
   link: P('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
   reply: P('<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v5"/>'),
+  star: P('<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'),
+  pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
+  share: P('<path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>'),
+  tag: P('<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.5"/>'),
+  sun: P('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
   lock: P('<rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>'),
     dotOn: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="#2ecc71"/></svg>',
   dotOff: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="none" stroke="#777" stroke-width="2"/></svg>',
@@ -156,11 +161,16 @@ export function promptSheet(title, placeholder, done, multiline = false, value =
 
 /** Dosya seç (foto/video/gif). */
 export function pickFile(accept = 'image/*,video/*') {
+  return pickFiles(accept, false).then((f) => f[0] || null);
+}
+/** Birden fazla dosya seç (çoklu gönderi). */
+export function pickFiles(accept = 'image/*,video/*', multiple = true) {
   return new Promise((res) => {
     const inp = $('#filePick');
     inp.value = '';
     inp.accept = accept;
-    inp.onchange = () => res(inp.files[0] || null);
+    inp.multiple = !!multiple;
+    inp.onchange = () => res([...inp.files]);
     inp.click();
   });
 }
@@ -200,6 +210,6 @@ export function autoplay(root) {
 
 export function linkify(text) {
   return esc(text)
-    .replace(/(^|\s)@([a-z0-9_.]{2,30})/gi, '$1<a href="#/u/$2" style="color:#e0f1ff">@$2</a>')
-    .replace(/(^|\s)#([\p{L}0-9_]{2,40})/giu, '$1<span style="color:#e0f1ff">#$2</span>');
+    .replace(/(^|\s)@([a-z0-9_.]{2,30})/gi, '$1<a href="#/u/$2" class="mention">@$2</a>')
+    .replace(/(^|\s)#([\p{L}0-9_]{2,40})/giu, (m, sp, t) => `${sp}<a href="#/tag/${encodeURIComponent(t.toLocaleLowerCase('tr-TR'))}" class="hashtag">#${t}</a>`);
 }

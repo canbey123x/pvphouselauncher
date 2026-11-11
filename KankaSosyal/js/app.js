@@ -3,7 +3,9 @@
 // profil, gönderi + yorumlar, hikâye, DM, bildirimler, ayarlar, giriş/kayıt)
 // =========================================================
 import * as A from './api.js';
-import { $, $$, esc, I, ic, TICK, avatar, uname, ago, num, toast, sheet, closeSheet, confirmSheet, promptSheet, pickFile, hydrate, mediaTag, autoplay, linkify } from './ui.js';
+import { $, $$, esc, I, ic, TICK, avatar, uname, ago, num, toast, sheet, closeSheet, confirmSheet, promptSheet, pickFile, pickFiles, hydrate, mediaTag, autoplay, linkify } from './ui.js';
+import * as S from './social.js';
+import * as Calls from './calls.js';
 import { renderAdmin } from './admin.js';
 import { openEditor, overlayHtml } from './editor.js';
 
@@ -17,6 +19,11 @@ let viewToken = 0;
    Başlangıç
    ========================================================= */
 async function boot() {
+  S.applyTheme();
+  window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change', () => S.theme() === 'system' && S.applyTheme());
+  // kankaa.com.tr/@kullanici bağlantısı -> profil
+  const at = location.pathname.match(/\/@([a-z0-9_.]{2,30})\/?$/i);
+  if (at) history.replaceState(null, '', location.pathname.replace(/@[^/]*\/?$/, '') + '#/u/' + at[1].toLowerCase());
   await A.initDb();
   // Eski sürümün oluşturduğu deneme hesaplarını ve içeriklerini tamamen kaldır
   if (A.db.mode === 'local' && A.db.hasDemo()) await A.db.clearDemo();
@@ -26,13 +33,73 @@ async function boot() {
     meP = A.me() ? await A.profile(A.me(), true) : null;
     location.hash = A.me() ? '#/home' : '#/login';
     route();
+    afterLogin();
   });
   if (A.me()) meP = await A.profile(A.me(), true);
+  afterLogin();
   window.addEventListener('hashchange', route);
   if (!location.hash || location.hash === '#/') location.hash = A.me() ? '#/home' : '#/login';
   route();
   setInterval(refreshBadges, 15000);
 }
+
+/** Giriş sonrası: gelen aramaları dinle, telefona bildirim anahtarı kaydet, Android'e oturumu ver. */
+let pushDone = false;
+function afterLogin() {
+  if (!A.me()) {
+    window.KankaAndroid?.setSession?.('', '', '', '');
+    return;
+  }
+  Calls.listenIncoming();
+  const K = window.KankaAndroid;
+  if (!K) return;
+  try {
+    if (K.requestStartupPermissions && !localStorage.getItem('kanka.perm')) {
+      localStorage.setItem('kanka.perm', '1');
+      K.requestStartupPermissions();
+    }
+  } catch {
+    /* yok */
+  }
+  if (A.db.mode !== 'local' && K.setSession) {
+    const send = () => K.setSession(A.db.url, A.db.key, A.db.accessToken() || '', A.me());
+    send();
+    A.db.onToken?.(send);
+  }
+  const reg = async () => {
+    const tok = K.pushToken?.();
+    if (!tok || pushDone || A.db.mode === 'local') return !!tok;
+    pushDone = true;
+    await A.db.rpc('register_device', { tok }).catch(() => (pushDone = false));
+    return true;
+  };
+  reg().then((ok) => ok || setTimeout(reg, 8000));
+  handleIntent();
+}
+/** Bildirime dokunarak açıldıysa ilgili sayfaya / aramaya git. */
+function handleIntent(raw) {
+  let it = raw;
+  if (!it) {
+    try {
+      it = window.KankaAndroid?.takeIntent?.();
+    } catch {
+      it = null;
+    }
+  }
+  if (!it) return;
+  try {
+    it = typeof it === 'string' ? JSON.parse(it) : it;
+  } catch {
+    return;
+  }
+  if (it.call_id) return Calls.openFromNotification(it.call_id, it.action || '');
+  if (it.conversation_id) return (location.hash = '#/dm/' + it.conversation_id);
+  if (it.post_id) return (location.hash = '#/p/' + it.post_id);
+  if (it.username) return (location.hash = '#/u/' + it.username);
+  if (it.type) location.hash = '#/notifs';
+}
+window.__kankaIntent = (it) => A.me() && handleIntent(it);
+document.addEventListener('visibilitychange', () => !document.hidden && A.me() && handleIntent());
 
 /* =========================================================
    Yönlendirme
@@ -61,12 +128,12 @@ async function route() {
     if (bs.banned) return vBanned(bs);
     if (bs.restricted) restrictNotice(bs);
   }
-  app.classList.toggle('fullscreen', page === 'reels' || page === 'story');
+  app.classList.toggle('fullscreen', page === 'reels' || page === 'story' || page === 'hl');
   document.body.style.overflow = page === 'reels' ? 'hidden' : '';
-  showTabs(!authPages.includes(page) && page !== 'story' && !(page === 'dm' && a) && page !== 'p', page);
+  showTabs(!authPages.includes(page) && page !== 'story' && page !== 'hl' && !(page === 'dm' && a) && page !== 'p', page);
   window.scrollTo(0, 0);
   try {
-    const views = { login: vLogin, signup: vSignup, server: vServer, home: vHome, search: vSearch, create: vCreate, reels: vReels, u: vProfile, p: vPost, story: vStory, dm: a ? vChat : vInbox, notifs: vNotifs, settings: vSettings, edit: vEdit, follows: vFollows, admin: vAdmin, privacy: vPrivacy, requests: vRequests, blocked: vBlocked, verify: vVerify, legal: vLegal };
+    const views = { login: vLogin, signup: vSignup, server: vServer, home: vHome, search: vSearch, create: vCreate, reels: vReels, u: vProfile, p: vPost, story: vStory, dm: a ? vChat : vInbox, notifs: vNotifs, settings: vSettings, edit: vEdit, follows: vFollows, admin: vAdmin, privacy: vPrivacy, requests: vRequests, blocked: vBlocked, verify: vVerify, legal: vLegal, tag: vTag, saved: vSaved, insights: vInsights, closefriends: vCloseFriends, appearance: vAppearance, group: vGroup, hl: vHighlight };
     const fn = views[page] || vHome;
     await fn(a, b, tok);
   } catch (e) {
@@ -229,21 +296,78 @@ function vigStyle(m) {
 /* =========================================================
    Gönderi kartı
    ========================================================= */
+/** Hikâye tepkileri (kendi çizimimiz, emoji yok). DM'de ::tepki:ad:: olarak gider. */
+const REACT = {
+  kalp: '<svg viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.2-9.2C1.6 8 3.6 4.5 7 4.5c2 0 3.5 1.2 5 3 1.5-1.8 3-3 5-3 3.4 0 5.4 3.5 4.2 6.8-1.7 4.6-9.2 9.2-9.2 9.2z" fill="#ff3040"/></svg>',
+  ates: '<svg viewBox="0 0 24 24"><path d="M12 2c1.5 4.5 6.5 6.2 6.5 12a6.5 6.5 0 0 1-13 0c0-3.3 1.9-5.1 2.8-7 .5 2.3 1.9 3.3 2.8 3.3-1-3.3 0-6 .9-8.3z" fill="#ff6a00"/><path d="M12 12.5c1 1.8 3.2 2.8 3.2 5a3.2 3.2 0 0 1-6.4 0c0-1.8 1.8-2.8 3.2-5z" fill="#ffd400"/></svg>',
+  kahkaha: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ffd400"/><path d="M7 9.5l2 1-2 1M17 9.5l-2 1 2 1" stroke="#3a2a00" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 13.5h11c-.6 3-2.8 5-5.5 5s-4.9-2-5.5-5z" fill="#3a2a00"/></svg>',
+  sasirma: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ffd400"/><circle cx="8.5" cy="9.5" r="1.4" fill="#3a2a00"/><circle cx="15.5" cy="9.5" r="1.4" fill="#3a2a00"/><ellipse cx="12" cy="15.5" rx="2.2" ry="2.8" fill="#3a2a00"/></svg>',
+  alkis: '<svg viewBox="0 0 24 24"><path d="M8 21c-2.5-1.5-4-4-4-7l1-5c.2-.9 1.6-.8 1.6.1L6.5 12l3.7-6.4c.4-.7 1.6-.4 1.4.5L10.5 10l3.6-5.3c.5-.7 1.6-.2 1.3.6l-1.8 4.3 2.8-3.4c.6-.7 1.6 0 1.1.8L13 14l2.5-2c.7-.5 1.5.4.9 1L12 17c-1 1-2 3-4 4z" fill="#ffc400" stroke="#8a5a00" stroke-width=".8"/></svg>',
+  uzgun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#ffd400"/><circle cx="8.5" cy="10" r="1.3" fill="#3a2a00"/><circle cx="15.5" cy="10" r="1.3" fill="#3a2a00"/><path d="M8 17c1.2-1.6 2.5-2.2 4-2.2s2.8.6 4 2.2" stroke="#3a2a00" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M16.5 12.5c0 1 .9 2.6 1.4 2.6s1.1-1.6 1.1-2.6" fill="#4fb4ff"/></svg>',
+};
+const REACT_NAMES = { kalp: 'Kalp', ates: 'Ateş', kahkaha: 'Kahkaha', sasirma: 'Şaşırma', alkis: 'Alkış', uzgun: 'Üzgün' };
+/** Mesaj metnindeki tepki kodlarını çizime çevir. */
+function richText(t) {
+  return linkify(t).replace(/::tepki:([a-z]+)::/g, (m, k) => (REACT[k] ? `<span class="react-big" title="${REACT_NAMES[k]}">${REACT[k]}</span>` : m));
+}
+const plainPreview = (t) => (t || '').replace(/::tepki:([a-z]+)::/g, (m, k) => `[${REACT_NAMES[k] || 'tepki'}]`);
+
+/** Bağlantı paylaş: Android paylaş menüsü, tarayıcı paylaşımı ya da panoya kopyala. */
+async function shareLink(url, text = '') {
+  if (window.KankaAndroid?.share) return window.KankaAndroid.share(`${text ? text + ' ' : ''}${url}`);
+  if (navigator.share) {
+    try {
+      return await navigator.share({ url, text });
+    } catch {
+      /* vazgeçti */
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Bağlantı kopyalandı');
+  } catch {
+    promptSheet('Bağlantı', '', () => {}, false, url);
+  }
+}
+const SITE = 'https://kankaa.com.tr';
+const profileUrl = (u) => `${SITE}/@${u}`;
+const postUrl = (id) => `${SITE}/#/p/${id}`;
+
+/** Gönderi listelerini hazırla: kaydedilme durumu. */
+async function prep(items) {
+  const sv = await S.savedIds().catch(() => new Set());
+  items.forEach((p) => (p.saved = sv.has(p.id)));
+  return items;
+}
+
+function mediaHtml(p) {
+  const items = S.mediaItems(p);
+  const one = (it) => `${mediaTag(it.url, it.kind, '', it.kind === 'video' ? 'data-auto ' + vidAttrs(it) : '')}${it.kind === 'video' ? overlayHtml(it) : ''}${it.kind === 'video' ? `<button class="mute" data-a="mute">${I.mute}</button>` : ''}`;
+  const tags = p.meta?.tagged ? `<button class="tag-btn" data-a="tags">${ic('user', 14)}</button>` : '';
+  if (items.length === 1) return `<div class="media" data-a="dbl" ${vigStyle(p.meta)}>${one(items[0])}${tags}<div class="heart-pop">${I.heartFill}</div></div>`;
+  return `<div class="media multi" data-a="dbl"><div class="carousel">${items.map((it) => `<div class="slide" ${vigStyle(it)}>${one(it)}</div>`).join('')}</div>
+    <span class="car-count">1/${items.length}</span>${tags}<div class="heart-pop">${I.heartFill}</div></div>
+    <div class="car-dots">${items.map((_, i) => `<i class="${i ? '' : 'on'}"></i>`).join('')}</div>`;
+}
+
 function postHtml(p) {
   const key = p.feedKey || p.id;
+  const mine = p.user_id === A.me();
   return `<article class="post" data-k="${esc(key)}">
     ${p.reposter ? `<div class="rp-line">${I.repost}<a href="#/u/${esc(p.reposter.username)}">${esc(p.reposter.username)}</a> repost etti</div>` : ''}
     ${p.suggested ? `<div class="sugg">Senin için önerilen</div>` : ''}
     <div class="post-head"><a href="#/u/${esc(p.author.username)}">${avatar(p.author, 34)}</a>
       <a class="who" href="#/u/${esc(p.author.username)}">${uname(p.author)}${p.meta?.location ? `<span class="post-loc">${esc(p.meta.location)}</span>` : `<small>${ago(p.created_at, true)}</small>`}</a>
       <button class="ibtn" data-a="more">${I.dots}</button></div>
-    <div class="media" data-a="dbl" ${vigStyle(p.meta)}>${mediaTag(p.media, p.kind, '', p.kind === 'video' ? 'data-auto ' + vidAttrs(p.meta) : '')}${p.kind === 'video' ? overlayHtml(p.meta) : ''}<div class="heart-pop">${I.heartFill}</div>${p.kind === 'video' ? `<button class="mute" data-a="mute">${I.mute}</button>` : ''}</div>
+    ${mediaHtml(p)}
     <div class="acts"><button class="act ${p.liked ? 'on-like' : ''}" data-a="like">${I.heart}<span>${p.hideLikes ? '' : num(p.likeCount)}</span></button>
       <a class="act" href="#/p/${p.id}">${I.comment}<span>${num(p.commentCount)}</span></a>
       ${p.author.private ? '' : `<button class="act ${p.reposted ? 'on-rp' : ''}" data-a="repost">${I.repost}<span>${num(p.repostCount)}</span></button>`}
-      <button class="act" data-a="share">${I.send}</button></div>
+      <button class="act" data-a="share">${I.send}</button>
+      <button class="act save ${p.saved ? 'on-save' : ''}" data-a="save" title="Kaydet">${I.bookmark}</button></div>
     ${p.caption ? `<div class="cap"><b>${esc(p.author.username)}</b>${linkify(p.caption)}</div>` : ''}
     ${p.commentCount ? `<a class="vc" href="#/p/${p.id}">${p.commentCount} yorumun tümünü gör</a>` : ''}
+    ${mine ? `<a class="vc ins-link" href="#/insights/${p.id}">${ic('chart', 13)} İstatistikleri gör</a>` : ''}
   </article>`;
 }
 
@@ -268,7 +392,21 @@ function bindPosts(root, list, onRemoved) {
       }
     }
     if (a === 'share') shareSheet(p);
-    if (a === 'more') postMenu(p, () => onRemoved?.(p));
+    if (a === 'more') postMenu(p, () => onRemoved?.(p), b.closest('.post, .reel'));
+    if (a === 'save') {
+      try {
+        p.saved = await S.toggleSave(p);
+        b.classList.toggle('on-save', p.saved);
+        toast(p.saved ? 'Kaydedildi' : 'Kaydedilenlerden çıkarıldı');
+      } catch (er) {
+        toast(er.message, true);
+      }
+    }
+    if (a === 'tags') {
+      e.stopPropagation();
+      const users = await S.postTags(p.id);
+      sheet(`<h3>Bu gönderide</h3>${users.map((u) => `<a class="list-row" href="#/u/${esc(u.username)}">${avatar(u, 40)}<div class="grow">${uname(u)}<small>${esc(u.name)}</small></div></a>`).join('') || '<p class="inner muted">Etiketlenen kimse yok.</p>'}`);
+    }
     if (a === 'mute') {
       e.stopPropagation();
       const v = $('video', b.parentElement);
@@ -276,11 +414,26 @@ function bindPosts(root, list, onRemoved) {
       b.innerHTML = v.muted ? I.mute : I.sound;
     }
   };
+  // çoklu medya: kaydırınca sayaç ve noktalar
+  root.addEventListener(
+    'scroll',
+    (e) => {
+      const c = e.target;
+      if (!c.classList?.contains('carousel')) return;
+      const i = Math.round(c.scrollLeft / c.clientWidth);
+      const post = c.closest('.post');
+      const n = c.children.length;
+      $('.car-count', post).textContent = `${i + 1}/${n}`;
+      $$('.car-dots i', post).forEach((d, k) => d.classList.toggle('on', k === i));
+      $$('video', c).forEach((v, k) => (Math.round(v.closest('.slide').offsetLeft / c.clientWidth) === i ? v.play().catch(() => {}) : v.pause()));
+    },
+    true
+  );
   // çift dokunuşla beğen
   let lastTap = 0;
   root.addEventListener('pointerup', (e) => {
     const m = e.target.closest('[data-a="dbl"]');
-    if (!m || e.target.closest('.mute')) return;
+    if (!m || e.target.closest('.mute, .tag-btn')) return;
     const now = Date.now();
     if (now - lastTap < 300) {
       const p = find(m);
@@ -307,10 +460,27 @@ async function likeAnim(p, card, dbl) {
   $('span', btn).textContent = p.hideLikes ? '' : num(p.likeCount);
 }
 
-function postMenu(p, onRemoved) {
+function postMenu(p, onRemoved, card) {
   const mine = p.user_id === A.me();
   const admin = A.isAdminP(meP);
   const opts = [];
+  opts.push({ icon: I.link, label: 'Bağlantıyı paylaş', run: () => shareLink(postUrl(p.id), `@${p.author.username} gönderisi`) });
+  opts.push({ icon: I.bookmark, label: p.saved ? 'Kaydedilenlerden çıkar' : 'Kaydet', run: async () => ((p.saved = await S.toggleSave(p)), card && $('[data-a="save"]', card)?.classList.toggle('on-save', p.saved), toast(p.saved ? 'Kaydedildi' : 'Çıkarıldı')) });
+  if (!mine)
+    opts.push({
+      icon: I.eye,
+      label: 'İlgilenmiyorum',
+      run: () => {
+        S.notInterested(p);
+        if (card) {
+          card.style.transition = 'opacity .25s';
+          card.style.opacity = '0';
+          setTimeout(() => (card.outerHTML = `<div class="ni-note">${ic('check', 14)} Anlaşıldı. Bu tür gönderileri daha az göstereceğiz.</div>`), 250);
+        }
+        toast('Akışın buna göre düzenlenecek');
+      },
+    });
+  if (mine) opts.push({ icon: I.chart, label: 'İstatistikler', run: () => (location.hash = '#/insights/' + p.id) });
   if (!mine) opts.push({ icon: I.user, label: `@${p.author.username} profiline git`, run: () => (location.hash = '#/u/' + p.author.username) });
   opts.push({ icon: I.comment, label: 'Yorumlar', run: () => (location.hash = '#/p/' + p.id) });
   if (!mine) opts.push({ icon: I.flag, label: 'Şikâyet et', red: true, run: () => reportFlow('post', p.id) });
@@ -399,7 +569,7 @@ async function vHome(_a, _b, tok) {
     }
     route();
   };
-  const [groups, items, ann] = await Promise.all([A.storyGroups(), A.feed(homeMode), A.activeAnnouncements()]);
+  const [groups, items, ann] = await Promise.all([A.storyGroups(), A.feed(homeMode).then(prep), A.activeAnnouncements()]);
   if (stale(tok)) return;
   $('#ann').innerHTML = restrictBanner(A.banState(meP)) + ann.map((x) => `<div class="announce">${ic('megaphone', 18)}<span>${linkify(x.text)}</span></div>`).join('');
   if ($('#rBanner')) $('#rBanner').onclick = () => ((restrictShown = false), restrictNotice(A.banState(meP)));
@@ -409,7 +579,7 @@ async function vHome(_a, _b, tok) {
     `<a class="st" href="${mine ? '#/story/' + A.me() : '#/create/story'}"><span class="wrap">${avatar(meP, 62, mine ? (mine.allSeen ? 'seen' : 'new') : '')}${mine ? '' : '<span class="plus">+</span>'}</span><span>Hikâyen</span></a>` +
     groups
       .filter((g) => g.user.id !== A.me())
-      .map((g) => `<a class="st" href="#/story/${g.user.id}">${avatar(g.user, 62, g.allSeen ? 'seen' : 'new')}<span>${esc(g.user.username)}</span></a>`)
+      .map((g) => `<a class="st" href="#/story/${g.user.id}">${avatar(g.user, 62, g.allSeen ? 'seen' : g.stories.some((x) => !x.seen && x.meta?.audience === 'close') ? 'close' : 'new')}<span>${esc(g.user.username)}</span></a>`)
       .join('');
   const feed = $('#feed');
   if (!items.length) {
@@ -432,7 +602,16 @@ function trackSeen(root, items) {
       for (const e of ents) {
         const k = e.target.dataset.k;
         if (e.isIntersecting && e.intersectionRatio > 0.6) {
-          if (!timers.has(k)) timers.set(k, setTimeout(() => A.markSeen(items.find((p) => (p.feedKey || p.id) === k)?.id || k), 1000));
+          if (!timers.has(k))
+            timers.set(
+              k,
+              setTimeout(() => {
+                const it = items.find((p) => (p.feedKey || p.id) === k);
+                const id = it?.id || k;
+                A.markSeen(id);
+                S.recordView(id, it?.user_id);
+              }, 1000)
+            );
         } else {
           clearTimeout(timers.get(k));
           timers.delete(k);
@@ -445,124 +624,373 @@ function trackSeen(root, items) {
 }
 
 /* =========================================================
-   Keşfet / arama
+   Keşfet / arama: geçmiş, gündemdeki etiketler, öneriler
    ========================================================= */
+function userRow(u, extra = '') {
+  return `<a class="list-row" href="#/u/${esc(u.username)}" data-hist-u="${esc(u.username)}">${avatar(u, 44)}<div class="grow">${uname(u)}<small>${esc(u.name)}${extra}</small></div></a>`;
+}
+function suggestCards(list) {
+  if (!list.length) return '';
+  return `<div class="section-t">Senin için öneriler</div><div class="sug-row">${list
+    .map(
+      (s) => `<div class="sug-card" data-u="${s.user.id}"><a href="#/u/${esc(s.user.username)}">${avatar(s.user, 64)}</a><div class="sug-n">${uname(s.user)}</div>
+      <div class="sug-m">${s.followsYou ? 'Seni takip ediyor' : s.mutual ? `${s.mutual} ortak arkadaş` : 'Yeni kullanıcı'}</div><button class="btn sm" data-fol="${s.user.id}">Takip et</button></div>`
+    )
+    .join('')}</div>`;
+}
+function bindSuggest(root) {
+  root.addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-fol]');
+    if (!b) return;
+    e.preventDefault();
+    try {
+      const st = await A.follow(b.dataset.fol);
+      b.textContent = st === 'requested' ? 'İstek gönderildi' : 'Takip ediliyor';
+      b.classList.add('gray');
+      b.disabled = true;
+    } catch (er) {
+      toast(er.message, true);
+    }
+  });
+}
 async function vSearch(_a, _b, tok) {
-  app.innerHTML = `<div class="topbar"><div class="search" style="flex:1;margin:0">${I.search}<input id="q" placeholder="Ara" autocomplete="off"></div></div><div id="res"></div>`;
+  app.innerHTML = `<div class="topbar"><div class="search" style="flex:1;margin:0">${I.search}<input id="q" placeholder="Kişi ya da #etiket ara" autocomplete="off"></div></div><div id="res"></div>`;
   const res = $('#res');
-  const showExplore = async () => {
-    const posts = await A.explore();
-    if (stale(tok)) return;
-    res.innerHTML = posts.length ? `<div class="grid3">${posts.map((p) => `<a class="cell" href="#/p/${p.id}">${mediaTag(p.media, p.kind)}${p.kind === 'video' ? `<span class="badge">${I.play}</span>` : ''}</a>`).join('')}</div>` : '<div class="empty">Keşfedecek bir şey yok henüz.</div>';
+  const showHome = async () => {
+    const [trend, sugg, posts] = await Promise.all([S.trendingTags(10), S.suggestions(10), A.explore()]);
+    if (stale(tok) || $('#q').value.trim()) return;
+    const hist = S.searchHistory();
+    res.innerHTML =
+      (hist.length
+        ? `<div class="section-t row-t">Son aramalar<button class="link" id="hClear">Temizle</button></div>${hist
+            .map((h) => `<div class="list-row hist" data-type="${h.type}" data-key="${esc(h.key)}"><a class="grow" href="${h.type === 'tag' ? '#/tag/' + encodeURIComponent(h.key) : '#/u/' + encodeURIComponent(h.key)}">${h.type === 'tag' ? `<span class="tag-ico">#</span>` : I.user}<span>${h.type === 'tag' ? '#' : ''}${esc(h.key)}</span></a><button class="ibtn" data-x>${I.close}</button></div>`)
+            .join('')}`
+        : '') +
+      (trend.length ? `<div class="section-t">Gündemdeki etiketler</div><div class="chips trend">${trend.map((t) => `<a href="#/tag/${encodeURIComponent(t.tag)}" data-hist-t="${esc(t.tag)}">#${esc(t.tag)} <small>${t.n}</small></a>`).join('')}</div>` : '') +
+      suggestCards(sugg) +
+      `<div class="section-t">Keşfet</div>` +
+      (posts.length ? `<div class="grid3">${posts.map((p) => `<a class="cell" href="#/p/${p.id}">${mediaTag(p.media, p.kind)}${p.kind === 'video' ? `<span class="badge">${I.play}</span>` : p.meta?.items?.length ? `<span class="badge">${I.grid}</span>` : ''}</a>`).join('')}</div>` : '<div class="empty">Keşfedecek bir şey yok henüz.</div>');
     hydrate(res);
+    if ($('#hClear')) $('#hClear').onclick = () => (S.clearHistory(), showHome());
   };
+  res.addEventListener('click', (e) => {
+    const x = e.target.closest('[data-x]');
+    if (x) {
+      const row = x.closest('.hist');
+      S.removeHistory({ type: row.dataset.type, key: row.dataset.key });
+      row.remove();
+      return;
+    }
+    const u = e.target.closest('[data-hist-u]');
+    if (u) S.addHistory({ type: 'user', key: u.dataset.histU });
+    const t = e.target.closest('[data-hist-t]');
+    if (t) S.addHistory({ type: 'tag', key: t.dataset.histT });
+  });
+  bindSuggest(res);
   let t = null;
   $('#q').oninput = (e) => {
     clearTimeout(t);
-    const q = e.target.value.trim().replace(/^@/, '');
+    const raw = e.target.value.trim();
     t = setTimeout(async () => {
-      if (!q) return showExplore();
+      if (!raw) return showHome();
+      if (raw.startsWith('#')) {
+        const q = raw.slice(1).toLocaleLowerCase('tr-TR');
+        const trend = (await S.trendingTags(50)).filter((x) => x.tag.includes(q));
+        const tags = q && !trend.some((x) => x.tag === q) ? [{ tag: q, n: 0 }, ...trend] : trend;
+        res.innerHTML = tags.length ? tags.map((x) => `<a class="list-row" href="#/tag/${encodeURIComponent(x.tag)}" data-hist-t="${esc(x.tag)}"><span class="tag-ico">#</span><div class="grow">#${esc(x.tag)}<small>${x.n ? x.n + ' gönderi (bu hafta)' : 'Etiketi aç'}</small></div></a>`).join('') : '<div class="empty">Etiket bulunamadı.</div>';
+        return;
+      }
+      const q = raw.replace(/^@/, '');
       const users = await A.searchUsers(q);
-      res.innerHTML = users.length ? users.map((u) => `<a class="list-row" href="#/u/${esc(u.username)}">${avatar(u, 44)}<div class="grow">${uname(u)}<small>${esc(u.name)}</small></div></a>`).join('') : '<div class="empty">Kimse bulunamadı.</div>';
+      res.innerHTML = users.length ? users.map((u) => userRow(u)).join('') : '<div class="empty">Kimse bulunamadı.</div>';
       hydrate(res);
     }, 250);
   };
-  await showExplore();
+  await showHome();
+}
+
+/* ---------- Hashtag sayfası ---------- */
+async function vTag(tag, _b, tok) {
+  tag = (tag || '').toLocaleLowerCase('tr-TR');
+  app.innerHTML = `${topbar('#' + esc(tag), true)}<div id="tg"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
+  const posts = await prep(await S.tagPosts(tag));
+  if (stale(tok)) return;
+  S.addHistory({ type: 'tag', key: tag });
+  const ranked = posts.slice().sort((a, b) => b.likeCount + b.commentCount * 2 - (a.likeCount + a.commentCount * 2));
+  $('#tg').innerHTML = `<div class="tag-head"><div class="tag-big">#</div><div><b>#${esc(tag)}</b><div class="muted small">${posts.length} gönderi</div></div></div>
+    ${posts.length ? `<div class="section-t">En popüler</div><div class="grid3">${ranked.map((p) => `<a class="cell" href="#/p/${p.id}">${mediaTag(p.media, p.kind)}${p.kind === 'video' ? `<span class="badge">${I.play}</span>` : ''}</a>`).join('')}</div>` : `<div class="empty"><h3>Henüz gönderi yok</h3><p>Açıklamana #${esc(tag)} yazarak ilk gönderiyi sen paylaş.</p></div>`}`;
+  hydrate($('#tg'));
+}
+
+/* ---------- Kaydedilenler ---------- */
+async function vSaved(_a, _b, tok) {
+  app.innerHTML = `${topbar('Kaydedilenler', true)}<div id="sv"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
+  const posts = await S.savedPosts();
+  if (stale(tok)) return;
+  $('#sv').innerHTML = posts.length
+    ? `<p class="small muted" style="padding:8px 14px">Sadece sen görebilirsin.</p><div class="grid3">${posts.map((p) => `<a class="cell" href="#/p/${p.id}">${mediaTag(p.media, p.kind)}${p.kind === 'video' ? `<span class="badge">${I.play}</span>` : ''}</a>`).join('')}</div>`
+    : `<div class="empty"><div class="ico">${I.bookmark}</div><h3>Kaydedilen yok</h3><p>Gönderilerin altındaki kaydet simgesine dokunarak sonra bakmak için sakla.</p></div>`;
+  hydrate($('#sv'));
+}
+
+/* ---------- Gönderi istatistikleri ---------- */
+async function vInsights(id, _b, tok) {
+  app.innerHTML = `${topbar('İstatistikler', true)}<div id="ins"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
+  try {
+    const [p, r] = await Promise.all([A.getPost(id), S.insights(id)]);
+    if (stale(tok)) return;
+    const eng = r.likes + r.comments + r.reposts + r.saves;
+    const rate = r.views ? Math.round((eng / r.views) * 1000) / 10 : 0;
+    const c = (n, t, sub = '') => `<div class="card"><b>${num(n)}</b><span>${t}</span>${sub ? `<small class="muted">${sub}</small>` : ''}</div>`;
+    $('#ins').innerHTML = `<div class="ins-head">${p ? `<span class="ins-thumb">${mediaTag(p.media, p.kind)}</span>` : ''}<div><b>Gönderi istatistikleri</b><div class="muted small">${p ? ago(p.created_at, true) : ''}</div></div></div>
+      <div class="cards">${c(r.views, 'Erişilen hesap', `${r.follower_views} takipçi · ${Math.max(0, r.views - r.follower_views)} takipçi olmayan`)}${c(eng, 'Etkileşim', `Etkileşim oranı %${rate}`)}
+      ${c(r.likes, 'Beğeni')}${c(r.comments, 'Yorum')}${c(r.reposts, 'Repost')}${c(r.saves, 'Kaydetme')}</div>
+      <div class="ins-bar"><span style="width:${r.views ? Math.round((r.follower_views / r.views) * 100) : 0}%"></span></div>
+      <p class="small muted" style="padding:0 14px">Mavi: takipçilerin · Gri: takip etmeyenler (keşif ve "Senin için" akışından gelenler)</p>`;
+    hydrate($('#ins'));
+  } catch (er) {
+    $('#ins').innerHTML = `<div class="empty">${esc(er.message)}</div>`;
+  }
+}
+
+/* ---------- Yakın arkadaşlar ---------- */
+async function vCloseFriends(_a, _b, tok) {
+  const [fol, close] = await Promise.all([A.following(), S.closeFriends().catch(() => [])]);
+  const pm = await A.profiles(fol);
+  if (stale(tok)) return;
+  const set = new Set(close.map((u) => u.id));
+  const list = [...pm.values()];
+  app.innerHTML = `${topbar('Yakın arkadaşlar', true)}<p class="small muted" style="padding:10px 14px">Hikâye paylaşırken "Yakın arkadaşlar"ı seçersen sadece bu listedekiler görür. Listede olduğunu kimseye bildirmeyiz.</p>
+    <div id="cf">${list.length ? list.map((u) => `<label class="list-row toggle-row">${avatar(u, 44)}<div class="grow">${uname(u)}<small>${esc(u.name)}</small></div><input type="checkbox" class="sw" data-u="${u.id}" ${set.has(u.id) ? 'checked' : ''}></label>`).join('') : '<div class="empty">Önce birkaç kişiyi takip et.</div>'}</div>`;
+  $('#cf').onchange = async (e) => {
+    const c = e.target.closest('[data-u]');
+    if (!c) return;
+    try {
+      await S.setCloseFriend(c.dataset.u, c.checked);
+    } catch (er) {
+      c.checked = !c.checked;
+      toast(er.message, true);
+    }
+  };
+}
+
+/* ---------- Görünüm (tema) ---------- */
+function vAppearance() {
+  const cur = S.theme();
+  app.innerHTML = `${topbar('Görünüm', true)}<div class="create"><div class="seg" id="th"><button data-t="dark">Koyu</button><button data-t="light">Açık</button><button data-t="system">Sistemle aynı</button></div>
+    <p class="small muted">Sistemle aynı: telefonun koyu/açık tema ayarını izler.</p></div>`;
+  const mark = (t) => $$('#th button').forEach((b) => b.classList.toggle('on', b.dataset.t === t));
+  mark(cur);
+  $('#th').onclick = (e) => {
+    const b = e.target.closest('[data-t]');
+    if (!b) return;
+    S.setTheme(b.dataset.t);
+    mark(b.dataset.t);
+  };
+}
+
+/* ---------- Kişi seçici (etiketleme, grup) ---------- */
+function pickUsers(title, preselected = [], { max = 20, source = 'following' } = {}) {
+  return new Promise(async (resolve) => {
+    const picked = new Map(preselected.map((u) => [u.id, u]));
+    const ids = source === 'following' ? await A.following() : [];
+    const base = [...(await A.profiles(ids)).values()];
+    sheet(
+      `<h3>${esc(title)}</h3><div class="inner form"><div class="search" style="margin:0">${I.search}<input id="puQ" placeholder="Ara"></div></div><div id="puL" class="pu-list"></div><div class="inner"><button class="btn block" id="puOk">Tamam</button></div>`,
+      (c, close) => {
+        const draw = (list) => {
+          $('#puL', c).innerHTML = list.length
+            ? list.map((u) => `<label class="list-row toggle-row">${avatar(u, 40)}<div class="grow">${uname(u)}<small>${esc(u.name)}</small></div><input type="checkbox" class="pu-ck" data-u="${u.id}" ${picked.has(u.id) ? 'checked' : ''}></label>`).join('')
+            : '<p class="inner muted">Kimse yok.</p>';
+          hydrate($('#puL', c));
+        };
+        let all = base;
+        draw(all);
+        let t = null;
+        $('#puQ', c).oninput = (e) => {
+          clearTimeout(t);
+          t = setTimeout(async () => {
+            const q = e.target.value.trim();
+            all = q ? (await A.searchUsers(q)).filter((u) => u.id !== A.me()) : base;
+            draw(all);
+          }, 250);
+        };
+        $('#puL', c).onchange = (e) => {
+          const k = e.target.closest('[data-u]');
+          if (!k) return;
+          const u = all.find((x) => x.id === k.dataset.u) || picked.get(k.dataset.u);
+          if (k.checked) {
+            if (picked.size >= max) return (k.checked = false), toast(`En fazla ${max} kişi`, true);
+            picked.set(u.id, u);
+          } else picked.delete(u.id);
+        };
+        $('#puOk', c).onclick = () => {
+          close();
+          resolve([...picked.values()]);
+        };
+      }
+    );
+  });
 }
 
 /* =========================================================
-   Paylaş (gönderi / hikâye / reels)
+   Paylaş: çoklu fotoğraf/video, düzenleyici, kişi etiketleme, yakın arkadaşlar
    ========================================================= */
 async function vCreate(kind = 'post') {
   let mode = kind === 'story' ? 'story' : kind === 'reel' ? 'reel' : 'post';
-  let file = null;
-  let ed = null; // düzenleyici sonucu
+  let slides = []; // { file, ed }
+  let cur = 0;
+  let tagged = [];
+  let audience = 'all';
   app.innerHTML = `${topbar('Yeni paylaşım', true, '<button class="btn sm" id="share" disabled>Paylaş</button>')}<div class="create">
     <div class="seg" id="seg"><button data-m="post">Gönderi</button><button data-m="story">Hikâye</button><button data-m="reel">Reels</button></div>
     <button class="pick" id="pick">${I.image}<span id="pickTxt"></span></button>
-    <button class="btn block gray hidden" id="reedit">${ic('pen')} Düzenle (yazı, çıkartma, çizim, filtre)</button>
+    <div class="thumbs hidden" id="thumbs"></div>
+    <button class="btn block gray hidden" id="reedit">${ic('pen')} Düzenle (yazı, çıkartma, çizim, filtre${mode === 'story' ? ', anket' : ''})</button>
     <textarea class="field" id="cap" placeholder="Açıklama yaz... (@kullanıcı, #etiket)" maxlength="2200"></textarea>
     <input class="field" id="loc" placeholder="Konum ekle (isteğe bağlı)" maxlength="60">
+    <button class="btn block gray" id="tagBtn">${ic('user')} Kişileri etiketle</button>
+    <div class="seg hidden" id="aud"><button data-a="all" class="on">Herkes</button><button data-a="close">Yakın arkadaşlar</button></div>
     <p class="small muted" id="hint"></p></div>`;
   const seg = () => {
     $$('#seg button').forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
-    if ($('#pickTxt')) $('#pickTxt').textContent = mode === 'reel' ? 'Video seç (dikey video önerilir)' : 'Fotoğraf ya da video seç';
-    $('#cap').classList.toggle('hidden', mode === 'story');
-    $('#loc').classList.toggle('hidden', mode === 'story');
-    $('#hint').textContent = mode === 'story' ? 'Hikâyeler 24 saat sonra kaybolur.' : mode === 'reel' ? 'Reels sekmesinde tam ekran, kaydırmalı görünür.' : '';
+    if ($('#pickTxt')) $('#pickTxt').textContent = mode === 'reel' ? 'Video seç (dikey video önerilir)' : mode === 'post' ? 'Fotoğraf ya da video seç (en fazla 10)' : 'Fotoğraf ya da video seç';
+    for (const id of ['#cap', '#loc', '#tagBtn']) $(id).classList.toggle('hidden', mode === 'story');
+    $('#aud').classList.toggle('hidden', mode !== 'story');
+    $('#hint').textContent = mode === 'story' ? 'Hikâyeler 24 saat sonra kaybolur. Düzenleyicide anket ve soru çıkartması ekleyebilirsin.' : mode === 'reel' ? 'Reels sekmesinde tam ekran, kaydırmalı görünür.' : '';
+    $('#reedit').innerHTML = `${ic('pen')} Düzenle (yazı, çıkartma, çizim, filtre${mode === 'story' ? ', anket' : ''})`;
   };
   const aspectCss = (a) => (a === '1:1' ? '1' : a === '16:9' ? '16 / 9' : a === '9:16' ? '9 / 16' : a === 'orig' ? 'auto' : '4 / 5');
   const showPreview = () => {
+    const s = slides[cur];
     const pick = $('#pick');
-    pick.style.aspectRatio = aspectCss(ed.meta.aspect);
+    if (!s) {
+      pick.innerHTML = `${I.image}<span id="pickTxt"></span>`;
+      pick.style.aspectRatio = '';
+      $('#reedit').classList.add('hidden');
+      $('#thumbs').classList.add('hidden');
+      $('#share').disabled = true;
+      seg();
+      return;
+    }
+    const url = s.ed ? s.ed.preview : URL.createObjectURL(s.file);
+    const video = (s.ed ? s.ed.kind : s.file.type.startsWith('video/') ? 'video' : 'photo') === 'video';
+    pick.style.aspectRatio = aspectCss(s.ed?.meta.aspect || (mode === 'post' ? '4:5' : '9:16'));
     pick.style.position = 'relative';
     pick.style.containerType = 'inline-size';
-    pick.innerHTML =
-      ed.kind === 'video'
-        ? `<video src="${ed.preview}" autoplay muted loop playsinline style="filter:${ed.meta.filter || 'none'}"></video>${ed.drawingBlob ? `<img class="ovl-draw" src="${URL.createObjectURL(ed.drawingBlob)}" style="position:absolute;inset:0;width:100%;height:100%">` : ''}${overlayHtml({ layers: ed.meta.layers })}`
-        : `<img src="${ed.preview}">`;
+    pick.innerHTML = video
+      ? `<video src="${url}" autoplay muted loop playsinline style="filter:${s.ed?.meta.filter || 'none'}"></video>${s.ed?.drawingBlob ? `<img class="ovl-draw" src="${URL.createObjectURL(s.ed.drawingBlob)}" style="position:absolute;inset:0;width:100%;height:100%">` : ''}${overlayHtml({ layers: s.ed?.meta.layers || [] })}`
+      : `<img src="${url}">`;
     $('#reedit').classList.remove('hidden');
     $('#share').disabled = false;
+    const th = $('#thumbs');
+    th.classList.toggle('hidden', mode !== 'post');
+    th.innerHTML =
+      slides.map((x, i) => `<button class="thumb ${i === cur ? 'on' : ''}" data-i="${i}">${x.file.type.startsWith('video/') ? `<video src="${URL.createObjectURL(x.file)}" muted></video>` : `<img src="${x.ed ? x.ed.preview : URL.createObjectURL(x.file)}">`}<span class="tx" data-del="${i}">${I.close}</span></button>`).join('') +
+      (slides.length < 10 ? `<button class="thumb add" id="addMore">${I.plus}</button>` : '');
   };
-  const edit = async () => {
-    const r = await openEditor(file, mode, ed?.state || null);
-    if (r) {
-      ed = r;
-      showPreview();
-    }
+  const edit = async (i = cur) => {
+    const s = slides[i];
+    const r = await openEditor(s.file, mode, s.ed?.state || null);
+    if (r) s.ed = r;
+    showPreview();
   };
-  const clearPick = () => {
-    file = null;
-    ed = null;
-    $('#pick').innerHTML = `${I.image}<span id="pickTxt"></span>`;
-    $('#pick').style.aspectRatio = '';
-    $('#reedit').classList.add('hidden');
-    $('#share').disabled = true;
+  const addFiles = async (multi) => {
+    const fs = await pickFiles(mode === 'reel' ? 'video/*' : 'image/*,video/*', multi);
+    if (!fs.length) return;
+    if (mode === 'reel' && !fs[0].type.startsWith('video/')) return toast('Reels için video seç', true);
+    const start = slides.length;
+    for (const f of fs.slice(0, 10 - slides.length)) slides.push({ file: f, ed: null });
+    cur = start;
+    showPreview();
+    await edit(start);
   };
   seg();
   $('#seg').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b || b.dataset.m === mode) return;
     mode = b.dataset.m;
-    if (file && (mode !== 'reel' || file.type.startsWith('video/'))) {
-      // oran değişti: yeniden düzenle
-      if (ed) ed.state.aspect = mode === 'post' ? '4:5' : '9:16';
-      seg();
-      edit();
-    } else {
-      clearPick();
-      seg();
+    slides = mode === 'post' ? slides : slides.slice(0, 1);
+    if (mode === 'reel' && slides[0] && !slides[0].file.type.startsWith('video/')) slides = [];
+    cur = 0;
+    seg();
+    showPreview();
+    // oran değişti: düzenlenmiş medyayı yeni oranla tekrar düzenle
+    if (slides[0]?.ed) {
+      slides[0].ed.state.aspect = mode === 'post' ? '4:5' : '9:16';
+      edit(0);
     }
   };
-  $('#pick').onclick = async () => {
-    const f = await pickFile(mode === 'reel' ? 'video/*' : 'image/*,video/*');
-    if (!f) return;
-    if (mode === 'reel' && !f.type.startsWith('video/')) return toast('Reels için video seç', true);
-    file = f;
-    ed = null;
-    await edit();
+  $('#pick').onclick = () => (slides.length ? edit() : addFiles(mode === 'post'));
+  $('#thumbs').onclick = (e) => {
+    const d = e.target.closest('[data-del]');
+    if (d) {
+      e.stopPropagation();
+      slides.splice(+d.dataset.del, 1);
+      cur = Math.min(cur, slides.length - 1);
+      return showPreview();
+    }
+    if (e.target.closest('#addMore')) return addFiles(true);
+    const t = e.target.closest('[data-i]');
+    if (t) {
+      cur = +t.dataset.i;
+      showPreview();
+    }
   };
-  $('#reedit').onclick = edit;
+  $('#reedit').onclick = () => edit();
+  $('#tagBtn').onclick = async () => {
+    tagged = await pickUsers('Kişileri etiketle', tagged, { max: 20 });
+    $('#tagBtn').innerHTML = `${ic('user')} ${tagged.length ? tagged.map((u) => '@' + esc(u.username)).join(', ') : 'Kişileri etiketle'}`;
+  };
+  $('#aud').onclick = (e) => {
+    const b = e.target.closest('[data-a]');
+    if (!b) return;
+    audience = b.dataset.a;
+    $$('#aud button').forEach((x) => x.classList.toggle('on', x === b));
+  };
   $('#share').onclick = async () => {
-    if (!file || !ed) return;
+    if (!slides.length) return;
     const btn = $('#share');
     btn.disabled = true;
     btn.textContent = 'Yükleniyor...';
-    const meta = { ...ed.meta };
-    if (ed.kind === 'photo') delete meta.layers;
-    const loc = $('#loc').value.trim();
-    if (loc && mode !== 'story') meta.location = loc;
     try {
+      const out = slides.map((s) => s.ed || { blob: s.file, kind: s.file.type.startsWith('video/') ? 'video' : 'photo', meta: { aspect: mode === 'post' ? '4:5' : '9:16' } });
+      const first = out[0];
+      const meta = { ...first.meta };
+      if (first.kind === 'photo') delete meta.layers;
       if (mode === 'story') {
-        await A.addStory(ed.blob, meta, ed.drawingBlob);
-        toast('Hikâyen paylaşıldı');
+        if (audience === 'close') meta.audience = 'close';
+        await A.addStory(first.blob, meta, first.drawingBlob);
+        toast(audience === 'close' ? 'Yakın arkadaşlarınla paylaşıldı' : 'Hikâyen paylaşıldı');
         location.hash = '#/home';
-      } else {
-        await A.createPost({ file: ed.blob, caption: $('#cap').value.trim(), meta, drawingBlob: ed.drawingBlob });
-        toast('Paylaşıldı');
-        location.hash = mode === 'reel' ? '#/reels' : '#/home';
+        return;
       }
-      if (A.metaMissing && A.isAdminP(meP)) toast('Sunucuda güncelleme gerekiyor: supabase/guncelleme-1.sql dosyasını çalıştır', true);
+      const loc = $('#loc').value.trim();
+      if (loc) meta.location = loc;
+      if (tagged.length) meta.tagged = tagged.length;
+      if (out.length > 1) {
+        meta.items = [];
+        for (let i = 1; i < out.length; i++) {
+          btn.textContent = `Yükleniyor ${i + 1}/${out.length}`;
+          const o = out[i];
+          const up = await A.uploadFile(o.blob);
+          const it = { url: up.url, kind: up.kind === 'video' ? 'video' : 'photo' };
+          if (it.kind === 'video') {
+            if (o.meta.filter && o.meta.filter !== 'none') it.filter = o.meta.filter;
+            if (o.meta.layers?.length) it.layers = o.meta.layers;
+            if (o.meta.vig) it.vig = o.meta.vig;
+            if (o.meta.muted) it.muted = true;
+          }
+          if (o.drawingBlob) it.drawing = await A.db.upload(o.drawingBlob, 'photo');
+          meta.items.push(it);
+        }
+      }
+      const caption = $('#cap').value.trim();
+      const post = await A.createPost({ file: first.blob, caption, meta, drawingBlob: first.drawingBlob });
+      if (tagged.length) await S.saveTags(post, tagged);
+      if (caption) S.notifyMentions(post, caption);
+      toast('Paylaşıldı');
+      location.hash = mode === 'reel' ? '#/reels' : '#/home';
     } catch (er) {
       toast(er.message, true);
       btn.disabled = false;
@@ -576,7 +1004,7 @@ async function vCreate(kind = 'post') {
    ========================================================= */
 async function vReels(startId, _b, tok) {
   app.innerHTML = `<div class="reels-top"><span>Reels</span><a class="ibtn" href="#/create/reel">${I.camera}</a></div><div class="reels" id="reels"><div class="empty" style="padding-top:40vh"><div class="spin" style="margin:auto"></div></div></div>`;
-  let list = await A.reels();
+  let list = await prep(await A.reels());
   if (stale(tok)) return;
   const box = $('#reels');
   if (!list.length) {
@@ -594,7 +1022,7 @@ async function vReels(startId, _b, tok) {
     <div class="side"><button class="act ${p.liked ? 'on-like' : ''}" data-a="like">${I.heart}<span>${num(p.likeCount)}</span></button>
       <a class="act" href="#/p/${p.id}">${I.comment}<span>${num(p.commentCount)}</span></a>
       <button class="act ${p.reposted ? 'on-rp' : ''}" data-a="repost">${I.repost}<span>${num(p.repostCount)}</span></button>
-      <button class="act" data-a="share">${I.send}</button><button class="act" data-a="more">${I.dots}</button></div>
+      <button class="act" data-a="share">${I.send}</button><button class="act ${p.saved ? 'on-save' : ''}" data-a="save">${I.bookmark}</button><button class="act" data-a="more">${I.dots}</button></div>
     <div class="info"><div class="who"><a href="#/u/${esc(p.author.username)}">${avatar(p.author, 32)}</a><a href="#/u/${esc(p.author.username)}">${uname(p.author)}</a>
       ${p.user_id !== A.me() && !fol.has(p.user_id) ? `<button class="fbtn" data-a="follow">Takip et</button>` : ''}</div>
       ${p.caption ? `<div>${linkify(p.caption)}</div>` : ''}</div></section>`
@@ -655,7 +1083,7 @@ async function vProfile(username, tab = 'posts', tok) {
   if (!u) return renderMsg('Kullanıcı bulunamadı', 'Bu hesap yok ya da silinmiş.', true);
   const mine = u.id === A.me();
   const admin = A.isAdminP(meP);
-  const [st, fstate, groups, v] = await Promise.all([A.stats(u.id), A.followState(u.id), A.storyGroups(), A.viewer()]);
+  const [st, fstate, groups, v, hls] = await Promise.all([A.stats(u.id), A.followState(u.id), A.storyGroups(), A.viewer(), S.highlights(u.id)]);
   if (stale(tok)) return;
   const iBlocked = v.blocked.has(u.id);
   const locked = !mine && !admin && (iBlocked || v.blockedMe.has(u.id) || (u.private && fstate !== 'following'));
@@ -672,16 +1100,20 @@ async function vProfile(username, tab = 'posts', tok) {
     ${u.bio ? `<div class="prof-bio">${linkify(u.bio)}</div>` : ''}
     <div class="prof-btns">${
       mine
-        ? `<a class="btn gray" href="#/edit">Profili düzenle</a><a class="btn gray" href="#/settings">Ayarlar</a>`
+        ? `<a class="btn gray" href="#/edit">Profili düzenle</a><button class="btn gray" id="pShare">Profili paylaş</button>`
         : iBlocked
           ? `<button class="btn gray" id="unb">Engeli kaldır</button>`
-          : `<button class="btn ${fstate === 'none' ? '' : 'gray'}" id="fol">${fLabel[fstate]}</button><button class="btn gray" id="msg">Mesaj</button>`
+          : `<button class="btn ${fstate === 'none' ? '' : 'gray'}" id="fol">${fLabel[fstate]}</button><button class="btn gray" id="msg">Mesaj</button><button class="btn gray icon-btn" id="pCall" title="Sesli ara">${Calls.CI.phone}</button>`
     }</div>
     ${mine && admin ? `<div class="prof-btns"><a class="btn green" href="#/admin">${I.shield} Yönetim paneli</a></div>` : ''}
+    ${!locked && (hls.length || mine) ? `<div class="hl-row">${mine ? `<button class="hl" id="hlNew"><span class="hl-c add">${I.plus}</span><span>Yeni</span></button>` : ''}${hls.map((h) => `<a class="hl" href="#/hl/${h.id}"><span class="hl-c">${h.cover ? mediaTag(h.cover, 'photo') : ic('star', 24)}</span><span>${esc(h.title)}</span></a>`).join('')}</div>` : ''}
   </div>
-  <div class="tabs2"><button data-t="posts" class="${tab === 'posts' ? 'on' : ''}">${I.grid}</button><button data-t="reels" class="${tab === 'reels' ? 'on' : ''}">${I.reels}</button><button data-t="reposts" class="${tab === 'reposts' ? 'on' : ''}">${I.repost}</button></div>
+  <div class="tabs2"><button data-t="posts" class="${tab === 'posts' ? 'on' : ''}">${I.grid}</button><button data-t="reels" class="${tab === 'reels' ? 'on' : ''}">${I.reels}</button><button data-t="reposts" class="${tab === 'reposts' ? 'on' : ''}">${I.repost}</button><button data-t="tagged" class="${tab === 'tagged' ? 'on' : ''}">${I.tag}</button>${mine ? `<button data-t="saved" class="${tab === 'saved' ? 'on' : ''}">${I.bookmark}</button>` : ''}</div>
   <div id="pgrid"></div>`;
   $$('.tabs2 button').forEach((b) => (b.onclick = () => (location.hash = `#/u/${encodeURIComponent(u.username)}/${b.dataset.t}`)));
+  if ($('#pShare')) $('#pShare').onclick = () => shareLink(profileUrl(u.username), `Kanka'da @${u.username}`);
+  if ($('#pCall')) $('#pCall').onclick = () => Calls.startCall(u.id);
+  if ($('#hlNew')) $('#hlNew').onclick = newHighlightFlow;
   if (!mine) {
     if ($('#unb'))
       $('#unb').onclick = async () => {
@@ -725,6 +1157,7 @@ async function vProfile(username, tab = 'posts', tok) {
       };
     $('#umore').onclick = () => {
       const opts = [];
+      opts.push({ icon: I.link, label: 'Profil bağlantısını paylaş', run: () => shareLink(profileUrl(u.username), `Kanka'da @${u.username}`) });
       opts.push({ icon: I.flag, label: 'Hesabı şikâyet et', red: true, run: () => reportFlow('user', u.id) });
       opts.push(
         iBlocked
@@ -762,11 +1195,45 @@ async function vProfile(username, tab = 'posts', tok) {
       : `<div class="empty"><div class="ico">${ic('lock', 36)}</div><h3>Bu hesap gizli</h3><p>Gönderilerini, reels ve hikâyelerini görmek için takip et.</p></div>`;
     return;
   }
-  const posts = tab === 'reposts' ? await A.userReposts(u.id) : (await A.userPosts(u.id)).filter((p) => tab !== 'reels' || p.kind === 'video');
+  const posts =
+    tab === 'reposts' ? await A.userReposts(u.id) : tab === 'tagged' ? await S.taggedPosts(u.id) : tab === 'saved' && mine ? await S.savedPosts() : (await A.userPosts(u.id)).filter((p) => tab !== 'reels' || p.kind === 'video');
   if (stale(tok)) return;
   $('#pgrid').innerHTML = posts.length
-    ? `<div class="grid3">${posts.map((p) => `<a class="cell ${tab === 'reels' ? 'tall' : ''}" href="${tab === 'reels' ? '#/reels/' + p.id : '#/p/' + p.id}">${mediaTag(p.media, p.kind)}${p.kind === 'video' && tab !== 'reels' ? `<span class="badge">${I.play}</span>` : ''}</a>`).join('')}</div>`
-    : `<div class="empty"><div class="ico">${tab === 'reposts' ? I.repost : I.camera}</div><h3>${tab === 'reposts' ? 'Repost yok' : tab === 'reels' ? 'Reels yok' : 'Henüz gönderi yok'}</h3></div>`;
+    ? `${tab === 'saved' ? '<p class="small muted" style="padding:8px 14px">Kaydettiklerini sadece sen görebilirsin.</p>' : ''}<div class="grid3">${posts.map((p) => `<a class="cell ${tab === 'reels' ? 'tall' : ''}" href="${tab === 'reels' ? '#/reels/' + p.id : '#/p/' + p.id}">${mediaTag(p.media, p.kind)}${p.kind === 'video' && tab !== 'reels' ? `<span class="badge">${I.play}</span>` : p.meta?.items?.length ? `<span class="badge">${I.grid}</span>` : ''}</a>`).join('')}</div>`
+    : `<div class="empty"><div class="ico">${{ reposts: I.repost, tagged: I.tag, saved: I.bookmark }[tab] || I.camera}</div><h3>${{ reposts: 'Repost yok', reels: 'Reels yok', tagged: 'Etiketlendiği gönderi yok', saved: 'Kaydedilen yok' }[tab] || 'Henüz gönderi yok'}</h3></div>`;
+}
+
+/** Vitrin: arşivdeki hikâyelerden seç, ad ver. */
+async function newHighlightFlow() {
+  const all = await S.myAllStories();
+  if (!all.length) return toast('Önce bir hikâye paylaş', true);
+  const picked = new Set();
+  sheet(
+    `<h3>Vitrine hikâye seç</h3><div class="hl-pick">${all.map((s) => `<button class="cell" data-s="${s.id}">${mediaTag(s.media, s.kind)}<span class="ck">${I.check}</span><small>${new Date(s.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</small></button>`).join('')}</div><div class="inner"><button class="btn block" id="hlNext" disabled>İleri</button></div>`,
+    (c, close) => {
+      hydrate(c);
+      $('.hl-pick', c).onclick = (e) => {
+        const b = e.target.closest('[data-s]');
+        if (!b) return;
+        picked.has(b.dataset.s) ? picked.delete(b.dataset.s) : picked.add(b.dataset.s);
+        b.classList.toggle('on', picked.has(b.dataset.s));
+        $('#hlNext', c).disabled = !picked.size;
+      };
+      $('#hlNext', c).onclick = () => {
+        close();
+        promptSheet('Vitrin adı', 'Örn. Yaz 2026', async (t) => {
+          if (!t) return;
+          try {
+            await S.createHighlight(t, all.filter((s) => picked.has(s.id)));
+            toast('Vitrin oluşturuldu');
+            route();
+          } catch (er) {
+            toast(er.message, true);
+          }
+        });
+      };
+    }
+  );
 }
 
 async function vFollows(uid, which = 'followers', tok) {
@@ -784,6 +1251,8 @@ async function vPost(id, _b, tok) {
   const p = await A.getPost(id);
   if (stale(tok)) return;
   if (!p) return renderMsg('Gönderi bulunamadı', 'Silinmiş olabilir.', true);
+  await prep([p]);
+  S.recordView(p.id, p.user_id);
   const list = [p];
   app.innerHTML = `${topbar('Gönderi', true)}<div class="pad-composer"><div id="pwrap">${postHtml(p)}</div><div id="cmts"></div></div>
     <div class="composer" id="comp"><div class="preview hidden" id="prev"></div><div class="row">${avatar(meP, 32)}<button class="ibtn" id="cImg">${I.image}</button><button class="ibtn" id="cGif">${I.gif}</button><input type="text" id="cTxt" placeholder="Yorum ekle..." maxlength="500"><button class="send" id="cSend" disabled>Paylaş</button></div></div>`;
@@ -915,32 +1384,63 @@ function gifPicker(done) {
 }
 
 /* =========================================================
-   Hikâye görüntüleyici
+   Hikâye görüntüleyici (normal hikâyeler + vitrin)
    ========================================================= */
 async function vStory(uid, _b, tok) {
   const groups = await A.storyGroups();
   if (stale(tok)) return;
-  let gi = groups.findIndex((g) => g.user.id === uid);
+  const gi = groups.findIndex((g) => g.user.id === uid);
   if (gi < 0) return (location.hash = '#/home');
-  let si = 0;
+  storyPlayer(groups, gi, tok, { start: Math.max(0, groups[gi].stories.findIndex((s) => !s.seen)) });
+}
+async function vHighlight(id, _b, tok) {
+  const h = await A.db.get('highlights', id).catch(() => null);
+  if (stale(tok)) return;
+  if (!h) return renderMsg('Vitrin bulunamadı', 'Silinmiş olabilir.', true);
+  const [user, stories] = await Promise.all([A.profile(h.user_id), S.highlightStories(h)]);
+  if (stale(tok)) return;
+  if (!stories.length) return renderMsg(h.title, 'Bu vitrinde hikâye kalmamış.', true);
+  storyPlayer([{ user, stories: stories.map((s) => ({ ...s, seen: true })) }], 0, tok, { highlight: h });
+}
+
+function interactiveHtml(s, res) {
+  const it = s.meta?.interactive;
+  if (!it) return '';
+  const pos = `left:${(it.x ?? 0.5) * 100}%;top:${(it.y ?? 0.62) * 100}%`;
+  if (it.type === 'poll') {
+    const tot = res ? res.a + res.b : 0;
+    const pct = (n) => (tot ? Math.round((n / tot) * 100) : 0);
+    const showRes = res && (res.mine || s.user_id === A.me());
+    return `<div class="st-poll" style="${pos}"><div class="q">${esc(it.q)}</div>${['a', 'b']
+      .map((k) => `<button class="opt ${res?.mine === k ? 'mine' : ''}" data-vote="${k}">${showRes ? `<i style="width:${pct(res[k])}%"></i>` : ''}<span>${esc(it[k])}</span>${showRes ? `<b>%${pct(res[k])}</b>` : ''}</button>`)
+      .join('')}</div>`;
+  }
+  return `<div class="st-q" style="${pos}"><div class="q">${esc(it.q)}</div>${s.user_id === A.me() ? `<div class="hint">Cevaplar "Görenler" listesinde</div>` : `<button class="ans" data-ask>Cevabını yaz...</button>`}</div>`;
+}
+
+function storyPlayer(groups, gi, tok, { start = 0, highlight = null } = {}) {
+  let si = start;
   let timer = null;
   let t0 = 0;
   let dur = 5000;
   let paused = false;
-  const g0 = groups[gi];
-  si = Math.max(0, g0.stories.findIndex((s) => !s.seen));
   const render = async () => {
     clearInterval(timer);
     const g = groups[gi];
     const s = g.stories[si];
     const mine = g.user.id === A.me();
-    app.innerHTML = `<div class="story-view"><div class="bars">${g.stories.map((_, i) => `<i><b style="width:${i < si ? 100 : 0}%"></b></i>`).join('')}</div>
-      <div class="shead">${avatar(g.user, 32)}${uname(g.user)}<span class="muted small">${ago(s.created_at)}</span><span style="flex:1"></span><button class="ibtn" id="sMore">${I.dots}</button><button class="ibtn" id="sX">${I.close}</button></div>
-      <div class="stage">${s.kind === 'video' ? `<video data-m="${esc(s.media)}" autoplay playsinline ${s.meta?.muted ? 'muted' : ''} ${vidAttrs(s.meta)}></video>${overlayHtml(s.meta)}` : `<img data-m="${esc(s.media)}">`}</div>
+    const close = s.meta?.audience === 'close';
+    app.innerHTML = `<div class="story-view ${close ? 'close' : ''}"><div class="bars">${g.stories.map((_, i) => `<i><b style="width:${i < si ? 100 : 0}%"></b></i>`).join('')}</div>
+      <div class="shead">${avatar(g.user, 32)}${uname(g.user)}${highlight ? `<span class="muted small">${esc(highlight.title)}</span>` : `<span class="muted small">${ago(s.created_at)}</span>`}${close ? `<span class="cf-badge">${ic('star', 12)} Yakın arkadaşlar</span>` : ''}<span style="flex:1"></span><button class="ibtn" id="sMore">${I.dots}</button><button class="ibtn" id="sX">${I.close}</button></div>
+      <div class="stage">${s.kind === 'video' ? `<video data-m="${esc(s.media)}" autoplay playsinline ${s.meta?.muted ? 'muted' : ''} ${vidAttrs(s.meta)}></video>${overlayHtml(s.meta)}` : `<img data-m="${esc(s.media)}">`}<div id="sInt"></div></div>
       <div class="tapL"></div><div class="tapR"></div>
-      <div class="sfoot">${mine ? `<button class="btn gray" id="sViews">${ic('eye')} Görenler</button>` : `<input id="sRep" placeholder="Yanıt gönder..."><button class="ibtn" id="sLike">${I.heart}</button><button class="ibtn" id="sSend">${I.send}</button>`}</div></div>`;
+      <div class="sfoot">${
+        mine
+          ? `<button class="btn gray" id="sViews">${ic('eye')} Görenler</button>${highlight ? '' : `<button class="btn gray" id="sHl">${ic('star')} Vitrine ekle</button>`}`
+          : `<div class="react-row" id="sReact">${Object.keys(REACT).map((k) => `<button data-r="${k}" title="${REACT_NAMES[k]}">${REACT[k]}</button>`).join('')}</div><div class="srep"><input id="sRep" placeholder="Yanıt gönder..."><button class="ibtn" id="sSend">${I.send}</button></div>`
+      }</div></div>`;
     hydrate(app);
-    A.markStorySeen(s);
+    if (!highlight) A.markStorySeen(s);
     const bar = $$('.bars b')[si];
     const v = $('video', app);
     dur = 5000;
@@ -948,53 +1448,141 @@ async function vStory(uid, _b, tok) {
     t0 = performance.now();
     let el = 0;
     timer = setInterval(() => {
+      if (stale(tok)) return clearInterval(timer);
       if (paused) return (t0 = performance.now() - el);
       el = performance.now() - t0;
       bar.style.width = Math.min(100, (el / dur) * 100) + '%';
       if (el >= dur) next();
     }, 50);
+    const hold = (on) => {
+      paused = on;
+      if (v) on ? v.pause() : v.play().catch(() => {});
+    };
+    const sheetHold = () => {
+      hold(true);
+      $('.sheet-bg')?.addEventListener('click', () => hold(false), { once: true });
+    };
+    // anket / soru
+    if (s.meta?.interactive) {
+      const drawInt = async () => {
+        const res = s.meta.interactive.type === 'poll' ? await S.pollResults(s) : null;
+        if (g.stories[si] !== s || !$('#sInt')) return;
+        $('#sInt').innerHTML = interactiveHtml(s, res);
+      };
+      drawInt();
+      $('#sInt').onclick = async (e) => {
+        e.stopPropagation();
+        const vb = e.target.closest('[data-vote]');
+        if (vb && !mine) {
+          try {
+            await S.vote(s, vb.dataset.vote);
+          } catch (er) {
+            return toast(er.message, true);
+          }
+          drawInt();
+        }
+        if (e.target.closest('[data-ask]')) {
+          hold(true);
+          promptSheet(s.meta.interactive.q, 'Cevabın...', async (t) => {
+            hold(false);
+            if (!t) return;
+            try {
+              await S.vote(s, t);
+              toast('Cevabın gönderildi');
+            } catch (er) {
+              toast(er.message, true);
+            }
+          });
+          $('.sheet-bg')?.addEventListener('click', () => hold(false), { once: true });
+        }
+      };
+    }
     $('#sX').onclick = () => {
       clearInterval(timer);
       history.length > 1 ? history.back() : (location.hash = '#/home');
     };
     $('.tapL').onclick = prevS;
     $('.tapR').onclick = next;
-    const hold = (on) => {
-      paused = on;
-      if (v) on ? v.pause() : v.play().catch(() => {});
-    };
     for (const z of [$('.tapL'), $('.tapR')]) {
       z.onpointerdown = () => hold(true);
       z.onpointerup = z.onpointerleave = () => hold(false);
     }
     $('#sMore').onclick = () => {
-      hold(true);
       const opts = [];
-      if (mine || A.isAdminP(meP)) opts.push({ icon: I.trash, label: 'Hikâyeyi sil', red: true, run: async () => (await A.deleteStory(s.id), toast('Silindi'), (location.hash = '#/home')) });
+      if (highlight && mine) opts.push({ icon: I.trash, label: 'Vitrini sil', red: true, run: async () => (await S.deleteHighlight(highlight.id), toast('Vitrin silindi'), history.back()) });
+      if (!highlight && (mine || A.isAdminP(meP))) opts.push({ icon: I.trash, label: 'Hikâyeyi sil', red: true, run: async () => (await A.deleteStory(s.id), toast('Silindi'), (location.hash = '#/home')) });
       if (!mine) opts.push({ icon: I.flag, label: 'Şikâyet et', red: true, run: () => reportFlow('story', s.id) });
       sheet(opts.length ? opts : [{ label: 'Kapat' }]);
-      $('.sheet-bg').addEventListener('click', () => hold(false), { once: true });
+      sheetHold();
     };
     if (mine) {
       $('#sViews').onclick = async () => {
         hold(true);
-        const vs = await A.storyViewers(s.id);
-        sheet(`<h3>Görenler (${vs.length})</h3>${vs.map((u) => `<a class="list-row" href="#/u/${esc(u.username)}">${avatar(u, 40)}<div class="grow">${uname(u)}</div></a>`).join('') || '<p class="inner muted">Henüz kimse görmedi.</p>'}`);
+        const [vs, ans] = await Promise.all([A.storyViewers(s.id), s.meta?.interactive ? S.storyAnswers(s.id) : []]);
+        const am = new Map(ans.map((a) => [a.user_id, a.choice]));
+        const it = s.meta?.interactive;
+        const label = (c) => (it?.type === 'poll' ? `Oy: ${esc(it[c] || c)}` : `"${esc(c)}"`);
+        sheet(`<h3>Görenler (${vs.length})</h3>${vs.map((u) => `<a class="list-row" href="#/u/${esc(u.username)}">${avatar(u, 40)}<div class="grow">${uname(u)}${am.has(u.id) ? `<small>${label(am.get(u.id))}</small>` : ''}</div></a>`).join('') || '<p class="inner muted">Henüz kimse görmedi.</p>'}`);
+        $('.sheet-bg')?.addEventListener('click', () => hold(false), { once: true });
       };
+      if ($('#sHl'))
+        $('#sHl').onclick = async () => {
+          hold(true);
+          const hs = await S.highlights(A.me());
+          sheet(
+            [
+              {
+                icon: I.plus,
+                label: 'Yeni vitrin',
+                run: () =>
+                  promptSheet('Vitrin adı', 'Örn. Tatil', async (t) => {
+                    if (!t) return;
+                    try {
+                      await S.createHighlight(t, [s]);
+                      toast('Vitrine eklendi');
+                    } catch (er) {
+                      toast(er.message, true);
+                    }
+                  }),
+              },
+              ...hs.map((h) => ({
+                icon: I.bookmark,
+                label: h.title,
+                run: async () => {
+                  if (h.story_ids.includes(s.id)) return toast('Zaten bu vitrinde');
+                  await A.db.update('highlights', h.id, { story_ids: [...h.story_ids, s.id] });
+                  toast('Vitrine eklendi');
+                },
+              })),
+            ]
+          );
+          $('.sheet-bg')?.addEventListener('click', () => hold(false), { once: true });
+        };
     } else {
       const inp = $('#sRep');
       inp.onfocus = () => hold(true);
       inp.onblur = () => hold(false);
       const sendRep = async (text) => {
         if (!text) return;
-        const c = await A.conversationWith(g.user.id);
-        await A.sendMessage(c, { text: `Hikâyene yanıt: ${text}` });
-        toast('Gönderildi');
-        inp.value = '';
+        try {
+          const c = await A.conversationWith(g.user.id);
+          await A.sendMessage(c, { text });
+          toast('Gönderildi');
+          inp.value = '';
+        } catch (er) {
+          toast(er.message, true);
+        }
       };
-      $('#sSend').onclick = () => sendRep(inp.value.trim());
-      inp.onkeydown = (e) => e.key === 'Enter' && sendRep(inp.value.trim());
-      $('#sLike').onclick = () => sendRep('Hikâyeni beğendi');
+      $('#sSend').onclick = () => sendRep(inp.value.trim() && `Hikâyene yanıt: ${inp.value.trim()}`);
+      inp.onkeydown = (e) => e.key === 'Enter' && sendRep(inp.value.trim() && `Hikâyene yanıt: ${inp.value.trim()}`);
+      $('#sReact').onclick = (e) => {
+        const b = e.target.closest('[data-r]');
+        if (!b) return;
+        b.classList.remove('pop');
+        void b.offsetWidth;
+        b.classList.add('pop');
+        sendRep(`Hikâyene tepki verdi ::tepki:${b.dataset.r}::`);
+      };
     }
   };
   const next = () => {
@@ -1005,7 +1593,7 @@ async function vStory(uid, _b, tok) {
       si = 0;
     } else {
       clearInterval(timer);
-      return (location.hash = '#/home');
+      return history.length > 1 ? history.back() : (location.hash = '#/home');
     }
     render();
   };
@@ -1018,97 +1606,237 @@ async function vStory(uid, _b, tok) {
     render();
   };
   render();
-  const myTok = tok;
-  const stop = setInterval(() => {
-    if (stale(myTok)) {
-      clearInterval(timer);
-      clearInterval(stop);
-    }
-  }, 300);
 }
 
 /* =========================================================
-   Mesajlar (DM)
+   Mesajlar (DM + gruplar + aramalar)
    ========================================================= */
+function lastText(m) {
+  if (!m) return '';
+  if (m.media_kind === 'audio') return 'Sesli mesaj';
+  if (m.text) return plainPreview(m.text);
+  return m.media_kind === 'gif' ? 'GIF gönderdi' : 'Fotoğraf/video gönderdi';
+}
+function groupAvatar(c, size = 52) {
+  return `<span class="gav" style="width:${size}px;height:${size}px">${ic('users', Math.round(size * 0.5))}</span>`;
+}
 async function vInbox(_a, _b, tok) {
-  app.innerHTML = `${topbar(esc(meP.username), true, `<button class="ibtn" id="newDm">${I.plus}</button>`)}<div class="search">${I.search}<input id="q" placeholder="Ara"></div><div class="section-t">Mesajlar</div><div id="convs"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
-  const cs = await A.conversations();
+  app.innerHTML = `${topbar(esc(meP.username), true, `<button class="ibtn" id="newGrp" title="Yeni grup">${I.users}</button><button class="ibtn" id="newDm" title="Yeni mesaj">${I.plus}</button>`)}<div class="search">${I.search}<input id="q" placeholder="Ara"></div>
+    <div class="feed-tabs" id="itabs"><button data-t="msg" class="on">Mesajlar</button><button data-t="calls">Aramalar</button></div><div id="convs"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
+  const [cs, gs] = await Promise.all([A.conversations(), S.myGroups()]);
   if (stale(tok)) return;
-  const draw = (q = '') => {
-    const l = cs.filter((c) => !q || c.other.username.includes(q) || (c.other.name || '').toLowerCase().includes(q));
+  for (const g of gs) g.last = (await A.db.list('messages', { eq: { conversation_id: g.id }, order: ['created_at', false], limit: 1 }).catch(() => []))[0] || null;
+  const all = [...cs, ...gs].sort((x, y) => ((x.last?.created_at || x.created_at) < (y.last?.created_at || y.created_at) ? 1 : -1));
+  let tab = 'msg';
+  const draw = async (q = '') => {
+    if (tab === 'calls') {
+      const calls = await Calls.recentCalls();
+      const pm = await A.profiles(calls.map((c) => (c.caller_id === A.me() ? c.callee_id : c.caller_id)));
+      if (tab !== 'calls') return;
+      const st = { ended: 'Görüşüldü', accepted: 'Görüşüldü', missed: 'Cevapsız', cancelled: 'Cevapsız', declined: 'Reddedildi', ringing: 'Çalıyor' };
+      $('#convs').innerHTML = calls.length
+        ? calls
+            .map((c) => {
+              const out = c.caller_id === A.me();
+              const u = pm.get(out ? c.callee_id : c.caller_id);
+              if (!u) return '';
+              const miss = !out && ['missed', 'cancelled'].includes(c.status);
+              const len = c.answered_at && c.ended_at ? Math.round((new Date(c.ended_at) - new Date(c.answered_at)) / 1000) : 0;
+              return `<div class="list-row">${avatar(u, 48)}<div class="grow">${uname(u)}<small class="${miss ? 'miss' : ''}">${out ? 'Giden' : 'Gelen'} · ${st[c.status] || c.status}${len ? ` · ${Math.floor(len / 60)}:${String(len % 60).padStart(2, '0')}` : ''} · ${ago(c.created_at)}</small></div><button class="ibtn" data-call="${u.id}">${Calls.CI.phone}</button></div>`;
+            })
+            .join('')
+        : `<div class="empty"><div class="ico">${Calls.CI.phone}</div><h3>Arama yok</h3><p>Bir sohbetin üstündeki telefon simgesiyle sesli arama yapabilirsin.</p></div>`;
+      hydrate($('#convs'));
+      return;
+    }
+    const l = all.filter((c) => !q || (c.is_group ? (c.title || '').toLowerCase().includes(q) : c.other.username.includes(q) || (c.other.name || '').toLowerCase().includes(q)));
     $('#convs').innerHTML = l.length
       ? l
-          .map(
-            (c) => `<a class="list-row" href="#/dm/${c.id}">${avatar(c.other, 52)}<div class="grow">${uname(c.other)}<small>${c.last ? (c.last.sender_id === A.me() ? 'Sen: ' : '') + esc(c.last.text || (c.last.media_kind === 'gif' ? 'GIF gönderdi' : 'Fotoğraf/video gönderdi')) + ' · ' + ago(c.last.created_at) : 'Sohbeti başlat'}</small></div></a>`
-          )
+          .map((c) => {
+            const head = c.is_group ? `${groupAvatar(c)}<div class="grow"><b>${esc(c.title || 'Grup')}</b>` : `${avatar(c.other, 52)}<div class="grow">${uname(c.other)}`;
+            return `<a class="list-row" href="#/dm/${c.id}">${head}<small>${c.last ? (c.last.sender_id === A.me() ? 'Sen: ' : '') + esc(lastText(c.last)) + ' · ' + ago(c.last.created_at) : c.is_group ? 'Grup oluşturuldu' : 'Sohbeti başlat'}</small></div></a>`;
+          })
           .join('')
-      : `<div class="empty"><div class="ico">${I.send}</div><h3>Mesaj yok</h3><p>Bir arkadaşına özelden yaz.</p></div>`;
+      : `<div class="empty"><div class="ico">${I.send}</div><h3>Mesaj yok</h3><p>Bir arkadaşına özelden yaz ya da grup kur.</p></div>`;
     hydrate($('#convs'));
   };
   draw();
   $('#q').oninput = (e) => draw(e.target.value.trim().toLowerCase());
+  $('#itabs').onclick = (e) => {
+    const b = e.target.closest('[data-t]');
+    if (!b) return;
+    tab = b.dataset.t;
+    $$('#itabs button').forEach((x) => x.classList.toggle('on', x === b));
+    draw($('#q').value.trim().toLowerCase());
+  };
+  $('#convs').addEventListener('click', (e) => {
+    const c = e.target.closest('[data-call]');
+    if (c) Calls.startCall(c.dataset.call);
+  });
   $('#newDm').onclick = () =>
     promptSheet('Yeni mesaj', 'Kullanıcı adı', async (u) => {
       const p = await A.byUsername(u.replace(/^@/, '').toLowerCase());
       if (!p) return toast('Kullanıcı bulunamadı', true);
       if (p.id === A.me()) return toast('Kendine mesaj atamazsın', true);
-      const c = await A.conversationWith(p.id);
-      location.hash = '#/dm/' + c.id;
+      try {
+        const c = await A.conversationWith(p.id);
+        location.hash = '#/dm/' + c.id;
+      } catch (er) {
+        toast(er.message, true);
+      }
     });
+  $('#newGrp').onclick = newGroupFlow;
+}
+async function newGroupFlow() {
+  const users = await pickUsers('Gruba kişi ekle', [], { max: 31 });
+  if (!users.length) return;
+  promptSheet('Grup adı', 'Örn. Kankalar', async (t) => {
+    try {
+      const c = await S.createGroup(t || users.map((u) => u.username).slice(0, 3).join(', '), users);
+      location.hash = '#/dm/' + c.id;
+    } catch (er) {
+      toast(er.message, true);
+    }
+  }, false, users.map((u) => u.username).slice(0, 3).join(', '));
+}
+
+/** Sesli mesaj oynatıcı. */
+function voiceHtml(url, mine) {
+  return `<div class="bub voice ${mine ? 'mine' : ''}"><button class="vplay" data-voice>${I.play}</button><span class="vbar"><i></i></span><span class="vtime">0:00</span><audio data-m="${esc(url)}" preload="metadata"></audio></div>`;
+}
+function bindVoice(root) {
+  root.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-voice]');
+    if (!b) return;
+    const box = b.closest('.voice');
+    const au = $('audio', box);
+    $$('audio', root).forEach((x) => x !== au && !x.paused && x.pause());
+    if (au.paused) au.play().catch(() => toast('Ses çalınamadı', true));
+    else au.pause();
+  });
+  root.addEventListener(
+    'play',
+    (e) => e.target.tagName === 'AUDIO' && ($('[data-voice]', e.target.parentElement).innerHTML = ic('pause', 18)),
+    true
+  );
+  root.addEventListener(
+    'pause',
+    (e) => e.target.tagName === 'AUDIO' && ($('[data-voice]', e.target.parentElement).innerHTML = I.play),
+    true
+  );
+  root.addEventListener(
+    'timeupdate',
+    (e) => {
+      const au = e.target;
+      if (au.tagName !== 'AUDIO') return;
+      const box = au.parentElement;
+      $('.vbar i', box).style.width = (au.duration ? (au.currentTime / au.duration) * 100 : 0) + '%';
+      const t = Math.floor(au.currentTime || 0);
+      $('.vtime', box).textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    },
+    true
+  );
+  root.addEventListener(
+    'loadedmetadata',
+    (e) => {
+      const au = e.target;
+      if (au.tagName !== 'AUDIO' || !isFinite(au.duration)) return;
+      const t = Math.round(au.duration);
+      $('.vtime', au.parentElement).textContent = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    },
+    true
+  );
 }
 
 async function vChat(convId, _b, tok) {
   const conv = await A.db.get('conversations', convId);
   if (stale(tok)) return;
   if (!conv) return renderMsg('Sohbet bulunamadı', '', true);
-  const other = await A.profile(conv.a === A.me() ? conv.b : conv.a);
-  app.innerHTML = `${topbar(`<a href="#/u/${esc(other.username)}" style="display:flex;align-items:center;gap:8px">${avatar(other, 30)}${uname(other)}</a>`, true, `<button class="ibtn" id="cMore">${I.dots}</button>`)}<div class="chat pad-composer" id="chat"></div>
-    <div class="composer" id="mcomp"><div class="preview hidden" id="prev"></div><div class="row"><button class="ibtn" id="mImg">${I.image}</button><button class="ibtn" id="mGif">${I.gif}</button><input type="text" id="mTxt" placeholder="Mesaj..." maxlength="2000"><button class="send" id="mSend">Gönder</button></div></div>`;
-  const att = attachments($('#mcomp'), () => {});
+  const group = !!conv.is_group;
+  const mem = await S.members(conv);
+  if (stale(tok)) return;
+  if (group && !mem.some((u) => u.id === A.me())) return renderMsg('Bu gruptan çıktın', 'Tekrar katılmak için bir üyenin seni eklemesi gerekir.', true);
+  const other = group ? null : mem.find((u) => u.id !== A.me()) || (await A.profile(conv.a === A.me() ? conv.b : conv.a));
+  const byId = new Map(mem.map((u) => [u.id, u]));
+  const head = group
+    ? `<a href="#/group/${conv.id}" style="display:flex;align-items:center;gap:8px">${groupAvatar(conv, 30)}<span><b>${esc(conv.title || 'Grup')}</b><small class="sub" id="cSub">${mem.length} üye</small></span></a>`
+    : `<a href="#/u/${esc(other.username)}" style="display:flex;align-items:center;gap:8px">${avatar(other, 30)}<span>${uname(other)}<small class="sub" id="cSub"></small></span></a>`;
+  app.innerHTML = `${topbar(head, true, `${group ? '' : `<button class="ibtn" id="cCall" title="Sesli ara">${Calls.CI.phone}</button>`}<button class="ibtn" id="cMore">${I.dots}</button>`)}<div class="chat pad-composer" id="chat"></div>
+    <div class="composer" id="mcomp"><div class="preview hidden" id="prev"></div><div class="row" id="mRow"><button class="ibtn" id="mImg">${I.image}</button><button class="ibtn" id="mGif">${I.gif}</button><input type="text" id="mTxt" placeholder="Mesaj..." maxlength="2000"><button class="ibtn" id="mMic" title="Basılı tut: sesli mesaj">${Calls.CI.mic}</button><button class="send hidden" id="mSend">Gönder</button></div>
+    <div class="rec hidden" id="mRec"><span class="rdot"></span><span id="recT">0:00</span><span class="grow muted small">Kaydediliyor... bırakınca gönderilir</span><button class="ibtn" id="recX">${I.trash}</button></div></div>`;
+  const att = attachments($('#mcomp'), () => toggleSend());
+  const toggleSend = () => {
+    const has = $('#mTxt').value.trim() || att.get();
+    $('#mSend').classList.toggle('hidden', !has);
+    $('#mMic').classList.toggle('hidden', !!has);
+  };
   let msgs = [];
   let lastKey = '';
+  let rd = [];
   const draw = () => {
     const box = $('#chat');
     if (!box) return;
-    const key = msgs.map((m) => m.id).join();
+    const lastMine = [...msgs].reverse().find((m) => m.sender_id === A.me());
+    const seenBy = lastMine ? rd.filter((r) => r.last_read_at && r.last_read_at >= lastMine.created_at) : [];
+    const typers = rd.filter((r) => r.typing_at && Date.now() - new Date(r.typing_at).getTime() < 6000);
+    const key = msgs.map((m) => m.id).join() + '|' + seenBy.length + '|' + typers.map((t) => t.user_id).join();
     if (key === lastKey) return;
+    const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 80;
     lastKey = key;
     let prevT = 0;
+    let prevS = '';
     box.innerHTML = msgs.length
       ? msgs
           .map((m) => {
             const t = new Date(m.created_at).getTime();
             const stamp = t - prevT > 30 * 60 * 1000 ? `<div class="stamp">${new Date(m.created_at).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>` : '';
-            prevT = t;
             const mine = m.sender_id === A.me();
+            const who = group && !mine && (prevS !== m.sender_id || stamp) ? `<div class="bub-who">${esc(byId.get(m.sender_id)?.username || 'eski üye')}</div>` : '';
+            prevT = t;
+            prevS = m.sender_id;
             const link = (m.text || '').match(/#\/p\/([\w-]+)/);
             return (
               stamp +
-              (m.media ? `<div class="bub media ${mine ? 'mine' : ''}" data-m-id="${m.id}">${mediaTag(m.media, m.media_kind === 'video' ? 'video' : 'photo', '', m.media_kind === 'video' ? 'controls' : '')}</div>` : '') +
-              (m.text ? `<div class="bub ${mine ? 'mine' : ''}" data-m-id="${m.id}">${link ? `<a href="#/p/${link[1]}" style="text-decoration:underline">${esc(m.text)}</a>` : linkify(m.text)}</div>` : '')
+              who +
+              (m.media && m.media_kind === 'audio' ? voiceHtml(m.media, mine).replace('class="bub', `data-m-id="${m.id}" class="bub`) : '') +
+              (m.media && m.media_kind !== 'audio' ? `<div class="bub media ${mine ? 'mine' : ''}" data-m-id="${m.id}">${mediaTag(m.media, m.media_kind === 'video' ? 'video' : 'photo', '', m.media_kind === 'video' ? 'controls' : '')}</div>` : '') +
+              (m.text ? `<div class="bub ${mine ? 'mine' : ''} ${/^[^:]*::tepki:[a-z]+::$/.test(m.text) ? 'reactmsg' : ''}" data-m-id="${m.id}">${link ? `<a href="#/p/${link[1]}" style="text-decoration:underline">${esc(m.text)}</a>` : richText(m.text)}</div>` : '')
             );
           })
-          .join('')
-      : `<div class="empty">${avatar(other, 80)}<h3>${esc(other.name || other.username)}</h3><p>@${esc(other.username)} ile sohbete başla</p></div>`;
+          .join('') +
+        (seenBy.length && lastMine === msgs[msgs.length - 1] ? `<div class="seen">${group ? `Görenler: ${seenBy.map((r) => esc(byId.get(r.user_id)?.username || '')).join(', ')}` : `Görüldü ${ago(seenBy[0].last_read_at)}`}</div>` : '') +
+        (typers.length ? `<div class="bub typing"><i></i><i></i><i></i></div>` : '')
+      : `<div class="empty">${group ? groupAvatar(conv, 80) : avatar(other, 80)}<h3>${esc(group ? conv.title : other.name || other.username)}</h3><p>${group ? `${mem.length} üye` : `@${esc(other.username)} ile sohbete başla`}</p></div>`;
+    if ($('#cSub')) $('#cSub').textContent = typers.length ? (group ? `${byId.get(typers[0].user_id)?.username || ''} yazıyor...` : 'yazıyor...') : group ? `${mem.length} üye` : '';
     hydrate(box);
-    window.scrollTo(0, document.body.scrollHeight);
+    if (atBottom || !prevLen) window.scrollTo(0, document.body.scrollHeight);
+    prevLen = msgs.length;
   };
+  let prevLen = 0;
+  bindVoice($('#chat'));
   const load = async () => {
     try {
-      msgs = await A.messages(conv.id);
+      [msgs, rd] = await Promise.all([A.messages(conv.id), S.reads(conv)]);
       draw();
+      if (!document.hidden) S.markRead(conv);
     } catch {
       /* ağ hatası: sonra tekrar */
     }
   };
   await load();
-  pollT = setInterval(load, 3000);
+  // canlı: yeni mesaj / yazıyor gelince hemen yenile; yedek olarak 4 sn'de bir
+  const unsubs = [A.db.subscribe('messages', `conversation_id=eq.${conv.id}`, load), A.db.subscribe('conversation_reads', `conversation_id=eq.${conv.id}`, load)];
+  pollT = setInterval(() => {
+    if (stale(tok)) return unsubs.forEach((u) => u());
+    load();
+  }, A.db.realtime ? 4000 : 2500);
   const send = async () => {
     const text = $('#mTxt').value.trim();
     const a = att.get();
     if (!text && !a) return;
     $('#mTxt').value = '';
     att.clear();
+    toggleSend();
     try {
       const m = await A.sendMessage(conv, { text, file: a?.file, gifUrl: a?.gifUrl });
       msgs.push(m);
@@ -1118,7 +1846,64 @@ async function vChat(convId, _b, tok) {
     }
   };
   $('#mSend').onclick = send;
+  $('#mTxt').oninput = () => (toggleSend(), $('#mTxt').value && S.typing(conv));
   $('#mTxt').onkeydown = (e) => e.key === 'Enter' && send();
+
+  // ---- sesli mesaj: basılı tut, bırakınca gönder ----
+  let rec = null;
+  const stopRec = async (sendIt) => {
+    if (!rec) return;
+    const r = rec;
+    rec = null;
+    clearInterval(r.t);
+    $('#mRec').classList.add('hidden');
+    $('#mRow').classList.remove('hidden');
+    r.cancel = !sendIt || Date.now() - r.start < 800;
+    if (r.mr.state !== 'inactive') r.mr.stop();
+  };
+  $('#mMic').onpointerdown = async (e) => {
+    e.preventDefault();
+    if (rec) return;
+    let stream;
+    try {
+      if (window.KankaAndroid?.ensureMic && !window.KankaAndroid.ensureMic()) return toast('Mikrofon izni gerekiyor. İzin verdikten sonra tekrar dene.', true);
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch {
+      return toast('Mikrofona erişilemedi', true);
+    }
+    const mime = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm'].find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || '';
+    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks = [];
+    rec = { mr, start: Date.now(), cancel: false };
+    const me = rec;
+    mr.ondataavailable = (ev) => ev.data.size && chunks.push(ev.data);
+    mr.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      if (me.cancel || !chunks.length) return;
+      const blob = new Blob(chunks, { type: (mr.mimeType || 'audio/webm').split(';')[0] });
+      try {
+        const url = await S.uploadVoice(blob);
+        const m = await A.sendMessage(conv, { text: '', voiceUrl: url });
+        msgs.push(m);
+        draw();
+      } catch (er) {
+        toast(er.message, true);
+      }
+    };
+    mr.start();
+    $('#mRow').classList.add('hidden');
+    $('#mRec').classList.remove('hidden');
+    rec.t = setInterval(() => {
+      const s = Math.floor((Date.now() - me.start) / 1000);
+      $('#recT').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      if (s >= 120) stopRec(true);
+    }, 250);
+  };
+  const up = (e) => rec && stopRec(!e.target.closest?.('#recX'));
+  window.addEventListener('pointerup', up);
+  $('#recX').onpointerdown = (e) => (e.stopPropagation(), stopRec(false));
+  const cleanup = setInterval(() => stale(tok) && (window.removeEventListener('pointerup', up), stopRec(false), clearInterval(cleanup)), 500);
+
   $('#chat').addEventListener('contextmenu', (e) => e.preventDefault());
   let pressT = null;
   $('#chat').addEventListener('pointerdown', (e) => {
@@ -1130,7 +1915,56 @@ async function vChat(convId, _b, tok) {
     }, 550);
   });
   $('#chat').addEventListener('pointerup', () => clearTimeout(pressT));
-  $('#cMore').onclick = () => sheet([{ icon: I.user, label: 'Profili gör', run: () => (location.hash = '#/u/' + other.username) }, { icon: I.flag, label: 'Kullanıcıyı şikâyet et', red: true, run: () => reportFlow('user', other.id) }]);
+  if ($('#cCall')) $('#cCall').onclick = () => Calls.startCall(other.id);
+  $('#cMore').onclick = () =>
+    sheet(
+      group
+        ? [
+            { icon: I.users, label: 'Grup bilgisi', run: () => (location.hash = '#/group/' + conv.id) },
+            { icon: I.close, label: 'Gruptan çık', red: true, run: () => confirmSheet('Gruptan çıkılsın mı?', async () => (await S.leaveGroup(conv), (location.hash = '#/dm'))) },
+          ]
+        : [
+            { icon: I.user, label: 'Profili gör', run: () => (location.hash = '#/u/' + other.username) },
+            { icon: Calls.CI.phone, label: 'Sesli ara', run: () => Calls.startCall(other.id) },
+            { icon: I.flag, label: 'Kullanıcıyı şikâyet et', red: true, run: () => reportFlow('user', other.id) },
+          ]
+    );
+}
+
+/* ---------- Grup bilgisi ---------- */
+async function vGroup(convId, _b, tok) {
+  const conv = await A.db.get('conversations', convId);
+  if (stale(tok)) return;
+  if (!conv?.is_group) return renderMsg('Grup bulunamadı', '', true);
+  const mem = await S.members(conv);
+  if (stale(tok)) return;
+  const owner = conv.owner_id === A.me();
+  app.innerHTML = `${topbar('Grup bilgisi', true)}<div class="prof" style="text-align:center">${groupAvatar(conv, 86)}<h2 style="margin:10px 0 2px">${esc(conv.title || 'Grup')}</h2><div class="muted small">${mem.length} üye</div>
+    <div class="prof-btns" style="margin-top:12px">${owner ? `<button class="btn gray" id="gRen">Adı değiştir</button>` : ''}<button class="btn gray" id="gAdd">Kişi ekle</button></div></div>
+    <div class="section-t">Üyeler</div><div id="gMem">${mem
+      .map((u) => `<div class="list-row">${avatar(u, 44)}<a class="grow" href="#/u/${esc(u.username)}">${uname(u)}<small>${u.id === conv.owner_id ? 'Grup kurucusu' : esc(u.name)}</small></a>${owner && u.id !== A.me() ? `<button class="btn sm gray" data-rm="${u.id}">Çıkar</button>` : ''}</div>`)
+      .join('')}</div>
+    <button class="list-row" id="gLeave" style="width:100%;text-align:left;color:#ff6b77">${I.close}<div class="grow">Gruptan çık</div></button>`;
+  hydrate(app);
+  if ($('#gRen'))
+    $('#gRen').onclick = () =>
+      promptSheet('Grup adı', '', async (t) => {
+        if (!t) return;
+        await S.renameGroup(conv, t);
+        route();
+      }, false, conv.title);
+  $('#gAdd').onclick = async () => {
+    const add = (await pickUsers('Gruba ekle', [], { max: 31 - mem.length })).filter((u) => !mem.some((m) => m.id === u.id));
+    if (!add.length) return;
+    await S.addMembers(conv, add);
+    toast('Eklendi');
+    route();
+  };
+  $('#gMem').onclick = (e) => {
+    const b = e.target.closest('[data-rm]');
+    if (b) confirmSheet('Gruptan çıkarılsın mı?', async () => (await S.removeMember(conv, b.dataset.rm), route()), 'Çıkar');
+  };
+  $('#gLeave').onclick = () => confirmSheet('Gruptan çıkılsın mı?', async () => (await S.leaveGroup(conv), (location.hash = '#/dm')), 'Çık');
 }
 
 /* =========================================================
@@ -1150,6 +1984,11 @@ async function vNotifs(_a, _b, tok) {
     follow_request: 'seni takip etmek istiyor.',
     follow_accept: 'takip isteğini kabul etti.',
     repost: 'gönderini repost etti.',
+    tag: 'seni bir gönderide etiketledi.',
+    mention: 'senden bahsetti:',
+    group_add: 'seni bir gruba ekledi:',
+    story_vote: 'hikâyene cevap verdi:',
+    missed_call: 'seni aradı (cevapsız arama).',
     verified: '',
     system: '',
   };
@@ -1157,7 +1996,7 @@ async function vNotifs(_a, _b, tok) {
     ? ns
         .map((n) => {
           const p = posts.get(n.post_id);
-          const href = n.post_id ? `#/p/${n.post_id}` : `#/u/${esc(n.actor.username)}`;
+          const href = n.post_id ? `#/p/${n.post_id}` : n.type === 'group_add' ? '#/dm' : `#/u/${esc(n.actor.username)}`;
           return `<a class="list-row" href="${href}" style="${n.read ? '' : 'background:#0a0f1a'}">${avatar(n.actor, 44)}<div class="grow" style="white-space:normal">${n.type === 'verified' || n.type === 'system' ? `${TICK} ${esc(n.text)}` : `<b>${esc(n.actor.username)}</b> ${txt[n.type] || ''} ${esc(n.text || '')}`} <span class="muted small">${ago(n.created_at)}</span></div>${p ? `<span style="width:44px;height:44px;flex:none;overflow:hidden;border-radius:4px">${mediaTag(p.media, p.kind)}</span>` : ''}</a>`;
         })
         .join('')
@@ -1176,15 +2015,18 @@ async function vSettings() {
     ${admin ? `<a class="list-row" href="#/admin">${I.shield}<div class="grow"><b>Yönetim paneli</b><small>Kullanıcılar, mavi tik, şikâyetler, içerik denetimi</small></div></a>` : ''}
     <a class="list-row" href="#/edit">${I.user}<div class="grow">Profili düzenle</div></a>
     <a class="list-row" href="#/privacy">${ic('lock', 24)}<div class="grow">Gizlilik<small>${meP.private ? 'Gizli hesap' : 'Herkese açık hesap'} · mesaj izni · engellenenler</small></div></a>
+    <a class="list-row" href="#/saved">${I.bookmark}<div class="grow">Kaydedilenler</div></a>
+    <a class="list-row" href="#/closefriends">${ic('star', 24)}<div class="grow">Yakın arkadaşlar<small>Hikâyeleri sadece seçtiğin kişilerle paylaş</small></div></a>
+    <a class="list-row" href="#/appearance">${I.sun}<div class="grow">Görünüm<small>${{ dark: 'Koyu tema', light: 'Açık tema', system: 'Sistemle aynı' }[S.theme()]}</small></div></a>
     <a class="list-row" href="#/verify">${TICK}<div class="grow">Mavi tik başvurusu<small>${meP.verified ? 'Hesabın zaten onaylı' : 'Yüz fotoğrafı ve yaş doğrulaması ile'}</small></div></a>
     <a class="list-row" href="#/notifs">${I.bell}<div class="grow">Bildirimler</div></a>
     <button class="list-row" id="pw" style="width:100%;text-align:left">${I.gear}<div class="grow">Şifre değiştir</div></button>
     <a class="list-row" href="#/server">${I.globe}<div class="grow">Sunucu<small>${local ? 'Yerel mod (sadece bu cihaz)' : 'Ortak sunucuya bağlı'}</small></div></a>
     ${window.KankaAndroid && (!window.KankaAndroid.selfUpdate || window.KankaAndroid.selfUpdate()) ? `<button class="list-row" id="upd" style="width:100%;text-align:left">${I.reply}<div class="grow">Güncellemeleri denetle<small>Yüklü sürüm: ${window.KankaAndroid.version()}</small></div></button>` : ''}
-    <a class="list-row" href="#/legal">${I.bookmark}<div class="grow">Sözleşmeler ve kurallar<small>Gizlilik, kullanım koşulları, topluluk kuralları</small></div></a>
+    <a class="list-row" href="#/legal">${ic('folder', 24)}<div class="grow">Sözleşmeler ve kurallar<small>Gizlilik, kullanım koşulları, topluluk kuralları</small></div></a>
     <button class="list-row" id="del" style="width:100%;text-align:left;color:#ff6b77">${I.trash}<div class="grow">Hesabımı sil</div></button>
     <button class="list-row" id="out" style="width:100%;text-align:left;color:#ff6b77">${I.close}<div class="grow">Çıkış yap</div></button>
-    <p class="small muted" style="padding:14px">Kanka 1.0 · @${esc(meP.username)}</p>`;
+    <p class="small muted" style="padding:14px">Kanka · @${esc(meP.username)}</p>`;
   $('#del').onclick = deleteAccountFlow;
   $('#pw').onclick = () =>
     promptSheet('Yeni şifre', 'En az 6 karakter', async (pw) => {
@@ -1193,7 +2035,13 @@ async function vSettings() {
       toast('Şifre değişti');
     });
   if ($('#upd')) $('#upd').onclick = () => window.KankaAndroid.checkUpdate();
-  $('#out').onclick = () => confirmSheet('Çıkış yapılsın mı?', () => A.db.signOut(), 'Çıkış yap');
+  $('#out').onclick = () =>
+    confirmSheet('Çıkış yapılsın mı?', async () => {
+      const tok = window.KankaAndroid?.pushToken?.();
+      if (tok && A.db.mode !== 'local') await A.db.rpc('unregister_device', { tok }).catch(() => {});
+      pushDone = false;
+      A.db.signOut();
+    }, 'Çıkış yap');
 }
 
 async function vEdit() {
@@ -1293,6 +2141,9 @@ async function vPrivacy(_a, _b, tok) {
     ${tg('pLikes', p.hide_likes, 'Beğeni sayılarını gizle', 'Başkaları gönderilerindeki beğeni sayısını göremez')}
     <div class="section-t">Sana kimler mesaj atabilir?</div>
     <div class="seg" style="margin:0 14px" id="pDm"><button data-v="everyone">Herkes</button><button data-v="following">Takip ettiklerim</button><button data-v="none">Kimse</button></div>
+    <div class="section-t">Seni kimler sesli arayabilir?</div>
+    <div class="seg" style="margin:0 14px" id="pCallP"><button data-v="everyone">Herkes</button><button data-v="following">Takip ettiklerim</button><button data-v="none">Kimse</button></div>
+    <p class="small muted" style="padding:6px 14px 0">Spam koruması: kısa sürede çok arama yapan ya da yeni açılmış hesaplar otomatik engellenir.</p>
     <div class="section-t">Bağlantılar</div>
     <a class="list-row" href="#/requests">${I.users}<div class="grow">Takip istekleri<small>${reqs.length ? reqs.length + ' bekleyen istek' : 'Bekleyen istek yok'}</small></div></a>
     <a class="list-row" href="#/blocked">${I.ban}<div class="grow">Engellenen hesaplar<small>${blocked.length ? blocked.length + ' hesap' : 'Kimseyi engellemedin'}</small></div></a>`;
@@ -1316,6 +2167,15 @@ async function vPrivacy(_a, _b, tok) {
     p.dm_policy = b.dataset.v;
     dmSeg();
     save({ dm_policy: b.dataset.v }, 'Mesaj izni kaydedildi');
+  };
+  const cSeg = () => $$('#pCallP button').forEach((b) => b.classList.toggle('on', b.dataset.v === (p.call_policy || 'everyone')));
+  cSeg();
+  $('#pCallP').onclick = (e) => {
+    const b = e.target.closest('[data-v]');
+    if (!b) return;
+    p.call_policy = b.dataset.v;
+    cSeg();
+    save({ call_policy: b.dataset.v }, 'Arama izni kaydedildi');
   };
 }
 async function vRequests(_a, _b, tok) {
@@ -1525,6 +2385,7 @@ document.addEventListener('visibilitychange', () => !document.hidden && checkWeb
 /* ---------- Android geri tuşu ---------- */
 window.__androidBack = () => {
   if (window.__editorBack) return window.__editorBack();
+  if (Calls.inCall()) return true;
   if (!$('#sheet').classList.contains('hidden')) {
     closeSheet();
     return true;

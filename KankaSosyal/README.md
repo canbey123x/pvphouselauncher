@@ -34,6 +34,42 @@ Mevcut sunucuya bu özellikler için **`supabase/guncelleme-2.sql`** bir kez ça
 ### Google Play
 `google-play/` klasöründe adım adım yükleme rehberi, mağaza metinleri, veri güvenliği formu ve içerik derecelendirme cevapları var. Sözleşmeler `legal/` klasöründe (uygulamada: Ayarlar > Sözleşmeler).
 
+## Sürüm 3: yeni özellikler ve kurulum
+
+Kaydedilenler, çoklu fotoğraf (10'a kadar), kişi etiketleme, hashtag sayfaları ve gündem, arama geçmişi ve
+"ortak arkadaş" önerileri, "İlgilenmiyorum", gönderi istatistikleri, yakın arkadaşlar hikâyesi, hikâye anketi /
+soru / tepki, profil vitrini, grup sohbeti, görüldü / yazıyor, sesli mesaj, açık tema, profil bağlantısı
+(`kankaa.com.tr/@kullanici`) ve **sesli arama** (spam korumalı).
+
+### 1. Veritabanı (zorunlu)
+Supabase > SQL Editor > `supabase/guncelleme-3.sql` dosyasının tamamını yapıştır > **Run**.
+
+### 2. Telefon bildirimleri ve kilit ekranında arama ekranı (uygulama kapalıyken)
+Uygulama açıkken arama ekranı bu adımlar olmadan da anında gelir. Uygulama kapalı / telefon kilitliyken
+gelmesi için Firebase gerekir (ücretsiz):
+
+1. https://console.firebase.google.com > **Proje ekle** (ad: Kanka, Analytics kapalı olabilir).
+2. Proje içinde **Android uygulaması ekle** > paket adı: `com.kanka.sosyal` > **google-services.json** indir.
+3. GitHub > depo > Settings > Secrets and variables > Actions > **New repository secret**:
+   ad `GOOGLE_SERVICES_JSON`, değer: indirdiğin dosyanın tüm içeriği.
+4. Firebase > Proje ayarları > **Hizmet hesapları** > **Yeni özel anahtar oluştur** (bir JSON iner).
+5. Supabase > **Edge Functions** > Deploy a new function > **Via Editor** > ad: `push` >
+   `supabase/functions/push/index.ts` içeriğini yapıştır > Deploy. Fonksiyonun ayarlarında **Verify JWT** kapalı olsun.
+6. Supabase > Edge Functions > **Secrets** > ad `FCM_SERVICE_ACCOUNT`, değer: 4. adımda inen JSON'un tamamı.
+7. Supabase > SQL Editor > `supabase/guncelleme-4-bildirim.sql` > **Run**.
+8. Yeni APK'yı kur, uygulamayı bir kez aç (ilk açılışta bildirim ve mikrofon izni sorulur).
+
+Not: Android 13 ve üstünde bildirim, sesli arama için de mikrofon izni sistem tarafından zorunludur;
+uygulama bunları sadece ilk açılışta bir kez sorar, sonra aramalar sorusuz ve anında gelir.
+
+### Sesli arama ve spam koruması
+- Kimlerin arayabileceği: Ayarlar > Gizlilik > "Seni kimler sesli arayabilir?" (herkes / takip ettiklerim / kimse).
+- Sunucu tarafında: 10 dakikada en fazla 6 arama, aynı kişiye saatte en fazla 3 cevapsız arama, günde 40 arama;
+  24 saatten yeni hesaplar sadece kendilerini takip edenleri arayabilir; engelli ve kısıtlı hesaplar arayamaz.
+- Gelen arama ekranında **Engelle ve spam olarak bildir** düğmesi var.
+- Arkadaşların farklı mobil ağlardaysa bazı aramalar bağlanmayabilir; o durumda `js/config.js` içindeki
+  `ICE_SERVERS` listesine bir TURN sunucusu eklenebilir.
+
 ## İki çalışma modu
 
 ### 1. Yerel mod (kurulum yok)

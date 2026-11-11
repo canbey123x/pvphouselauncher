@@ -80,6 +80,53 @@ export async function createSupabaseDb(url, key) {
     async removePrivate(path) {
       if (path) await sb.storage.from('verify').remove([path]);
     },
+    async upsert(table, row, onConflict) {
+      return chk(await sb.from(table).upsert(row, onConflict ? { onConflict } : undefined).select().maybeSingle());
+    },
+    /** Tablo değişikliklerini canlı dinle. Dönen fonksiyon dinlemeyi bırakır. */
+    subscribe(table, filter, cb) {
+      const ch = sb
+        .channel(`t:${table}:${filter || 'all'}:${Math.random().toString(36).slice(2, 7)}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table, ...(filter ? { filter } : {}) }, (p) => cb(p.new && Object.keys(p.new).length ? p.new : p.old, p.eventType))
+        .subscribe();
+      return () => sb.removeChannel(ch);
+    },
+    /** Anlık mesajlaşma kanalı (arama sinyalleri için). */
+    channel(name) {
+      const ch = sb.channel(name, { config: { broadcast: { self: false, ack: false } } });
+      const handlers = new Map();
+      let ready = null;
+      const join = () =>
+        (ready =
+          ready ||
+          new Promise((res) => {
+            for (const [ev, fn] of handlers) ch.on('broadcast', { event: ev }, ({ payload }) => fn(payload));
+            ch.subscribe((st) => st === 'SUBSCRIBED' && res());
+            setTimeout(res, 4000);
+          }));
+      return {
+        on(ev, fn) {
+          handlers.set(ev, fn);
+        },
+        join,
+        async send(ev, payload) {
+          await join();
+          return ch.send({ type: 'broadcast', event: ev, payload });
+        },
+        close() {
+          sb.removeChannel(ch);
+        },
+      };
+    },
+    realtime: true,
+    url,
+    key,
+    async accessToken() {
+      return (await sb.auth.getSession()).data.session?.access_token || '';
+    },
+    onToken(fn) {
+      sb.auth.onAuthStateChange((_e, s) => s?.access_token && fn(s.access_token));
+    },
     async rpc(name, args = {}) {
       return chk(await sb.rpc(name, args));
     },

@@ -6,3 +6,4 @@ local.properties
 *.apk
 *.jks
 *.keystore
+app/google-services.json

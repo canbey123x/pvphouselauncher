@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Kanka</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>
+  // kankaa.com.tr/@kullanici gibi bağlantıları uygulamanın profil sayfasına çevir
+  (function () {
+    var p = location.pathname;
+    var m = p.match(/^(.*?)\/@([A-Za-z0-9_.]{2,30})\/?$/);
+    var base = m ? m[1] : p.replace(/\/[^/]*$/, '');
+    location.replace(base + '/' + (m ? '#/u/' + m[2].toLowerCase() : '#/home'));
+  })();
+</script>
+</head>
+<body style="background:#000"></body>
+</html>

@@ -108,14 +108,21 @@ export function layersHtml(layers = []) {
       if (L.type === 'sticker') {
         return `<div class="ly ly-st" style="${tr};width:calc(${L.size || 0.28} * 100cqw)">${STICKERS[L.kind]?.svg || ''}</div>`;
       }
+      if (L.type === 'poll') {
+        return `<div class="ly ly-poll" style="${tr}"><div class="poll-q">${esc(L.q)}</div><div class="poll-opts"><span>${esc(L.a)}</span><span>${esc(L.b)}</span></div></div>`;
+      }
+      if (L.type === 'question') {
+        return `<div class="ly ly-poll ly-q" style="${tr}"><div class="poll-q">${esc(L.q)}</div><div class="q-input">Cevabını yaz...</div></div>`;
+      }
       return '';
     })
     .join('');
 }
 /** Gönderi/hikâye üstündeki katman kutusu (video için). */
 export function overlayHtml(meta) {
-  if (!meta || (!meta.layers?.length && !meta.drawing)) return '';
-  return `<div class="ovl">${meta.drawing ? `<img class="ovl-draw" data-m="${esc(meta.drawing)}" alt="">` : ''}${layersHtml(meta.layers)}</div>`;
+  const layers = (meta?.layers || []).filter((L) => L.type !== 'poll' && L.type !== 'question');
+  if (!meta || (!layers.length && !meta.drawing)) return '';
+  return `<div class="ovl">${meta.drawing ? `<img class="ovl-draw" data-m="${esc(meta.drawing)}" alt="">` : ''}${layersHtml(layers)}</div>`;
 }
 
 /* ---------- Katmanı tuvale çiz (fotoğrafı işlerken) ---------- */
@@ -138,6 +145,7 @@ const svgImg = (svg, w, h) =>
   });
 
 async function drawLayer(g, L, W, H) {
+  if (L.type === 'poll' || L.type === 'question') return; // etkileşimli: hikâyede ayrı çizilir
   g.save();
   g.translate(L.x * W, L.y * H);
   g.rotate(((L.rot || 0) * Math.PI) / 180);
@@ -464,6 +472,7 @@ export function openEditor(file, mode = 'post', prev = null) {
       const time = now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
       ov.innerHTML = `<div class="ed-sheet-card"><div class="ed-grab"></div>
         <div class="ed-tags"><button data-t="konum">${TAG_ICONS.konum}<b>KONUM</b></button><button data-t="saat">${TAG_ICONS.saat}<b>${time}</b></button><button data-t="mention">${TAG_ICONS.mention}<b>@ETİKET</b></button><button data-t="hashtag">${TAG_ICONS.hashtag}<b>#ETİKET</b></button></div>
+        ${mode === 'story' ? `<div class="ed-tags"><button data-t="poll">${TAG_ICONS.hashtag.replace('#', '?')}<b>ANKET</b></button><button data-t="question">${TAG_ICONS.mention.replace('@', '?')}<b>SORU</b></button></div>` : ''}
         <div class="ed-stk">${Object.entries(STICKERS).map(([k, v]) => `<button data-s="${k}" title="${v.label}">${v.svg}</button>`).join('')}</div></div>`;
       root.appendChild(ov);
       const close = () => ov.remove();
@@ -478,6 +487,23 @@ export function openEditor(file, mode = 'post', prev = null) {
         }
         if (t) {
           const kind = t.dataset.t;
+          if (kind === 'poll' || kind === 'question') {
+            close();
+            st.layers = st.layers.filter((L) => L.type !== 'poll' && L.type !== 'question');
+            askText(kind === 'poll' ? 'Anket sorusu (ör. Bu akşam ne yapalım?)' : 'Soru (ör. Bana bir şey sor)', (q) => {
+              if (kind === 'question') {
+                st.layers.push({ type: 'question', q: q.trim().slice(0, 60), x: 0.5, y: 0.62, rot: 0, scale: 1 });
+                return renderLayers();
+              }
+              askText('1. seçenek (ör. Sinema)', (a) =>
+                askText('2. seçenek (ör. Kahve)', (b) => {
+                  st.layers.push({ type: 'poll', q: q.trim().slice(0, 60), a: a.trim().slice(0, 24), b: b.trim().slice(0, 24), x: 0.5, y: 0.62, rot: 0, scale: 1 });
+                  renderLayers();
+                })
+              );
+            });
+            return;
+          }
           if (kind === 'saat') {
             st.layers.push({ type: 'tag', kind, text: time, size: 0.05, x: 0.5, y: 0.3, rot: 0, scale: 1 });
             close();
@@ -722,6 +748,8 @@ export function openEditor(file, mode = 'post', prev = null) {
       btn.disabled = true;
       btn.textContent = 'Hazırlanıyor...';
       const state = JSON.parse(JSON.stringify(st));
+      const inter = st.layers.find((L) => L.type === 'poll' || L.type === 'question');
+      const interactive = inter ? { ...inter } : null;
       if (!isVideo) {
         const OW = 1080;
         const OH = Math.round(OW / ar());
@@ -739,7 +767,7 @@ export function openEditor(file, mode = 'post', prev = null) {
         }
         for (const L of st.layers) await drawLayer(g, L, OW, OH);
         const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
-        cleanup({ blob, kind: 'photo', meta: { aspect: st.aspect }, state, preview: URL.createObjectURL(blob) });
+        cleanup({ blob, kind: 'photo', meta: { aspect: st.aspect, ...(interactive ? { interactive } : {}) }, state, preview: URL.createObjectURL(blob) });
         return;
       }
       let drawingBlob = null;
@@ -750,7 +778,7 @@ export function openEditor(file, mode = 'post', prev = null) {
         redrawStrokes(d);
         drawingBlob = await new Promise((r) => d.toBlob(r, 'image/png'));
       }
-      const meta = { aspect: st.aspect, filter: filterCss(st.filter, st.adj), vig: st.adj.v || 0, layers: st.layers, muted: st.muted };
+      const meta = { aspect: st.aspect, filter: filterCss(st.filter, st.adj), vig: st.adj.v || 0, layers: st.layers.filter((L) => L !== inter), muted: st.muted, ...(interactive ? { interactive } : {}) };
       cleanup({ blob: file, kind: 'video', meta, drawingBlob, state, preview: src });
     }
 

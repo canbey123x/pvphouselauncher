@@ -6,6 +6,12 @@
         <item name="android:navigationBarColor">@color/bg</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
+    <style name="CallTheme" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@color/call_bg</item>
+        <item name="android:statusBarColor">@color/call_bg</item>
+        <item name="android:navigationBarColor">@color/call_bg</item>
+    </style>
+    <color name="call_bg">#FF120A26</color>
     <color name="bg">#000000</color>
     <color name="icon_bg">#000000</color>
 </resources>

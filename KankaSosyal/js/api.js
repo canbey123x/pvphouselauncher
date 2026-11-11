@@ -5,6 +5,7 @@
 // =========================================================
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { createLocalDb } from './db-local.js';
+import { interestPenalty } from './social.js';
 
 const SERVER_KEY = 'kanka.server';
 export const STORY_MS = 24 * 3600 * 1000;
@@ -94,14 +95,14 @@ export function banState(p) {
     restrictUntil: p?.restricted_until || null,
   };
 }
-async function assertActive() {
+export async function assertActive() {
   const p = await profile(me(), true);
   const b = banState(p);
   if (b.banned) throw new Error('Hesabın yasaklandı.');
   if (b.restricted) throw new Error('Hesabın kısıtlandı: şu an paylaşım, yorum, beğeni, takip ve mesaj yapamazsın.');
 }
 /** Sunucunun güvenlik kuralı reddederse anlaşılır mesaj ver. */
-function friendly(e, fallback) {
+export function friendly(e, fallback) {
   const m = e?.message || String(e);
   if (/row-level security|violates|permission denied|42501/i.test(m)) return new Error(fallback);
   return e instanceof Error ? e : new Error(m);
@@ -330,7 +331,7 @@ function score(p, v, aff) {
   const fresh = Math.exp(-ageH / 30);
   const seenF = seen().has(p.id) ? 0.35 : 1;
   const bonus = (p.author?.verified ? 0.1 : 0) + (p.kind === 'video' ? 0.08 : 0) + (p.reposted_by ? 0.15 : 0);
-  return (0.8 + eng * 0.6 + near * 0.7 + rel * 1.2 + bonus) * (0.2 + fresh) * seenF * (0.95 + Math.random() * 0.1);
+  return (0.8 + eng * 0.6 + near * 0.7 + rel * 1.2 + bonus) * (0.2 + fresh) * seenF * interestPenalty(p) * (0.95 + Math.random() * 0.1);
 }
 function diversify(list) {
   const out = [];
@@ -345,6 +346,7 @@ function diversify(list) {
 }
 async function rank(items) {
   const [v, aff] = await Promise.all([viewer(), affinity()]);
+  items = items.filter((p) => interestPenalty(p) > 0 || p.user_id === me());
   items.forEach((p) => (p._score = score(p, v, aff)));
   items.sort((a, b) => b._score - a._score);
   return diversify(items);
@@ -401,7 +403,7 @@ export async function getPost(id) {
   return p ? (await decorate([p]))[0] : null;
 }
 
-async function notify(userId, type, extra = {}) {
+export async function notify(userId, type, extra = {}) {
   if (!userId || userId === me()) return;
   try {
     await db.insert('notifications', { user_id: userId, actor_id: me(), type, read: false, post_id: null, text: '', ...extra });
@@ -576,8 +578,11 @@ export async function storyGroups() {
   const fol = new Set([me(), ...(await following())]);
   const pm = await profiles(st.map((s) => s.user_id));
   const v = await viewer();
+  // yakın arkadaş hikâyeleri: sunucuda kural süzer, yerel modda burada süz
+  const cfOwners = db.mode === 'local' ? new Set((await db.list('close_friends', { eq: { friend_id: me() } }).catch(() => [])).map((x) => x.owner_id)) : null;
   const groups = new Map();
   for (const s of st) {
+    if (cfOwners && s.meta?.audience === 'close' && s.user_id !== me() && !cfOwners.has(s.user_id)) continue;
     const u = pm.get(s.user_id);
     if (!u || banState(u).banned || !canSee(u, v)) continue;
     if (!fol.has(s.user_id) && fol.size > 1) continue;
@@ -613,7 +618,7 @@ export const deleteStory = async (id) => {
 export async function conversations() {
   const uid = me();
   const [a, b] = await Promise.all([db.list('conversations', { eq: { a: uid } }), db.list('conversations', { eq: { b: uid } })]);
-  const all = [...a, ...b];
+  const all = [...a, ...b].filter((c, i, arr) => !c.is_group && c.a !== c.b && arr.findIndex((x) => x.id === c.id) === i);
   const pm = await profiles(all.map((c) => (c.a === uid ? c.b : c.a)));
   for (const c of all) {
     c.other = pm.get(c.a === uid ? c.b : c.a);
@@ -643,7 +648,7 @@ export async function messages(convId, since) {
   if (since) q.gte = { created_at: since };
   return db.list('messages', q);
 }
-export async function sendMessage(conv, { text, file, gifUrl }) {
+export async function sendMessage(conv, { text, file, gifUrl, voiceUrl }) {
   await assertActive();
   let media = '';
   let media_kind = '';
@@ -654,6 +659,9 @@ export async function sendMessage(conv, { text, file, gifUrl }) {
   } else if (gifUrl) {
     media = gifUrl;
     media_kind = 'gif';
+  } else if (voiceUrl) {
+    media = voiceUrl;
+    media_kind = 'audio';
   }
   let msg;
   try {

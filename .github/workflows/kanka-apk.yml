@@ -59,6 +59,17 @@ jobs:
             echo "::warning::KANKA_KEYSTORE_B64 / KANKA_KEYSTORE_PASSWORD ayarlı değil; geçici anahtarla imzalanıyor (uygulama içi güncelleme çalışmaz)."
           fi
 
+      - name: Firebase ayarı (telefon bildirimleri)
+        env:
+          GS_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GS_JSON" ]; then
+            printf '%s' "$GS_JSON" > app/google-services.json
+            echo "Firebase bildirimleri açık."
+          else
+            echo "::warning::GOOGLE_SERVICES_JSON ayarlı değil; uygulama kapalıyken bildirim ve arama ekranı gelmez."
+          fi
+
       - name: APK derle
         run: gradle assembleGithubRelease bundlePlayRelease --no-daemon --stacktrace
 

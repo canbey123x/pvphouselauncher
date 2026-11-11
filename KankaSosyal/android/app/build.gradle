@@ -2,6 +2,11 @@ plugins {
     id 'com.android.application'
 }
 
+// Telefon bildirimleri (Firebase). google-services.json yoksa (ör. GitHub'da gizli ayar girilmediyse)
+// uygulama yine derlenir; sadece uygulama kapalıyken bildirim/arama ekranı gelmez.
+def hasFirebase = file('google-services.json').exists()
+if (hasFirebase) apply plugin: 'com.google.gms.google-services'
+
 // Uygulamanın web kök klasörü (KankaSosyal/) — APK içine assets/www olarak kopyalanır.
 def webRoot = file('../..')
 def webOut = layout.buildDirectory.dir('generated/webassets')
@@ -16,6 +21,7 @@ android {
         targetSdk 35
         versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int)
         versionName '1.0.' + (System.getenv('GITHUB_RUN_NUMBER') ?: '0')
+        buildConfigField 'boolean', 'HAS_FIREBASE', hasFirebase ? 'true' : 'false'
     }
 
     // Sabit imza anahtarı: her sürüm aynı anahtarla imzalanır, böylece uygulama içinden
@@ -87,4 +93,6 @@ preBuild.dependsOn 'copyWebAssets'
 
 dependencies {
     implementation 'androidx.webkit:webkit:1.12.1'
+    implementation platform('com.google.firebase:firebase-bom:33.5.1')
+    implementation 'com.google.firebase:firebase-messaging'
 }
