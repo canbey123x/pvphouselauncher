@@ -83,7 +83,7 @@ public class IncomingCallActivity extends Activity {
         nm.setPadding(0, dp(22), 0, 0);
         col.addView(nm);
         if (!user.isEmpty()) col.addView(text("@" + user, 15, false));
-        TextView st = text("Kanka sesli arama...", 16, false);
+        TextView st = text(str(in, "group_call_id").isEmpty() ? ("video".equals(str(in, "kind")) ? "Kanka görüntülü arama..." : "Kanka sesli arama...") : "Grup araması...", 16, false);
         st.setPadding(0, dp(10), 0, 0);
         col.addView(st);
 
@@ -116,7 +116,9 @@ public class IncomingCallActivity extends Activity {
         Push.cancelCall(this);
         JSONObject o = new JSONObject();
         try {
-            o.put("call_id", callId);
+            String gid = str(getIntent(), "group_call_id");
+            if (!gid.isEmpty()) o.put("group_call_id", gid);
+            else o.put("call_id", callId);
             o.put("action", "answer");
         } catch (Exception ignored) {
             // olmaz

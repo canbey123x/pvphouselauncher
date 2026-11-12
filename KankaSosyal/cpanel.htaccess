@@ -6,6 +6,7 @@ RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
 # kankaa.com.tr/@kullanici -> profil sayfası
 RewriteRule ^@([A-Za-z0-9_.]{2,30})/?$ /#/u/$1 [NE,L,R=302]
+RewriteRule ^davet/([A-Za-z0-9_.]{2,30})/?$ /#/signup/$1 [NE,L,R=302]
 ErrorDocument 404 /404.html
 
 # Doğru dosya türleri

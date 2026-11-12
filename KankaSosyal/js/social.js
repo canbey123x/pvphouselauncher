@@ -309,3 +309,121 @@ export function setTheme(t) {
   applyTheme(t);
 }
 export const theme = () => ls.get('kanka.theme', 'dark');
+
+/* ---------- Kanallar ---------- */
+export async function createChannel(title, description = '') {
+  await assertActive();
+  let c;
+  try {
+    c = await db.insert('conversations', { a: me(), b: me(), is_group: true, is_channel: true, title: title.slice(0, 40), description: description.slice(0, 160), owner_id: me(), last_at: new Date().toISOString() });
+  } catch (e) {
+    throw friendly(e, 'Kanal oluşturulamadı. Sunucu güncellemesi (guncelleme-6.sql) yapılmış mı?');
+  }
+  await db.insert('conversation_members', { conversation_id: c.id, user_id: me() });
+  return c;
+}
+export async function joinChannel(conv) {
+  await assertActive();
+  await db.insert('conversation_members', { conversation_id: conv.id, user_id: me() });
+}
+/** Herkese açık kanallar (en kalabalıklar önce). */
+export async function publicChannels(q = '') {
+  const cs = (await db.list('conversations', { eq: { is_channel: true }, order: ['last_at', false], limit: 60 }).catch(() => [])).filter((c) => !q || (c.title || '').toLowerCase().includes(q));
+  if (!cs.length) return [];
+  const m = await db.list('conversation_members', { in: ['conversation_id', cs.map((c) => c.id)] }).catch(() => []);
+  cs.forEach((c) => (c.members = m.filter((x) => x.conversation_id === c.id).length));
+  return cs.sort((a, b) => b.members - a.members);
+}
+
+/* ---------- Sohbet ayarları (tema, kaybolan mesajlar, ad) ---------- */
+export async function setConvSetting(conv, patch) {
+  const r = await db.update('conversations', conv.id, patch);
+  if (!r) throw new Error('Kaydedilemedi. Sunucu güncellemesi (guncelleme-6.sql) yapılmış mı?');
+  Object.assign(conv, patch);
+  return r;
+}
+
+/* ---------- Mesaj tepkileri ---------- */
+export async function reactions(ids) {
+  if (!ids.length) return [];
+  return db.list('message_reactions', { in: ['message_id', ids.slice(-300)] }).catch(() => []);
+}
+export async function react(m, emoji) {
+  const ex = (await db.list('message_reactions', { eq: { message_id: m.id, user_id: me() } }).catch(() => []))[0];
+  if (ex) await db.remove('message_reactions', { message_id: m.id, user_id: me() });
+  if (ex && ex.emoji === emoji) return null; // aynı tepkiye tekrar: kaldır
+  try {
+    return await db.insert('message_reactions', { message_id: m.id, user_id: me(), emoji });
+  } catch (e) {
+    throw friendly(e, 'Tepki verilemedi. Sunucu güncellemesi (guncelleme-6.sql) yapılmış mı?');
+  }
+}
+/** Tek seferlik fotoğraf açıldı: sunucu medyayı siler. */
+export async function markOpened(m) {
+  if (m.sender_id === me() || m.opened_at) return;
+  await db.update('messages', m.id, { opened_at: new Date().toISOString() });
+  if (db.mode === 'local') await db.update('messages', m.id, { media: '' });
+}
+
+/* ---------- Anket gönderisi ---------- */
+export async function votePost(post, choice) {
+  await assertActive();
+  try {
+    await db.insert('post_votes', { post_id: post.id, user_id: me(), choice });
+  } catch (e) {
+    throw friendly(e, 'Zaten oy verdin ya da sunucu güncellemesi (guncelleme-6.sql) eksik.');
+  }
+}
+export async function pollPostResults(pid) {
+  if (db.mode === 'local') {
+    const v = await db.list('post_votes', { eq: { post_id: pid } });
+    const counts = {};
+    v.forEach((x) => (counts[x.choice] = (counts[x.choice] || 0) + 1));
+    const mine = v.find((x) => x.user_id === me());
+    return { counts, mine: mine ? mine.choice : null };
+  }
+  return (await db.rpc('post_poll_results', { pid }).catch(() => null)) || { counts: {}, mine: null };
+}
+
+/* ---------- Yakındakiler ---------- */
+const round = (x) => Math.round(x * 100) / 100; // ~1 km
+export async function myLocation() {
+  return (await db.list('user_locations', { eq: { user_id: me() } }).catch(() => []))[0] || null;
+}
+export function shareLocation() {
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('Bu cihaz konum vermiyor'));
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const row = { user_id: me(), lat: round(pos.coords.latitude), lng: round(pos.coords.longitude), updated_at: new Date().toISOString() };
+          await db.upsert('user_locations', row, 'user_id');
+          res(row);
+        } catch (e) {
+          rej(friendly(e, 'Konum kaydedilemedi. Sunucu güncellemesi (guncelleme-6.sql) yapılmış mı?'));
+        }
+      },
+      () => rej(new Error('Konum alınamadı. Konum iznini ve telefonun konum ayarını aç.')),
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 }
+    );
+  });
+}
+export const stopLocation = () => db.remove('user_locations', { user_id: me() });
+export async function nearby(mine) {
+  const since = Date.now() - 14 * 86400000;
+  const rows = (await db.list('user_locations', { limit: 500 }).catch(() => [])).filter((r) => r.user_id !== me() && new Date(r.updated_at).getTime() > since);
+  const R = 6371;
+  const rad = (d) => (d * Math.PI) / 180;
+  const dist = (a, b) => {
+    const dLat = rad(b.lat - a.lat);
+    const dLng = rad(b.lng - a.lng);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  };
+  const pm = await profiles(rows.map((r) => r.user_id));
+  return rows
+    .map((r) => ({ user: pm.get(r.user_id), km: dist(mine, r), at: r.updated_at }))
+    .filter((x) => x.user && !x.user.banned && x.km < 300)
+    .sort((a, b) => a.km - b.km)
+    .slice(0, 100);
+}

@@ -124,6 +124,38 @@ export async function createLocalDb() {
           shares: 0,
         };
       }
+      if (name === 'touch_seen') {
+        const day = new Date().toISOString().slice(0, 10);
+        const uid = api.userId();
+        if (uid && !T('activity_days').some((r) => r.user_id === uid && r.day === day)) {
+          T('activity_days').push({ id: day + uid, user_id: uid, day });
+          persist();
+        }
+        return null;
+      }
+      if (name === 'admin_daily_stats') {
+        const n = args.days || 14;
+        const dayOf = (iso) => (iso || '').slice(0, 10);
+        const days = [];
+        for (let i = n - 1; i >= 0; i--) {
+          const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+          days.push({
+            day: d,
+            active: T('activity_days').filter((r) => r.day === d).length,
+            signups: T('profiles').filter((r) => dayOf(r.created_at) === d).length,
+            posts: T('posts').filter((r) => dayOf(r.created_at) === d).length,
+            messages: T('messages').filter((r) => dayOf(r.created_at) === d).length,
+          });
+        }
+        const week = Date.now() - 7 * 86400000;
+        const by = {};
+        T('posts').filter((p) => new Date(p.created_at).getTime() > week).forEach((p) => (by[p.user_id] = (by[p.user_id] || 0) + 1));
+        return {
+          days,
+          top: Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([user_id, n]) => ({ user_id, n })),
+          totals: { users: T('profiles').length, active7: new Set(T('activity_days').filter((r) => new Date(r.day).getTime() > week).map((r) => r.user_id)).size, posts: T('posts').length, messages: T('messages').length },
+        };
+      }
       return null;
     },
     async upsert(table, row, onConflict) {

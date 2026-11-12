@@ -40,15 +40,45 @@ function dash(box, ctx, st) {
     ${c(st.stories, 'Aktif hikâye', false, '#/admin/stories')}${c(st.verified, 'Mavi tikli')}
     ${c(st.reports, 'Açık şikâyet', st.reports > 0, '#/admin/reports')}${c(st.verify, 'Mavi tik başvurusu', st.verify > 0, '#/admin/verify')}
     ${c(st.banned, 'Yasaklı hesap')}${c(st.restricted ?? 0, 'Kısıtlı hesap')}${c(st.admins, 'Yönetici / kurucu')}</div>
+    <div class="section-t">Son 14 gün</div><div id="dStats"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>
     <div class="section-t">Hızlı işlemler</div>
     <div class="create" style="padding-top:0"><button class="btn block" id="bc">${ic('bell')} Herkese bildirim gönder</button><a class="btn block gray" href="#/admin/ann">${ic('megaphone')} Ana sayfa duyurusu yayınla</a>
     <p class="small muted">Mod: ${A.db.mode === 'local' ? 'Yerel (bu cihaz)' : 'Supabase sunucusu'}</p></div>`;
+  dailyStats($('#dStats', box));
   $('#bc', box).onclick = () =>
     promptSheet('Toplu bildirim', 'Mesaj (tüm kullanıcılara gider)', async (t) => {
       if (!t) return;
       await A.broadcast(t);
       toast('Bildirim gönderildi');
     }, true);
+}
+
+/** Günlük grafikler: aktif kullanıcı, yeni kayıt, gönderi, mesaj. */
+async function dailyStats(el) {
+  let r = null;
+  if (A.db.mode === 'local') r = await A.db.rpc('admin_daily_stats', { days: 14 });
+  else r = await A.db.rpc('admin_daily_stats', { days: 14 }).catch(() => null);
+  if (!r || !r.days) {
+    el.innerHTML = `<p class="inner small muted">Grafikler için sunucu güncellemesi (guncelleme-6.sql) gerekiyor.</p>`;
+    return;
+  }
+  const chart = (key, title, color) => {
+    const vals = r.days.map((d) => +d[key] || 0);
+    const max = Math.max(1, ...vals);
+    const w = 100 / vals.length;
+    const sum = vals.reduce((a, b) => a + b, 0);
+    const bars = vals.map((v, i) => `<rect x="${i * w + w * 0.15}" y="${40 - (v / max) * 36}" width="${w * 0.7}" height="${Math.max(0.6, (v / max) * 36)}" rx="0.8" fill="${color}"><title>${new Date(r.days[i].day).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}: ${v}</title></rect>`).join('');
+    return `<div class="chart-card"><div class="chart-h"><span>${title}</span><b>${vals[vals.length - 1]}</b><small>bugün · 14 günde ${sum}</small></div>
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" class="chart">${bars}</svg>
+      <div class="chart-x"><span>${new Date(r.days[0].day).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}</span><span>Bugün</span></div></div>`;
+  };
+  const top = r.top || [];
+  const pm = await A.profiles(top.map((t) => t.user_id));
+  const t = r.totals || {};
+  el.innerHTML = `<div class="cards"><div class="card"><b>${t.active7 ?? 0}</b><span>Son 7 gün aktif kullanıcı</span></div><div class="card"><b>${t.messages ?? 0}</b><span>Toplam mesaj</span></div></div>
+    <div class="charts">${chart('active', 'Günlük aktif kullanıcı', '#4fb4ff')}${chart('signups', 'Yeni kayıt', '#2ecc71')}${chart('posts', 'Gönderi', '#ee2a7b')}${chart('messages', 'Mesaj', '#b98aff')}</div>
+    ${top.length ? `<div class="section-t">Bu hafta en çok paylaşanlar</div>${top.map((x, i) => `<a class="list-row" href="#/u/${esc(pm.get(x.user_id)?.username || '')}"><b style="width:18px">${i + 1}</b>${avatar(pm.get(x.user_id), 36)}<div class="grow">${uname(pm.get(x.user_id))}</div><b>${x.n}</b></a>`).join('')}` : ''}`;
+  hydrate(el);
 }
 
 const roleChip = (u) => (u.role === 'owner' ? '<span class="role-chip">KURUCU</span>' : u.role === 'admin' ? '<span class="role-chip">YÖNETİCİ</span>' : '');

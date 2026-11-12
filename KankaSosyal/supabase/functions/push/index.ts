@@ -126,13 +126,37 @@ Deno.serve(async (req) => {
       if (type === 'INSERT' && call.status === 'ringing' && fresh(call.created_at, 40_000)) {
         const from = await one('profiles', call.caller_id, 'username,name,avatar');
         // kısa ömürlü: 40 sn içinde ulaşmazsa hiç gösterme
-        const sent = await send([call.callee_id], { type: 'call', call_id: call.id, username: from?.username || '', name: from?.name || from?.username || 'Kanka', avatar: from?.avatar || '', created_at: call.created_at }, '40s');
+        const sent = await send([call.callee_id], { type: 'call', call_id: call.id, kind: call.kind || 'audio', username: from?.username || '', name: from?.name || from?.username || 'Kanka', avatar: from?.avatar || '', created_at: call.created_at }, '40s');
         return Response.json({ sent });
       }
       if (type === 'UPDATE' && call.status !== 'ringing') {
         const sent = await send([call.callee_id], { type: 'call_end', call_id: call.id, status: call.status }, '60s');
         return Response.json({ sent });
       }
+    }
+    // grup araması: gruptaki herkese (başlatan hariç) çalan bildirim
+    if (table === 'group_calls' && type === 'INSERT') {
+      const gc = await one('group_calls', record.id);
+      if (!gc || !fresh(gc.created_at, 40_000)) return new Response('eski');
+      const c = await one('conversations', gc.conversation_id);
+      const to = (await db(`conversation_members?conversation_id=eq.${gc.conversation_id}&select=user_id`)).map((x: { user_id: string }) => x.user_id);
+      const from = await one('profiles', gc.started_by, 'username');
+      const sent = await send(
+        to.filter((u: string) => u !== gc.started_by),
+        { type: 'group_call', group_call_id: gc.id, conversation_id: gc.conversation_id, kind: gc.kind, name: c?.title || 'Grup', username: from?.username || '', created_at: gc.created_at },
+        '40s'
+      );
+      return Response.json({ sent });
+    }
+
+    // canlı yayın: takipçilere
+    if (table === 'lives' && type === 'INSERT') {
+      const lv = await one('lives', record.id);
+      if (!lv || !fresh(lv.created_at) || lv.ended_at) return new Response('eski');
+      const from = await one('profiles', lv.user_id, 'username');
+      const fol = (await db(`follows?following_id=eq.${lv.user_id}&select=follower_id`)).map((x: { follower_id: string }) => x.follower_id);
+      const sent = await send(fol, { type: 'live', live_id: lv.id, title: 'Kanka', body: `@${from?.username || ''} canlı yayında${lv.title ? ': ' + clip(lv.title, 60) : ''}`, tag: `live-${lv.user_id}` }, '3600s');
+      return Response.json({ sent });
     }
     return new Response('geçildi');
   } catch (e) {

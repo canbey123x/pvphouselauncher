@@ -2,7 +2,7 @@
 // Yayın sırasında __SURUM__ her yeni sürümde değişir; tarayıcı bunu görünce yeni dosyaları alır
 // ve açık sayfaları kendiliğinden yeniler (eski sürüm takılı kalmaz).
 const CACHE = 'kanka-__SURUM__';
-const CORE = ['./', './vendor/supabase.js', './index.html', './style.css', './manifest.webmanifest', './icons/icon-192.png', './js/app.js', './js/api.js', './js/ui.js', './js/admin.js', './js/editor.js', './js/config.js', './js/db-local.js', './js/db-supabase.js', './js/social.js', './js/calls.js'];
+const CORE = ['./', './vendor/supabase.js', './index.html', './style.css', './manifest.webmanifest', './icons/icon-192.png', './js/app.js', './js/api.js', './js/ui.js', './js/admin.js', './js/editor.js', './js/config.js', './js/db-local.js', './js/db-supabase.js', './js/social.js', './js/calls.js', './js/groupcall.js', './js/live.js'];
 self.addEventListener('install', (e) =>
   e.waitUntil(caches.open(CACHE).then((c) => Promise.all(CORE.map((u) => c.add(new Request(u, { cache: 'reload' })).catch(() => {})))).then(() => self.skipWaiting()))
 );

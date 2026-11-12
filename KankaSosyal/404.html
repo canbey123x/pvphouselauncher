@@ -9,6 +9,11 @@
   (function () {
     var p = location.pathname;
     var m = p.match(/^(.*?)\/@([A-Za-z0-9_.]{2,30})\/?$/);
+    var d = p.match(/^(.*?)\/davet\/([A-Za-z0-9_.]{2,30})\/?$/);
+    if (d) {
+      try { localStorage.setItem('kanka.ref', d[2].toLowerCase()); } catch (e) {}
+      return location.replace(d[1] + '/#/signup/' + d[2].toLowerCase());
+    }
     var base = m ? m[1] : p.replace(/\/[^/]*$/, '');
     location.replace(base + '/' + (m ? '#/u/' + m[2].toLowerCase() : '#/home'));
   })();

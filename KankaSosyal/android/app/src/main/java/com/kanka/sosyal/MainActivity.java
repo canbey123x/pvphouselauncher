@@ -38,11 +38,13 @@ public class MainActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final String START_URL = "https://" + HOST + "/assets/www/index.html";
     private static final int PICK = 41;
-    private static final int CAM = 42;
-    private static final int MIC = 43;
+    private static final int MEDIA = 42;
     private static final int NOTIF = 44;
-    private PermissionRequest pendingCam;
-    private PermissionRequest pendingMic;
+    private PermissionRequest pendingMedia;
+    private static final int GEO = 45;
+    private android.webkit.GeolocationPermissions.Callback pendingGeo;
+    private String pendingGeoOrigin;
+    private String[] pendingRes;
     /** Uygulama ekranda mı (açıkken gelen aramayı web tarafı gösterir). */
     static volatile boolean visible = false;
     private volatile boolean inCall = false;
@@ -91,6 +93,8 @@ public class MainActivity extends Activity {
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
                 .setDomain(HOST)
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                // paylaşılan dosyalar (Paylaş > Kanka) sayfaya buradan verilir
+                .addPathHandler("/shared/", new WebViewAssetLoader.InternalStoragePathHandler(this, sharedDir()))
                 .build();
 
         WebSettings s = web.getSettings();
@@ -102,6 +106,7 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(true);
         s.setSupportZoom(false);
         s.setTextZoom(100);
+        s.setGeolocationEnabled(true);
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -130,40 +135,55 @@ public class MainActivity extends Activity {
                     request.deny();
                     return;
                 }
-                boolean wantsCam = false, wantsMic = false;
+                // kamera (görüntülü arama, mavi tik selfie) ve mikrofon (arama, sesli mesaj)
+                java.util.ArrayList<String> res = new java.util.ArrayList<>();
+                java.util.ArrayList<String> ask = new java.util.ArrayList<>();
                 for (String r : request.getResources()) {
-                    if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) wantsCam = true;
-                    if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) wantsMic = true;
-                }
-                if (wantsMic && !wantsCam) {
-                    // sesli arama / sesli mesaj: mikrofon izni burada (ve bir kez bildirim izni) sorulur
-                    java.util.ArrayList<String> ask = new java.util.ArrayList<>();
-                    boolean micOk = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
-                    if (!micOk) ask.add(Manifest.permission.RECORD_AUDIO);
-                    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                            && !Push.prefs(MainActivity.this).getBoolean("notif_asked", false)) {
-                        ask.add(Manifest.permission.POST_NOTIFICATIONS);
-                        Push.prefs(MainActivity.this).edit().putBoolean("notif_asked", true).apply();
+                    if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) {
+                        res.add(r);
+                        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) ask.add(Manifest.permission.CAMERA);
                     }
-                    if (micOk) {
-                        request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-                        if (!ask.isEmpty()) requestPermissions(ask.toArray(new String[0]), NOTIF);
-                    } else {
-                        pendingMic = request;
-                        requestPermissions(ask.toArray(new String[0]), MIC);
+                    if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) {
+                        res.add(r);
+                        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) ask.add(Manifest.permission.RECORD_AUDIO);
                     }
-                    return;
                 }
-                if (!wantsCam) {
+                if (res.isEmpty()) {
                     request.deny();
                     return;
                 }
-                // kamera: sadece mavi tik selfie'si için
-                if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                    request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                // mikrofon istendiğinde bir kez bildirim izni de (gelen aramalar için)
+                if (res.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE) && Build.VERSION.SDK_INT >= 33
+                        && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                        && !Push.prefs(MainActivity.this).getBoolean("notif_asked", false)) {
+                    ask.add(Manifest.permission.POST_NOTIFICATIONS);
+                    Push.prefs(MainActivity.this).edit().putBoolean("notif_asked", true).apply();
+                }
+                boolean needMedia = ask.contains(Manifest.permission.CAMERA) || ask.contains(Manifest.permission.RECORD_AUDIO);
+                if (!needMedia) {
+                    request.grant(res.toArray(new String[0]));
+                    if (!ask.isEmpty()) requestPermissions(ask.toArray(new String[0]), NOTIF);
+                    return;
+                }
+                if (pendingMedia != null) pendingMedia.deny();
+                pendingMedia = request;
+                pendingRes = res.toArray(new String[0]);
+                requestPermissions(ask.toArray(new String[0]), MEDIA);
+            }
+
+            /** Yakındakiler: yaklaşık konum (kullanıcı açarsa). */
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, android.webkit.GeolocationPermissions.Callback callback) {
+                if (origin == null || !origin.contains(HOST)) {
+                    callback.invoke(origin, false, false);
+                    return;
+                }
+                if (checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                    callback.invoke(origin, true, false);
                 } else {
-                    pendingCam = request;
-                    requestPermissions(new String[]{Manifest.permission.CAMERA}, CAM);
+                    pendingGeo = callback;
+                    pendingGeoOrigin = origin;
+                    requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, GEO);
                 }
             }
 
@@ -219,8 +239,77 @@ public class MainActivity extends Activity {
     }
 
     /** Bildirim / bağlantı ile açıldıysa web tarafına iletilecek bilgiyi hazırla. */
+    private java.io.File sharedDir() {
+        java.io.File d = new java.io.File(getCacheDir(), "shared");
+        if (!d.exists()) d.mkdirs();
+        return d;
+    }
+
+    /** Başka uygulamadan gelen fotoğraf / video / yazı: önbelleğe kopyala, sayfaya bildir. */
+    private boolean readShare(Intent i) {
+        String act = i.getAction();
+        if (!Intent.ACTION_SEND.equals(act) && !Intent.ACTION_SEND_MULTIPLE.equals(act)) return false;
+        final java.util.ArrayList<Uri> uris = new java.util.ArrayList<>();
+        try {
+            if (Intent.ACTION_SEND.equals(act)) {
+                Uri u = i.getParcelableExtra(Intent.EXTRA_STREAM);
+                if (u != null) uris.add(u);
+            } else {
+                java.util.ArrayList<Uri> l = i.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+                if (l != null) uris.addAll(l);
+            }
+        } catch (Exception ignored) {
+            // bozuk paylaşım
+        }
+        final String text = i.getStringExtra(Intent.EXTRA_TEXT);
+        final android.content.ContentResolver cr = getContentResolver();
+        new Thread(() -> {
+            org.json.JSONArray files = new org.json.JSONArray();
+            java.io.File dir = sharedDir();
+            java.io.File[] old = dir.listFiles();
+            if (old != null) for (java.io.File f : old) f.delete();
+            int n = 0;
+            for (Uri u : uris) {
+                if (n >= 10) break;
+                try {
+                    String type = cr.getType(u);
+                    if (type == null || !(type.startsWith("image/") || type.startsWith("video/"))) continue;
+                    String ext = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(type);
+                    String name = "p" + System.currentTimeMillis() + "_" + n + "." + (ext == null ? "bin" : ext);
+                    try (java.io.InputStream in = cr.openInputStream(u); java.io.OutputStream out = new java.io.FileOutputStream(new java.io.File(dir, name))) {
+                        if (in == null) continue;
+                        byte[] buf = new byte[65536];
+                        long total = 0;
+                        int r;
+                        while ((r = in.read(buf)) > 0) {
+                            out.write(buf, 0, r);
+                            total += r;
+                            if (total > 80L * 1024 * 1024) break; // çok büyük video
+                        }
+                    }
+                    files.put(new JSONObject().put("name", name).put("type", type));
+                    n++;
+                } catch (Exception ignored) {
+                    // okunamayan dosya
+                }
+            }
+            try {
+                JSONObject o = new JSONObject().put("share", files);
+                if (text != null) o.put("text", text);
+                pendingPayload = o.toString();
+            } catch (Exception ignored) {
+                return;
+            }
+            runOnUiThread(() -> {
+                if (web != null) web.evaluateJavascript("window.__kankaIntent && window.__kankaIntent(KankaAndroid.takeIntent())", null);
+            });
+        }).start();
+        return true;
+    }
+
     private void readIntent(Intent i) {
         if (i == null) return;
+        if (readShare(i)) return;
         String p = i.getStringExtra("kanka_payload");
         if (p == null && i.getData() != null) {
             Uri u = i.getData();
@@ -228,6 +317,16 @@ public class MainActivity extends Activity {
             String user = null;
             String hash = null;
             if (path.startsWith("/@")) user = path.substring(2).replace("/", "");
+            else if (path.startsWith("/davet/")) {
+                String ref = path.substring(7).replace("/", "");
+                if (ref.matches("[A-Za-z0-9_.]{2,30}")) {
+                    try {
+                        p = new JSONObject().put("invite", ref.toLowerCase()).toString();
+                    } catch (Exception ignored) {
+                        // olmaz
+                    }
+                }
+            }
             else if ("kanka".equals(u.getScheme()) && "u".equals(u.getHost())) user = path.replace("/", "");
             else if ("kanka".equals(u.getScheme()) && "open".equals(u.getHost())) hash = u.getQueryParameter("h");
             else if (u.getFragment() != null) hash = "#" + u.getFragment();
@@ -261,18 +360,22 @@ public class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
-        if (requestCode == MIC && pendingMic != null) {
-            boolean ok = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
-            if (ok) pendingMic.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-            else pendingMic.deny();
-            pendingMic = null;
+        if (requestCode == GEO && pendingGeo != null) {
+            pendingGeo.invoke(pendingGeoOrigin, checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED, false);
+            pendingGeo = null;
             return;
         }
-        if (requestCode == NOTIF || requestCode == MIC) return;
-        if (requestCode != CAM || pendingCam == null) return;
-        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) pendingCam.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
-        else pendingCam.deny();
-        pendingCam = null;
+        if (requestCode != MEDIA || pendingMedia == null) return;
+        // verilen izinlere göre: ikisi de verildiyse ikisi, biri verildiyse o
+        java.util.ArrayList<String> ok = new java.util.ArrayList<>();
+        for (String r : pendingRes) {
+            String perm = PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r) ? Manifest.permission.CAMERA : Manifest.permission.RECORD_AUDIO;
+            if (checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED) ok.add(r);
+        }
+        if (ok.isEmpty()) pendingMedia.deny();
+        else pendingMedia.grant(ok.toArray(new String[0]));
+        pendingMedia = null;
+        pendingRes = null;
     }
 
     /** Web tarafından çağrılabilen küçük köprü (Ayarlar > Güncellemeleri denetle). */
@@ -356,6 +459,38 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public boolean ensureMic() {
             return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+        }
+
+        /** Bildirimler açık mı (kapalıyken gelen arama ve mesajlar görünmez). */
+        @JavascriptInterface
+        public boolean notifEnabled() {
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            return nm != null && nm.areNotificationsEnabled();
+        }
+
+        /** Bildirim izni iste; daha önce kesin reddedildiyse uygulamanın bildirim ayarını aç. */
+        @JavascriptInterface
+        public void requestNotifications() {
+            runOnUiThread(() -> {
+                boolean asked = Push.prefs(MainActivity.this).getBoolean("notif_asked", false);
+                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                        && (!asked || shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS))) {
+                    Push.prefs(MainActivity.this).edit().putBoolean("notif_asked", true).apply();
+                    requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, NOTIF);
+                    return;
+                }
+                try {
+                    startActivity(new Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, getPackageName()));
+                } catch (Exception ignored) {
+                    // ayar sayfası yok
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public boolean firebaseReady() {
+            return BuildConfig.HAS_FIREBASE;
         }
 
         @JavascriptInterface
@@ -452,6 +587,7 @@ public class MainActivity extends Activity {
         super.onResume();
         visible = true;
         if (web != null) web.onResume();
+        if (Push.prefs(this).getString("push_token", "").isEmpty()) fetchPushToken();
         if (updater != null) updater.onResume();
     }
 

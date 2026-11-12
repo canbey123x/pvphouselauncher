@@ -34,6 +34,18 @@ Mevcut sunucuya bu özellikler için **`supabase/guncelleme-2.sql`** bir kez ça
 ### Google Play
 `google-play/` klasöründe adım adım yükleme rehberi, mağaza metinleri, veri güvenliği formu ve içerik derecelendirme cevapları var. Sözleşmeler `legal/` klasöründe (uygulamada: Ayarlar > Sözleşmeler).
 
+## Sürüm 4: görüntülü arama, grup araması, canlı yayın, kanallar ve daha fazlası
+
+Görüntülü arama, grup araması (sesli/görüntülü, 6 kişi), mesaja yanıt ve tepki, tek seferlik fotoğraf,
+kaybolan mesajlar, sohbet teması, kanallar, canlı yayın, anılar, yakındakiler, anket gönderisi,
+"Paylaş > Kanka", davet bağlantısı (`kankaa.com.tr/davet/kullanici`), yönetici grafikleri, bildirim testi.
+
+Kurulum:
+1. Supabase > SQL Editor > `supabase/guncelleme-6.sql` > Run.
+2. Supabase > Edge Functions > `push` > kodu `supabase/functions/push/index.ts` ile değiştir > Deploy
+   (grup araması ve canlı yayın bildirimleri için).
+3. Mobil ağda aramalar için TURN bilgileri: `supabase/guncelleme-5-arama-sunucusu.sql` (kullanıcı adı ve şifreyi yazarak).
+
 ## Sürüm 3: yeni özellikler ve kurulum
 
 Kaydedilenler, çoklu fotoğraf (10'a kadar), kişi etiketleme, hashtag sayfaları ve gündem, arama geçmişi ve

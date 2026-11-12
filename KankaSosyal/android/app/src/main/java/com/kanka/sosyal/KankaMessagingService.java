@@ -21,7 +21,7 @@ public class KankaMessagingService extends FirebaseMessagingService {
         Map<String, String> d = msg.getData();
         if (d == null || d.isEmpty()) return;
         String type = d.get("type");
-        if ("call".equals(type)) {
+        if ("call".equals(type) || "group_call".equals(type)) {
             // 40 saniyeden eski arama artık çalmaz
             try {
                 long t = java.time.Instant.parse(d.get("created_at")).toEpochMilli();

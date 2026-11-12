@@ -187,6 +187,7 @@ export async function hydrate(root) {
 }
 
 export function mediaTag(url, kind, cls = '', attrs = '') {
+  if (kind === 'poll') return `<div class="poll-tile ${cls}">${I.chart}<span>Anket</span></div>`;
   if (kind === 'video') return `<video data-m="${esc(url)}" class="${cls}" playsinline muted loop preload="metadata" ${attrs}></video>`;
   return `<img data-m="${esc(url)}" class="${cls}" alt="" loading="lazy" ${attrs}>`;
 }

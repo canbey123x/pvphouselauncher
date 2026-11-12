@@ -6,6 +6,8 @@ import * as A from './api.js';
 import { $, $$, esc, I, ic, TICK, avatar, uname, ago, num, toast, sheet, closeSheet, confirmSheet, promptSheet, pickFile, pickFiles, hydrate, mediaTag, autoplay, linkify } from './ui.js';
 import * as S from './social.js';
 import * as Calls from './calls.js';
+import * as Group from './groupcall.js';
+import * as Live from './live.js';
 import { renderAdmin } from './admin.js';
 import { openEditor, overlayHtml } from './editor.js';
 
@@ -84,6 +86,11 @@ async function boot() {
   // kankaa.com.tr/@kullanici bağlantısı -> profil
   const at = location.pathname.match(/\/@([a-z0-9_.]{2,30})\/?$/i);
   if (at) history.replaceState(null, '', location.pathname.replace(/@[^/]*\/?$/, '') + '#/u/' + at[1].toLowerCase());
+  const inv = location.pathname.match(/\/davet\/([a-z0-9_.]{2,30})\/?$/i);
+  if (inv) {
+    setRef(inv[1]);
+    history.replaceState(null, '', location.pathname.replace(/davet\/[^/]*\/?$/, '') + '#/signup/' + inv[1].toLowerCase());
+  }
   await A.initDb();
   // Eski sürümün oluşturduğu deneme hesaplarını ve içeriklerini tamamen kaldır
   if (A.db.mode === 'local' && A.db.hasDemo()) await A.db.clearDemo();
@@ -111,6 +118,9 @@ function afterLogin() {
     return;
   }
   Calls.listenIncoming();
+  Group.listenGroupIncoming();
+  applyRef().catch(() => {});
+  A.db.rpc('touch_seen').catch(() => {});
   const K = window.KankaAndroid;
   if (!K) return;
   if (A.db.mode !== 'local' && K.setSession) {
@@ -125,9 +135,65 @@ function afterLogin() {
     await A.db.rpc('register_device', { tok }).catch(() => (pushDone = false));
     return true;
   };
-  reg().then((ok) => ok || setTimeout(reg, 8000));
+  // Firebase anahtarı geç gelebilir: bir dakika boyunca birkaç kez dene
+  let tries = 0;
+  const loop = async () => {
+    await reg();
+    if (!pushDone && ++tries < 8) setTimeout(loop, 8000);
+  };
+  loop();
+  askNotifications();
   handleIntent();
 }
+/** Uygulama kapalıyken arama ve mesaj görebilmek için bildirim izni (tek sefer, açıklamalı). */
+function askNotifications(force = false) {
+  const K = window.KankaAndroid;
+  if (!K?.notifEnabled || K.notifEnabled()) return;
+  try {
+    if (!force && localStorage.getItem('kanka.notifAsk')) return;
+    localStorage.setItem('kanka.notifAsk', '1');
+  } catch {
+    /* yok */
+  }
+  sheet(
+    `<div class="inner" style="text-align:center"><div style="width:52px;height:52px;margin:6px auto 10px">${I.bell}</div><h3 style="margin:0 0 6px">Aramaları kaçırma</h3>
+    <p class="muted small">Uygulama kapalıyken ya da telefon kilitliyken gelen aramaları ve mesajları görebilmen için bildirimlere izin vermen gerekiyor.</p>
+    <button class="btn block" id="nYes">İzin ver</button><button class="btn block gray" id="nNo" style="margin-top:8px">Şimdi değil</button></div>`,
+    (c, close) => {
+      $('#nYes', c).onclick = () => (close(), K.requestNotifications());
+      $('#nNo', c).onclick = close;
+    }
+  );
+}
+
+/** Ayarlar > Bildirim testi: nerede takıldığını göster, kendine deneme bildirimi gönder. */
+async function vNotifTest() {
+  const K = window.KankaAndroid;
+  const row = (ok, t, sub, id = '') => `<div class="list-row" ${id ? `id="${id}"` : ''}><span class="ic" style="width:22px;height:22px;color:${ok ? '#2ecc71' : '#ff6b77'}">${ok ? I.check : I.x}</span><div class="grow">${t}<small>${sub}</small></div></div>`;
+  const tok = K?.pushToken?.() || '';
+  let reg = false;
+  if (tok && A.db.mode !== 'local') reg = !!(await A.db.list('device_tokens', { eq: { token: tok } }).catch(() => [])).length;
+  const nOk = !!K?.notifEnabled?.();
+  app.innerHTML = `${topbar('Bildirim testi', true)}
+    ${!K ? `<p class="inner muted">Bu test Android uygulamasında çalışır.</p>` : ''}
+    ${K ? row(nOk, 'Bildirim izni', nOk ? 'Açık' : 'Kapalı: açmak için dokun', 'ntPerm') : ''}
+    ${K ? row(!!K.firebaseReady?.(), 'Uygulamada Firebase', K.firebaseReady?.() ? 'Var' : 'Bu sürümde yok') : ''}
+    ${K ? row(!!tok, 'Telefon anahtarı', tok ? 'Alındı' : 'Alınamadı (internet ya da Google Play Hizmetleri)') : ''}
+    ${K ? row(reg, 'Sunucuya kayıt', reg ? 'Kayıtlı' : 'Kayıtlı değil: uygulamayı kapatıp aç, bir dakika bekle') : ''}
+    <div class="inner"><button class="btn block" id="ntSend">Kendime deneme bildirimi gönder</button>
+    <p class="small muted">Birkaç saniye içinde bildirim çubuğunda "Bildirim testi" görünmeli. Görünmezse Supabase'deki "push" fonksiyonunun Logs kısmına bak.</p>
+    <p class="small muted">Xiaomi, Huawei, Oppo, Vivo gibi telefonlarda: Ayarlar > Uygulamalar > Kanka > Pil tasarrufu "Kısıtlama yok" ve "Otomatik başlat" açık olmalı. Yoksa uygulama kapalıyken bildirim gelmez.</p></div>`;
+  if ($('#ntPerm')) $('#ntPerm').onclick = () => K.requestNotifications();
+  $('#ntSend').onclick = async () => {
+    try {
+      await A.db.insert('notifications', { user_id: A.me(), actor_id: A.me(), type: 'mention', post_id: null, text: 'Bildirim testi', read: false });
+      toast('Gönderildi, bildirim çubuğuna bak');
+    } catch (er) {
+      toast(er.message, true);
+    }
+  };
+}
+
 /** Bildirime dokunarak açıldıysa ilgili sayfaya / aramaya git. */
 function handleIntent(raw) {
   let it = raw;
@@ -144,14 +210,94 @@ function handleIntent(raw) {
   } catch {
     return;
   }
+  if (it.invite) {
+    setRef(it.invite);
+    if (!A.me()) return (location.hash = '#/signup/' + it.invite);
+    return (location.hash = '#/u/' + it.invite);
+  }
+  if (!A.me()) return;
+  if (it.share) return openShared(it);
+  if (it.group_call_id) return Group.openFromNotification(it.group_call_id, it.action || '');
   if (it.call_id) return Calls.openFromNotification(it.call_id, it.action || '');
+  if (it.live_id) return (location.hash = '#/live/' + it.live_id);
   if (it.conversation_id) return (location.hash = '#/dm/' + it.conversation_id);
   if (it.post_id) return (location.hash = '#/p/' + it.post_id);
   if (it.username) return (location.hash = '#/u/' + it.username);
   if (it.hash && /^#\/[\w\-\/%.@]*$/.test(it.hash)) return (location.hash = it.hash);
   if (it.type) location.hash = '#/notifs';
 }
-window.__kankaIntent = (it) => A.me() && handleIntent(it);
+window.__kankaIntent = (it) => handleIntent(it);
+
+/* ---------- Davet bağlantısı ---------- */
+function setRef(u) {
+  try {
+    localStorage.setItem('kanka.ref', String(u).toLowerCase().replace(/[^a-z0-9_.]/g, ''));
+  } catch {
+    /* yok */
+  }
+}
+/** Davetle kaydolduysa: davet edeni takip et, ona haber ver (bir kez). */
+async function applyRef() {
+  let ref = '';
+  try {
+    ref = localStorage.getItem('kanka.ref') || '';
+  } catch {
+    return;
+  }
+  if (!ref || !meP) return;
+  try {
+    localStorage.removeItem('kanka.ref');
+  } catch {
+    /* yok */
+  }
+  // sadece yeni hesaplar (son 1 gün) davetle sayılır
+  if (Date.now() - new Date(meP.created_at || 0).getTime() > 86400000) return;
+  const u = await A.byUsername(ref).catch(() => null);
+  if (!u || u.id === A.me()) return;
+  await A.follow(u.id).catch(() => {});
+  A.notify(u.id, 'invite').catch(() => {});
+  A.updateProfile({ invited_by: u.id }).catch(() => {});
+  toast(`@${u.username} seni davet etti, onu takip ediyorsun`);
+}
+const inviteUrl = () => `${SITE}/davet/${meP?.username || ''}`;
+function inviteSheet() {
+  sheet(`<div class="invite-card"><h3 style="margin:0 0 4px">Arkadaşını Kanka'ya davet et</h3><p class="small muted" style="margin:0">Bu bağlantıyla kaydolan arkadaşın seni otomatik takip eder, sana da bildirim gelir.</p>
+    <code>${esc(inviteUrl())}</code><button class="btn block" id="invShare">Bağlantıyı paylaş</button><button class="btn block gray" id="invCopy" style="margin-top:8px">Kopyala</button></div>`, (c, close) => {
+    $('#invShare', c).onclick = () => (close(), shareLink(inviteUrl(), `Kanka'ya gel, beni @${meP.username} olarak bul:`));
+    $('#invCopy', c).onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(inviteUrl());
+        toast('Kopyalandı');
+      } catch {
+        toast(inviteUrl());
+      }
+    };
+  });
+}
+
+/* ---------- Paylaş > Kanka ---------- */
+async function openShared(it) {
+  const files = [];
+  for (const f of it.share || []) {
+    try {
+      const r = await fetch('/shared/' + encodeURIComponent(f.name));
+      const b = await r.blob();
+      files.push(new File([b], f.name, { type: f.type || b.type }));
+    } catch {
+      /* okunamadı */
+    }
+  }
+  window.__shareFiles = files;
+  window.__shareText = it.text || '';
+  if (!files.length && it.text) {
+    // sadece yazı paylaşıldı: gönderi açıklamasına koy
+    location.hash = '#/create/post';
+    setTimeout(() => $('#cap') && ($('#cap').value = it.text.slice(0, 2200)), 400);
+    return;
+  }
+  if (!files.length) return toast('Paylaşılan dosya açılamadı', true);
+  location.hash = '#/create/share';
+}
 document.addEventListener('visibilitychange', () => !document.hidden && A.me() && handleIntent());
 
 /* =========================================================
@@ -186,7 +332,7 @@ async function route() {
   showTabs(!authPages.includes(page) && page !== 'story' && page !== 'hl' && !(page === 'dm' && a) && page !== 'p', page);
   window.scrollTo(0, 0);
   try {
-    const views = { login: vLogin, signup: vSignup, server: vServer, home: vHome, search: vSearch, create: vCreate, reels: vReels, u: vProfile, p: vPost, story: vStory, dm: a ? vChat : vInbox, notifs: vNotifs, settings: vSettings, edit: vEdit, follows: vFollows, admin: vAdmin, privacy: vPrivacy, requests: vRequests, blocked: vBlocked, verify: vVerify, legal: vLegal, tag: vTag, saved: vSaved, insights: vInsights, closefriends: vCloseFriends, appearance: vAppearance, group: vGroup, hl: vHighlight };
+    const views = { login: vLogin, signup: vSignup, server: vServer, home: vHome, search: vSearch, create: vCreate, reels: vReels, u: vProfile, p: vPost, story: vStory, dm: a && !['msg', 'chan', 'calls'].includes(a) ? vChat : vInbox, notifs: vNotifs, settings: vSettings, edit: vEdit, follows: vFollows, admin: vAdmin, privacy: vPrivacy, requests: vRequests, blocked: vBlocked, verify: vVerify, legal: vLegal, tag: vTag, saved: vSaved, insights: vInsights, closefriends: vCloseFriends, appearance: vAppearance, group: vGroup, hl: vHighlight, notiftest: vNotifTest, live: vLive, nearby: vNearby };
     const fn = views[page] || vHome;
     await fn(a, b, tok);
   } catch (e) {
@@ -278,8 +424,16 @@ function vLogin() {
     }
   };
 }
-function vSignup() {
+function vSignup(ref) {
+  if (ref) setRef(ref);
+  let refName = '';
+  try {
+    refName = localStorage.getItem('kanka.ref') || '';
+  } catch {
+    /* yok */
+  }
   app.innerHTML = `<div class="auth"><div class="logo">Kanka</div><p class="alt" style="margin-top:-12px">Arkadaşlarının fotoğraf ve videolarını görmek için kaydol.</p>
+    ${refName ? `<div class="ref-note"><b>@${esc(refName)}</b> seni Kanka'ya davet etti</div>` : ''}
     <form class="form" id="f"><input class="field" name="email" type="email" placeholder="E-posta" required>
     <input class="field" name="name" placeholder="Adı Soyadı" required maxlength="40">
     <input class="field" name="username" placeholder="Kullanıcı adı" required maxlength="24" autocapitalize="off">
@@ -394,6 +548,7 @@ async function prep(items) {
 }
 
 function mediaHtml(p) {
+  if (p.kind === 'poll') return pollCardHtml(p);
   const items = S.mediaItems(p);
   const one = (it) => `${mediaTag(it.url, it.kind, '', it.kind === 'video' ? 'data-auto ' + vidAttrs(it) : '')}${it.kind === 'video' ? overlayHtml(it) : ''}${it.kind === 'video' ? `<button class="mute" data-a="mute">${I.mute}</button>` : ''}`;
   const tags = p.meta?.tagged ? `<button class="tag-btn" data-a="tags">${ic('user', 14)}</button>` : '';
@@ -418,7 +573,7 @@ function postHtml(p) {
       ${p.author.private ? '' : `<button class="act ${p.reposted ? 'on-rp' : ''}" data-a="repost">${I.repost}<span>${num(p.repostCount)}</span></button>`}
       <button class="act" data-a="share">${I.send}</button>
       <button class="act save ${p.saved ? 'on-save' : ''}" data-a="save" title="Kaydet">${I.bookmark}</button></div>
-    ${p.caption ? `<div class="cap"><b>${esc(p.author.username)}</b>${linkify(p.caption)}</div>` : ''}
+    ${p.caption && p.kind !== 'poll' ? `<div class="cap"><b>${esc(p.author.username)}</b>${linkify(p.caption)}</div>` : ''}
     ${p.commentCount ? `<a class="vc" href="#/p/${p.id}">${p.commentCount} yorumun tümünü gör</a>` : ''}
     ${mine ? `<a class="vc ins-link" href="#/insights/${p.id}">${ic('chart', 13)} İstatistikleri gör</a>` : ''}
   </article>`;
@@ -427,7 +582,15 @@ function postHtml(p) {
 /** Gönderi listesindeki butonları bağla. */
 function bindPosts(root, list, onRemoved) {
   const find = (el) => list.find((p) => (p.feedKey || p.id) === el.closest('[data-k]')?.dataset.k);
+  hydratePolls(root, list);
   root.onclick = async (e) => {
+    const pv = e.target.closest('[data-vote-i]');
+    if (pv) {
+      const card = pv.closest('.poll-card');
+      const p = list.find((x) => x.id === card.dataset.poll);
+      if (p && !card.dataset.voted) votePoll(p, +pv.dataset.voteI, card);
+      return;
+    }
     const b = e.target.closest('[data-a]');
     if (!b) return;
     const p = find(b);
@@ -622,7 +785,8 @@ async function vHome(_a, _b, tok) {
     }
     route();
   };
-  const [groups, items, ann] = await Promise.all([A.storyGroups(), A.feed(homeMode).then(prep), A.activeAnnouncements()]);
+  const [groups, items, ann, lives] = await Promise.all([A.storyGroups(), A.feed(homeMode).then(prep), A.activeAnnouncements(), A.following().then((f) => Live.activeLives(f)).catch(() => [])]);
+  const livePm = await A.profiles(lives.map((l) => l.user_id));
   if (stale(tok)) return;
   $('#ann').innerHTML = restrictBanner(A.banState(meP)) + ann.map((x) => `<div class="announce">${ic('megaphone', 18)}<span>${linkify(x.text)}</span></div>`).join('');
   if ($('#rBanner')) $('#rBanner').onclick = () => ((restrictShown = false), restrictNotice(A.banState(meP)));
@@ -630,6 +794,7 @@ async function vHome(_a, _b, tok) {
   const mine = groups.find((g) => g.user.id === A.me());
   $('#stories').innerHTML =
     `<a class="st" href="${mine ? '#/story/' + A.me() : '#/create/story'}"><span class="wrap">${avatar(meP, 62, mine ? (mine.allSeen ? 'seen' : 'new') : '')}${mine ? '' : '<span class="plus">+</span>'}</span><span>Hikâyen</span></a>` +
+    lives.map((l) => `<a class="st live" href="#/live/${l.id}"><span class="wrap">${avatar(livePm.get(l.user_id), 62, 'live')}<span class="live-tag">CANLI</span></span><span>${esc(livePm.get(l.user_id)?.username || '')}</span></a>`).join('') +
     groups
       .filter((g) => g.user.id !== A.me())
       .map((g) => `<a class="st" href="#/story/${g.user.id}">${avatar(g.user, 62, g.allSeen ? 'seen' : g.stories.some((x) => !x.seen && x.meta?.audience === 'close') ? 'close' : 'new')}<span>${esc(g.user.username)}</span></a>`)
@@ -641,6 +806,7 @@ async function vHome(_a, _b, tok) {
   }
   feed.innerHTML = items.map(postHtml).join('');
   bindPosts(feed, items, () => route());
+  showMemory(feed).catch(() => {});
   hydrate(app);
   autoplay(feed);
   trackSeen(feed, items);
@@ -714,6 +880,7 @@ async function vSearch(_a, _b, tok) {
     if (stale(tok) || $('#q').value.trim()) return;
     const hist = S.searchHistory();
     res.innerHTML =
+      `<div class="chips quick"><a href="#/nearby">${ic('globe', 14)} Yakındakiler</a><a href="#/dm/chan">${ic('megaphone', 14)} Kanallar</a><a href="#/create/live">${ic('eye', 14)} Canlı yayın</a></div>` +
       (hist.length
         ? `<div class="section-t row-t">Son aramalar<button class="link" id="hClear">Temizle</button></div>${hist
             .map((h) => `<div class="list-row hist" data-type="${h.type}" data-key="${esc(h.key)}"><a class="grow" href="${h.type === 'tag' ? '#/tag/' + encodeURIComponent(h.key) : '#/u/' + encodeURIComponent(h.key)}">${h.type === 'tag' ? `<span class="tag-ico">#</span>` : I.user}<span>${h.type === 'tag' ? '#' : ''}${esc(h.key)}</span></a><button class="ibtn" data-x>${I.close}</button></div>`)
@@ -890,13 +1057,20 @@ function pickUsers(title, preselected = [], { max = 20, source = 'following' } =
    Paylaş: çoklu fotoğraf/video, düzenleyici, kişi etiketleme, yakın arkadaşlar
    ========================================================= */
 async function vCreate(kind = 'post') {
+  const shared = kind === 'share' ? window.__shareFiles || [] : [];
+  if (kind === 'share') {
+    window.__shareFiles = null;
+    kind = shared.length === 1 && shared[0].type.startsWith('video/') ? 'reel' : 'post';
+  }
+  if (kind === 'poll') return vCreatePoll();
+  if (kind === 'live') return vGoLive();
   let mode = kind === 'story' ? 'story' : kind === 'reel' ? 'reel' : 'post';
   let slides = []; // { file, ed }
   let cur = 0;
   let tagged = [];
   let audience = 'all';
   app.innerHTML = `${topbar('Yeni paylaşım', true, '<button class="btn sm" id="share" disabled>Paylaş</button>')}<div class="create">
-    <div class="seg" id="seg"><button data-m="post">Gönderi</button><button data-m="story">Hikâye</button><button data-m="reel">Reels</button></div>
+    <div class="seg" id="seg"><button data-m="post">Gönderi</button><button data-m="story">Hikâye</button><button data-m="reel">Reels</button><button data-m="poll">Anket</button><button data-m="live">Canlı</button></div>
     <button class="pick" id="pick">${I.image}<span id="pickTxt"></span></button>
     <div class="thumbs hidden" id="thumbs"></div>
     <button class="btn block gray hidden" id="reedit">${ic('pen')} Düzenle (yazı, çıkartma, çizim, filtre${mode === 'story' ? ', anket' : ''})</button>
@@ -959,9 +1133,18 @@ async function vCreate(kind = 'post') {
     await edit(start);
   };
   seg();
+  if (shared.length) {
+    for (const f of shared.slice(0, mode === 'post' ? 10 : 1)) slides.push({ file: f, ed: null });
+    if (window.__shareText) $('#cap').value = window.__shareText.slice(0, 2200);
+    window.__shareText = '';
+    cur = 0;
+    showPreview();
+    setTimeout(() => edit(0), 50);
+  }
   $('#seg').onclick = (e) => {
     const b = e.target.closest('button');
     if (!b || b.dataset.m === mode) return;
+    if (b.dataset.m === 'poll' || b.dataset.m === 'live') return (location.hash = '#/create/' + b.dataset.m);
     mode = b.dataset.m;
     slides = mode === 'post' ? slides : slides.slice(0, 1);
     if (mode === 'reel' && slides[0] && !slides[0].file.type.startsWith('video/')) slides = [];
@@ -1156,7 +1339,7 @@ async function vProfile(username, tab = 'posts', tok) {
         ? `<a class="btn gray" href="#/edit">Profili düzenle</a><button class="btn gray" id="pShare">Profili paylaş</button>`
         : iBlocked
           ? `<button class="btn gray" id="unb">Engeli kaldır</button>`
-          : `<button class="btn ${fstate === 'none' ? '' : 'gray'}" id="fol">${fLabel[fstate]}</button><button class="btn gray" id="msg">Mesaj</button><button class="btn gray icon-btn" id="pCall" title="Sesli ara">${Calls.CI.phone}</button>`
+          : `<button class="btn ${fstate === 'none' ? '' : 'gray'}" id="fol">${fLabel[fstate]}</button><button class="btn gray" id="msg">Mesaj</button><button class="btn gray icon-btn" id="pCall" title="Sesli ara">${Calls.CI.phone}</button><button class="btn gray icon-btn" id="pVid" title="Görüntülü ara">${Calls.CI.video}</button>`
     }</div>
     ${mine && admin ? `<div class="prof-btns"><a class="btn green" href="#/admin">${I.shield} Yönetim paneli</a></div>` : ''}
     ${!locked && (hls.length || mine) ? `<div class="hl-row">${mine ? `<button class="hl" id="hlNew"><span class="hl-c add">${I.plus}</span><span>Yeni</span></button>` : ''}${hls.map((h) => `<a class="hl" href="#/hl/${h.id}"><span class="hl-c">${h.cover ? mediaTag(h.cover, 'photo') : ic('star', 24)}</span><span>${esc(h.title)}</span></a>`).join('')}</div>` : ''}
@@ -1165,7 +1348,8 @@ async function vProfile(username, tab = 'posts', tok) {
   <div id="pgrid"></div>`;
   $$('.tabs2 button').forEach((b) => (b.onclick = () => (location.hash = `#/u/${encodeURIComponent(u.username)}/${b.dataset.t}`)));
   if ($('#pShare')) $('#pShare').onclick = () => shareLink(profileUrl(u.username), `Kanka'da @${u.username}`);
-  if ($('#pCall')) $('#pCall').onclick = () => Calls.startCall(u.id);
+  if ($('#pCall')) $('#pCall').onclick = () => Calls.startCall(u.id, 'audio');
+  if ($('#pVid')) $('#pVid').onclick = () => Calls.startCall(u.id, 'video');
   if ($('#hlNew')) $('#hlNew').onclick = newHighlightFlow;
   if (!mine) {
     if ($('#unb'))
@@ -1662,25 +1846,33 @@ function storyPlayer(groups, gi, tok, { start = 0, highlight = null } = {}) {
 }
 
 /* =========================================================
-   Mesajlar (DM + gruplar + aramalar)
+   Mesajlar (DM + gruplar + kanallar + aramalar)
    ========================================================= */
 function lastText(m) {
   if (!m) return '';
+  if (m.once) return m.opened_at ? 'Tek seferlik fotoğraf (açıldı)' : 'Tek seferlik fotoğraf';
   if (m.media_kind === 'audio') return 'Sesli mesaj';
   if (m.text) return plainPreview(m.text);
   return m.media_kind === 'gif' ? 'GIF gönderdi' : 'Fotoğraf/video gönderdi';
 }
 function groupAvatar(c, size = 52) {
-  return `<span class="gav" style="width:${size}px;height:${size}px">${ic('users', Math.round(size * 0.5))}</span>`;
+  return `<span class="gav ${c?.is_channel ? 'chan' : ''}" style="width:${size}px;height:${size}px">${ic(c?.is_channel ? 'megaphone' : 'users', Math.round(size * 0.5))}</span>`;
 }
-async function vInbox(_a, _b, tok) {
-  app.innerHTML = `${topbar(esc(meP.username), true, `<button class="ibtn" id="newGrp" title="Yeni grup">${I.users}</button><button class="ibtn" id="newDm" title="Yeni mesaj">${I.plus}</button>`)}<div class="search">${I.search}<input id="q" placeholder="Ara"></div>
-    <div class="feed-tabs" id="itabs"><button data-t="msg" class="on">Mesajlar</button><button data-t="calls">Aramalar</button></div><div id="convs"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
+async function vInbox(tabArg, _b, tok) {
+  app.innerHTML = `${topbar(esc(meP.username), true, `<button class="ibtn" id="newDm" title="Yeni">${I.plus}</button>`)}<div class="search">${I.search}<input id="q" placeholder="Ara"></div>
+    <div class="feed-tabs" id="itabs"><button data-t="msg">Mesajlar</button><button data-t="chan">Kanallar</button><button data-t="calls">Aramalar</button></div><div id="convs"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
   const [cs, gs] = await Promise.all([A.conversations(), S.myGroups()]);
   if (stale(tok)) return;
   for (const g of gs) g.last = (await A.db.list('messages', { eq: { conversation_id: g.id }, order: ['created_at', false], limit: 1 }).catch(() => []))[0] || null;
-  const all = [...cs, ...gs].sort((x, y) => ((x.last?.created_at || x.created_at) < (y.last?.created_at || y.created_at) ? 1 : -1));
-  let tab = 'msg';
+  const all = [...cs, ...gs.filter((g) => !g.is_channel)].sort((x, y) => ((x.last?.created_at || x.created_at) < (y.last?.created_at || y.created_at) ? 1 : -1));
+  const myChans = gs.filter((g) => g.is_channel);
+  let tab = ['msg', 'chan', 'calls'].includes(tabArg) ? tabArg : 'msg';
+  const mark = () => $$('#itabs button').forEach((x) => x.classList.toggle('on', x.dataset.t === tab));
+  mark();
+  const convRow = (c) => {
+    const head = c.is_group ? `${groupAvatar(c)}<div class="grow"><b>${esc(c.title || 'Grup')}</b>` : `${avatar(c.other, 52)}<div class="grow">${uname(c.other)}`;
+    return `<a class="list-row" href="#/dm/${c.id}">${head}<small>${c.last ? (c.last.sender_id === A.me() ? 'Sen: ' : '') + esc(lastText(c.last)) + ' · ' + ago(c.last.created_at) : c.is_channel ? esc(c.description || 'Kanal') : c.is_group ? 'Grup oluşturuldu' : 'Sohbeti başlat'}</small></div></a>`;
+  };
   const draw = async (q = '') => {
     if (tab === 'calls') {
       const calls = await Calls.recentCalls();
@@ -1695,22 +1887,30 @@ async function vInbox(_a, _b, tok) {
               if (!u) return '';
               const miss = !out && ['missed', 'cancelled'].includes(c.status);
               const len = c.answered_at && c.ended_at ? Math.round((new Date(c.ended_at) - new Date(c.answered_at)) / 1000) : 0;
-              return `<div class="list-row">${avatar(u, 48)}<div class="grow">${uname(u)}<small class="${miss ? 'miss' : ''}">${out ? 'Giden' : 'Gelen'} · ${st[c.status] || c.status}${len ? ` · ${Math.floor(len / 60)}:${String(len % 60).padStart(2, '0')}` : ''} · ${ago(c.created_at)}</small></div><button class="ibtn" data-call="${u.id}">${Calls.CI.phone}</button></div>`;
+              const vid = c.kind === 'video';
+              return `<div class="list-row">${avatar(u, 48)}<div class="grow">${uname(u)}<small class="${miss ? 'miss' : ''}">${vid ? 'Görüntülü · ' : ''}${out ? 'Giden' : 'Gelen'} · ${st[c.status] || c.status}${len ? ` · ${Math.floor(len / 60)}:${String(len % 60).padStart(2, '0')}` : ''} · ${ago(c.created_at)}</small></div><button class="ibtn" data-call="${u.id}" data-kind="${vid ? 'video' : 'audio'}">${vid ? Calls.CI.video : Calls.CI.phone}</button></div>`;
             })
             .join('')
-        : `<div class="empty"><div class="ico">${Calls.CI.phone}</div><h3>Arama yok</h3><p>Bir sohbetin üstündeki telefon simgesiyle sesli arama yapabilirsin.</p></div>`;
+        : `<div class="empty"><div class="ico">${Calls.CI.phone}</div><h3>Arama yok</h3><p>Sohbetin üstündeki telefon ya da kamera simgesiyle arayabilirsin.</p></div>`;
+      hydrate($('#convs'));
+      return;
+    }
+    if (tab === 'chan') {
+      const pub = await S.publicChannels(q).catch(() => []);
+      if (tab !== 'chan') return;
+      const mine = new Set(myChans.map((c) => c.id));
+      const others = pub.filter((c) => !mine.has(c.id));
+      $('#convs').innerHTML =
+        `<div class="inner"><button class="btn block gray" id="newChan">${ic('megaphone')} Kanal oluştur</button></div>` +
+        (myChans.length ? `<div class="section-t">Kanallarım</div>${myChans.filter((c) => !q || (c.title || '').toLowerCase().includes(q)).map(convRow).join('')}` : '') +
+        (others.length ? `<div class="section-t">Keşfet</div>${others.map((c) => `<a class="list-row" href="#/dm/${c.id}">${groupAvatar(c)}<div class="grow"><b>${esc(c.title)}</b><small>${esc(c.description || '')}${c.members ? ` · ${c.members} takipçi` : ''}</small></div></a>`).join('')}` : '') +
+        (!myChans.length && !others.length ? `<div class="empty"><div class="ico">${ic('megaphone', 40)}</div><h3>Kanal yok</h3><p>Kanalda sadece sahibi paylaşım yapar, katılanlar okur. Duyurular için ideal.</p></div>` : '');
+      $('#newChan').onclick = newChannelFlow;
       hydrate($('#convs'));
       return;
     }
     const l = all.filter((c) => !q || (c.is_group ? (c.title || '').toLowerCase().includes(q) : c.other.username.includes(q) || (c.other.name || '').toLowerCase().includes(q)));
-    $('#convs').innerHTML = l.length
-      ? l
-          .map((c) => {
-            const head = c.is_group ? `${groupAvatar(c)}<div class="grow"><b>${esc(c.title || 'Grup')}</b>` : `${avatar(c.other, 52)}<div class="grow">${uname(c.other)}`;
-            return `<a class="list-row" href="#/dm/${c.id}">${head}<small>${c.last ? (c.last.sender_id === A.me() ? 'Sen: ' : '') + esc(lastText(c.last)) + ' · ' + ago(c.last.created_at) : c.is_group ? 'Grup oluşturuldu' : 'Sohbeti başlat'}</small></div></a>`;
-          })
-          .join('')
-      : `<div class="empty"><div class="ico">${I.send}</div><h3>Mesaj yok</h3><p>Bir arkadaşına özelden yaz ya da grup kur.</p></div>`;
+    $('#convs').innerHTML = l.length ? l.map(convRow).join('') : `<div class="empty"><div class="ico">${I.send}</div><h3>Mesaj yok</h3><p>Bir arkadaşına özelden yaz ya da grup kur.</p></div>`;
     hydrate($('#convs'));
   };
   draw();
@@ -1719,26 +1919,48 @@ async function vInbox(_a, _b, tok) {
     const b = e.target.closest('[data-t]');
     if (!b) return;
     tab = b.dataset.t;
-    $$('#itabs button').forEach((x) => x.classList.toggle('on', x === b));
+    mark();
     draw($('#q').value.trim().toLowerCase());
   };
   $('#convs').addEventListener('click', (e) => {
     const c = e.target.closest('[data-call]');
-    if (c) Calls.startCall(c.dataset.call);
+    if (c) Calls.startCall(c.dataset.call, c.dataset.kind);
   });
   $('#newDm').onclick = () =>
-    promptSheet('Yeni mesaj', 'Kullanıcı adı', async (u) => {
-      const p = await A.byUsername(u.replace(/^@/, '').toLowerCase());
-      if (!p) return toast('Kullanıcı bulunamadı', true);
-      if (p.id === A.me()) return toast('Kendine mesaj atamazsın', true);
+    sheet([
+      {
+        icon: I.send,
+        label: 'Yeni mesaj',
+        run: () =>
+          promptSheet('Yeni mesaj', 'Kullanıcı adı', async (u) => {
+            const p = await A.byUsername(u.replace(/^@/, '').toLowerCase());
+            if (!p) return toast('Kullanıcı bulunamadı', true);
+            if (p.id === A.me()) return toast('Kendine mesaj atamazsın', true);
+            try {
+              const c = await A.conversationWith(p.id);
+              location.hash = '#/dm/' + c.id;
+            } catch (er) {
+              toast(er.message, true);
+            }
+          }),
+      },
+      { icon: I.users, label: 'Yeni grup', run: newGroupFlow },
+      { icon: I.megaphone, label: 'Yeni kanal', run: newChannelFlow },
+    ]);
+}
+function newChannelFlow() {
+  promptSheet('Kanal adı', 'Örn. Kanka Duyurular', (t) => {
+    if (!t) return;
+    promptSheet('Kanal açıklaması', 'Kanal ne hakkında? (isteğe bağlı)', async (d) => {
       try {
-        const c = await A.conversationWith(p.id);
+        const c = await S.createChannel(t, d || '');
+        toast('Kanal oluşturuldu');
         location.hash = '#/dm/' + c.id;
       } catch (er) {
         toast(er.message, true);
       }
     });
-  $('#newGrp').onclick = newGroupFlow;
+  });
 }
 async function newGroupFlow() {
   const users = await pickUsers('Gruba kişi ekle', [], { max: 31 });
@@ -1767,16 +1989,8 @@ function bindVoice(root) {
     if (au.paused) au.play().catch(() => toast('Ses çalınamadı', true));
     else au.pause();
   });
-  root.addEventListener(
-    'play',
-    (e) => e.target.tagName === 'AUDIO' && ($('[data-voice]', e.target.parentElement).innerHTML = ic('pause', 18)),
-    true
-  );
-  root.addEventListener(
-    'pause',
-    (e) => e.target.tagName === 'AUDIO' && ($('[data-voice]', e.target.parentElement).innerHTML = I.play),
-    true
-  );
+  root.addEventListener('play', (e) => e.target.tagName === 'AUDIO' && ($('[data-voice]', e.target.parentElement).innerHTML = ic('pause', 18)), true);
+  root.addEventListener('pause', (e) => e.target.tagName === 'AUDIO' && ($('[data-voice]', e.target.parentElement).innerHTML = I.play), true);
   root.addEventListener(
     'timeupdate',
     (e) => {
@@ -1801,38 +2015,114 @@ function bindVoice(root) {
   );
 }
 
+/* ---------- Sohbet temaları ---------- */
+const THEMES = {
+  '': { name: 'Varsayılan', a: '#7b2ff7', b: '#3a6cf4' },
+  gunbatimi: { name: 'Gün batımı', a: '#ff7a18', b: '#ee2a7b' },
+  okyanus: { name: 'Okyanus', a: '#00b4db', b: '#0083b0' },
+  orman: { name: 'Orman', a: '#11998e', b: '#38ef7d' },
+  gece: { name: 'Gece', a: '#232526', b: '#414345' },
+  pembe: { name: 'Pembe', a: '#f857a6', b: '#ff5858' },
+  altin: { name: 'Altın', a: '#f7971e', b: '#ffd200' },
+  bayrak: { name: 'Al bayrak', a: '#e30a17', b: '#b00012' },
+};
+const TTL = { '': 'Kapalı', 1: '1 saat', 24: '24 saat', 168: '7 gün' };
+
 async function vChat(convId, _b, tok) {
   const conv = await A.db.get('conversations', convId);
   if (stale(tok)) return;
   if (!conv) return renderMsg('Sohbet bulunamadı', '', true);
   const group = !!conv.is_group;
+  const chan = !!conv.is_channel;
   const mem = await S.members(conv);
   if (stale(tok)) return;
-  if (group && !mem.some((u) => u.id === A.me())) return renderMsg('Bu gruptan çıktın', 'Tekrar katılmak için bir üyenin seni eklemesi gerekir.', true);
+  const member = mem.some((u) => u.id === A.me());
+  if (group && !chan && !member) return renderMsg('Bu gruptan çıktın', 'Tekrar katılmak için bir üyenin seni eklemesi gerekir.', true);
+  const owner = conv.owner_id === A.me();
+  const canWrite = !chan || owner;
   const other = group ? null : mem.find((u) => u.id !== A.me()) || (await A.profile(conv.a === A.me() ? conv.b : conv.a));
   const byId = new Map(mem.map((u) => [u.id, u]));
   const head = group
-    ? `<a href="#/group/${conv.id}" style="display:flex;align-items:center;gap:8px">${groupAvatar(conv, 30)}<span><b>${esc(conv.title || 'Grup')}</b><small class="sub" id="cSub">${mem.length} üye</small></span></a>`
+    ? `<a href="#/group/${conv.id}" style="display:flex;align-items:center;gap:8px">${groupAvatar(conv, 30)}<span><b>${esc(conv.title || 'Grup')}</b><small class="sub" id="cSub">${chan ? `${mem.length} takipçi` : `${mem.length} üye`}</small></span></a>`
     : `<a href="#/u/${esc(other.username)}" style="display:flex;align-items:center;gap:8px">${avatar(other, 30)}<span>${uname(other)}<small class="sub" id="cSub"></small></span></a>`;
-  app.innerHTML = `${topbar(head, true, `${group ? '' : `<button class="ibtn" id="cCall" title="Sesli ara">${Calls.CI.phone}</button>`}<button class="ibtn" id="cMore">${I.dots}</button>`)}<div class="chat pad-composer" id="chat"></div>
-    <div class="composer" id="mcomp"><div class="preview hidden" id="prev"></div><div class="row" id="mRow"><button class="ibtn" id="mImg">${I.image}</button><button class="ibtn" id="mGif">${I.gif}</button><input type="text" id="mTxt" placeholder="Mesaj..." maxlength="2000"><button class="ibtn" id="mMic" title="Basılı tut: sesli mesaj">${Calls.CI.mic}</button><button class="send hidden" id="mSend">Gönder</button></div>
-    <div class="rec hidden" id="mRec"><span class="rdot"></span><span id="recT">0:00</span><span class="grow muted small">Kaydediliyor... bırakınca gönderilir</span><button class="ibtn" id="recX">${I.trash}</button></div></div>`;
-  const att = attachments($('#mcomp'), () => toggleSend());
+  const callBtns = chan ? '' : `<button class="ibtn" id="cVid" title="Görüntülü ara">${Calls.CI.video}</button><button class="ibtn" id="cCall" title="Sesli ara">${Calls.CI.phone}</button>`;
+  const th = THEMES[conv.theme] || THEMES[''];
+  app.innerHTML = `${topbar(head, true, `${callBtns}<button class="ibtn" id="cMore">${I.dots}</button>`)}
+    <div id="gBar"></div>${conv.ttl_hours ? `<div class="ttl-note">${ic('circle', 14)} Kaybolan mesajlar açık: ${TTL[conv.ttl_hours] || conv.ttl_hours + ' saat'} sonra silinir</div>` : ''}
+    <div class="chat pad-composer" id="chat" style="--bub-a:${th.a};--bub-b:${th.b}"></div>
+    ${
+      canWrite
+        ? `<div class="composer" id="mcomp"><div class="reply-bar hidden" id="rBar"></div><div class="preview hidden" id="prev"></div><div class="row" id="mRow"><button class="ibtn" id="mImg">${I.image}</button><button class="ibtn" id="mGif">${I.gif}</button><input type="text" id="mTxt" placeholder="${chan ? 'Kanala yaz...' : 'Mesaj...'}" maxlength="2000"><button class="ibtn" id="mMic" title="Basılı tut: sesli mesaj">${Calls.CI.mic}</button><button class="send hidden" id="mSend">Gönder</button></div>
+      <div class="rec hidden" id="mRec"><span class="rdot"></span><span id="recT">0:00</span><span class="grow muted small">Kaydediliyor... bırakınca gönderilir</span><button class="ibtn" id="recX">${I.trash}</button></div></div>`
+        : `<div class="composer chan-bar">${member ? `<span class="muted small grow">Bu kanalda sadece sahibi paylaşım yapar.</span><button class="btn sm gray" id="chLeave">Ayrıl</button>` : `<button class="btn block" id="chJoin">Kanala katıl</button>`}</div>`
+    }`;
+  let replyTo = null;
+  let once = false;
+  const att = canWrite
+    ? attachments($('#mcomp'), () => {
+        toggleSend();
+        // tek seferlik fotoğraf seçeneği
+        const pv = $('#prev');
+        if (att?.get()?.file && !$('#onceBtn', pv)) {
+          pv.insertAdjacentHTML('beforeend', `<button class="once-btn ${once ? 'on' : ''}" id="onceBtn" title="Bir kez görüntülenebilir">1</button>`);
+          $('#onceBtn', pv).onclick = (e) => {
+            once = !once;
+            e.currentTarget.classList.toggle('on', once);
+            toast(once ? 'Bir kez görüntülenebilir: açıldıktan sonra kaybolur' : 'Normal fotoğraf');
+          };
+        }
+        if (!att?.get()) once = false;
+      })
+    : null;
   const toggleSend = () => {
-    const has = $('#mTxt').value.trim() || att.get();
+    if (!canWrite) return;
+    const has = $('#mTxt').value.trim() || att?.get();
     $('#mSend').classList.toggle('hidden', !has);
     $('#mMic').classList.toggle('hidden', !!has);
   };
+  const setReply = (m) => {
+    replyTo = m;
+    const rb = $('#rBar');
+    if (!rb) return;
+    rb.classList.toggle('hidden', !m);
+    if (m) {
+      rb.innerHTML = `<div class="grow"><b>${m.sender_id === A.me() ? 'Kendine' : esc(byId.get(m.sender_id)?.username || '')}</b> yanıt veriyorsun<small>${esc(lastText(m)).slice(0, 80)}</small></div><button class="ibtn" id="rX">${I.close}</button>`;
+      $('#rX').onclick = () => setReply(null);
+      $('#mTxt').focus();
+    }
+  };
   let msgs = [];
+  let reacts = [];
   let lastKey = '';
   let rd = [];
+  const reactHtml = (m) => {
+    const rs = reacts.filter((r) => r.message_id === m.id);
+    if (!rs.length) return '';
+    const by = {};
+    rs.forEach((r) => (by[r.emoji] = (by[r.emoji] || 0) + 1));
+    const mineR = rs.find((r) => r.user_id === A.me())?.emoji;
+    return `<div class="reacts ${m.sender_id === A.me() ? 'mine' : ''}" data-rx="${m.id}">${Object.entries(by)
+      .map(([k, n]) => `<span class="${k === mineR ? 'me' : ''}">${REACT[k] || ''}${n > 1 ? `<b>${n}</b>` : ''}</span>`)
+      .join('')}</div>`;
+  };
+  const quoteHtml = (m) => {
+    if (!m.reply_to) return '';
+    const q = msgs.find((x) => x.id === m.reply_to);
+    return `<div class="quote" data-jump="${m.reply_to}"><b>${q ? (q.sender_id === A.me() ? 'Sen' : esc(byId.get(q.sender_id)?.username || '')) : ''}</b>${q ? esc(lastText(q)).slice(0, 90) : 'Silinmiş mesaj'}</div>`;
+  };
+  const onceHtml = (m, mine) => {
+    const opened = !!m.opened_at;
+    if (mine) return `<div class="bub once ${mine ? 'mine' : ''}" data-m-id="${m.id}">${ic('circle', 16)} Tek seferlik ${m.media_kind === 'video' ? 'video' : 'fotoğraf'}<small>${opened ? 'Açıldı' : 'Henüz açılmadı'}</small></div>`;
+    if (opened || !m.media) return `<div class="bub once" data-m-id="${m.id}">${ic('circle', 16)} Açıldı</div>`;
+    return `<button class="bub once open" data-once="${m.id}">${ic('eye', 16)} Fotoğrafı aç<small>Bir kez görüntülenebilir</small></button>`;
+  };
   const draw = () => {
     const box = $('#chat');
     if (!box) return;
     const lastMine = [...msgs].reverse().find((m) => m.sender_id === A.me());
     const seenBy = lastMine ? rd.filter((r) => r.last_read_at && r.last_read_at >= lastMine.created_at) : [];
     const typers = rd.filter((r) => r.typing_at && Date.now() - new Date(r.typing_at).getTime() < 6000);
-    const key = msgs.map((m) => m.id).join() + '|' + seenBy.length + '|' + typers.map((t) => t.user_id).join();
+    const key = msgs.map((m) => m.id + (m.opened_at || '')).join() + '|' + reacts.map((r) => r.message_id + r.emoji + r.user_id).join() + '|' + seenBy.length + '|' + typers.map((t) => t.user_id).join();
     if (key === lastKey) return;
     const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 80;
     lastKey = key;
@@ -1844,23 +2134,23 @@ async function vChat(convId, _b, tok) {
             const t = new Date(m.created_at).getTime();
             const stamp = t - prevT > 30 * 60 * 1000 ? `<div class="stamp">${new Date(m.created_at).toLocaleString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>` : '';
             const mine = m.sender_id === A.me();
-            const who = group && !mine && (prevS !== m.sender_id || stamp) ? `<div class="bub-who">${esc(byId.get(m.sender_id)?.username || 'eski üye')}</div>` : '';
+            const who = group && !chan && !mine && (prevS !== m.sender_id || stamp) ? `<div class="bub-who">${esc(byId.get(m.sender_id)?.username || 'eski üye')}</div>` : '';
             prevT = t;
             prevS = m.sender_id;
             const link = (m.text || '').match(/#\/p\/([\w-]+)/);
-            return (
-              stamp +
-              who +
-              (m.media && m.media_kind === 'audio' ? voiceHtml(m.media, mine).replace('class="bub', `data-m-id="${m.id}" class="bub`) : '') +
-              (m.media && m.media_kind !== 'audio' ? `<div class="bub media ${mine ? 'mine' : ''}" data-m-id="${m.id}">${mediaTag(m.media, m.media_kind === 'video' ? 'video' : 'photo', '', m.media_kind === 'video' ? 'controls' : '')}</div>` : '') +
-              (m.text ? `<div class="bub ${mine ? 'mine' : ''} ${/^[^:]*::tepki:[a-z]+::$/.test(m.text) ? 'reactmsg' : ''}" data-m-id="${m.id}">${link ? `<a href="#/p/${link[1]}" style="text-decoration:underline">${esc(m.text)}</a>` : richText(m.text)}</div>` : '')
-            );
+            const side = mine && !chan ? 'mine' : '';
+            const body = m.once
+              ? onceHtml(m, mine)
+              : (m.media && m.media_kind === 'audio' ? voiceHtml(m.media, side).replace('class="bub', `data-m-id="${m.id}" class="bub`) : '') +
+                (m.media && m.media_kind !== 'audio' ? `<div class="bub media ${side}" data-m-id="${m.id}">${mediaTag(m.media, m.media_kind === 'video' ? 'video' : 'photo', '', m.media_kind === 'video' ? 'controls' : '')}</div>` : '') +
+                (m.text ? `<div class="bub ${side} ${/^[^:]*::tepki:[a-z]+::$/.test(m.text) ? 'reactmsg' : ''}" data-m-id="${m.id}">${link ? `<a href="#/p/${link[1]}" style="text-decoration:underline">${esc(m.text)}</a>` : richText(m.text)}</div>` : '');
+            return stamp + who + `<div class="msg ${side}" id="m-${m.id}">${quoteHtml(m)}${body}${reactHtml(m)}</div>`;
           })
           .join('') +
-        (seenBy.length && lastMine === msgs[msgs.length - 1] ? `<div class="seen">${group ? `Görenler: ${seenBy.map((r) => esc(byId.get(r.user_id)?.username || '')).join(', ')}` : `Görüldü ${ago(seenBy[0].last_read_at)}`}</div>` : '') +
+        (!chan && seenBy.length && lastMine === msgs[msgs.length - 1] ? `<div class="seen">${group ? `Görenler: ${seenBy.map((r) => esc(byId.get(r.user_id)?.username || '')).join(', ')}` : `Görüldü ${ago(seenBy[0].last_read_at)}`}</div>` : '') +
         (typers.length ? `<div class="bub typing"><i></i><i></i><i></i></div>` : '')
-      : `<div class="empty">${group ? groupAvatar(conv, 80) : avatar(other, 80)}<h3>${esc(group ? conv.title : other.name || other.username)}</h3><p>${group ? `${mem.length} üye` : `@${esc(other.username)} ile sohbete başla`}</p></div>`;
-    if ($('#cSub')) $('#cSub').textContent = typers.length ? (group ? `${byId.get(typers[0].user_id)?.username || ''} yazıyor...` : 'yazıyor...') : group ? `${mem.length} üye` : '';
+      : `<div class="empty">${group ? groupAvatar(conv, 80) : avatar(other, 80)}<h3>${esc(group ? conv.title : other.name || other.username)}</h3><p>${chan ? esc(conv.description || 'Henüz paylaşım yok.') : group ? `${mem.length} üye` : `@${esc(other.username)} ile sohbete başla`}</p></div>`;
+    if ($('#cSub')) $('#cSub').textContent = typers.length ? (group ? `${byId.get(typers[0].user_id)?.username || ''} yazıyor...` : 'yazıyor...') : chan ? `${mem.length} takipçi` : group ? `${mem.length} üye` : '';
     hydrate(box);
     if (atBottom || !prevLen) window.scrollTo(0, document.body.scrollHeight);
     prevLen = msgs.length;
@@ -1869,129 +2159,469 @@ async function vChat(convId, _b, tok) {
   bindVoice($('#chat'));
   const load = async () => {
     try {
-      [msgs, rd] = await Promise.all([A.messages(conv.id), S.reads(conv)]);
+      [msgs, rd] = await Promise.all([A.messages(conv.id, null, conv.ttl_hours), S.reads(conv)]);
+      reacts = await S.reactions(msgs.map((m) => m.id));
       draw();
-      if (!document.hidden) S.markRead(conv);
+      if (!document.hidden && member) S.markRead(conv);
     } catch {
       /* ağ hatası: sonra tekrar */
     }
   };
   await load();
-  // canlı: yeni mesaj / yazıyor gelince hemen yenile; yedek olarak 4 sn'de bir
-  const unsubs = [A.db.subscribe('messages', `conversation_id=eq.${conv.id}`, load), A.db.subscribe('conversation_reads', `conversation_id=eq.${conv.id}`, load)];
+  // devam eden grup araması
+  const gbar = async () => {
+    if (!group || chan) return;
+    const row = await Group.activeCall(conv.id);
+    const el = $('#gBar');
+    if (!el) return;
+    el.innerHTML = row && !Group.inGroupCall() ? `<div class="gcall-bar">${ic('users', 18)} Devam eden ${row.kind === 'video' ? 'görüntülü' : 'sesli'} grup araması<button class="btn sm" id="gJoin">Katıl</button></div>` : '';
+    if ($('#gJoin')) $('#gJoin').onclick = () => Group.joinGroupCall(row, conv);
+  };
+  gbar();
+  const unsubs = [
+    A.db.subscribe('messages', `conversation_id=eq.${conv.id}`, load),
+    A.db.subscribe('conversation_reads', `conversation_id=eq.${conv.id}`, load),
+    A.db.subscribe('message_reactions', null, load),
+  ];
+  if (group && !chan) unsubs.push(A.db.subscribe('group_calls', `conversation_id=eq.${conv.id}`, gbar));
+  let n = 0;
   pollT = setInterval(() => {
     if (stale(tok)) return unsubs.forEach((u) => u());
     load();
+    if (++n % 4 === 0) gbar();
   }, A.db.realtime ? 4000 : 2500);
-  const send = async () => {
-    const text = $('#mTxt').value.trim();
-    const a = att.get();
-    if (!text && !a) return;
-    $('#mTxt').value = '';
-    att.clear();
-    toggleSend();
-    try {
-      const m = await A.sendMessage(conv, { text, file: a?.file, gifUrl: a?.gifUrl });
-      msgs.push(m);
-      draw();
-    } catch (er) {
-      toast(er.message, true);
-    }
-  };
-  $('#mSend').onclick = send;
-  $('#mTxt').oninput = () => (toggleSend(), $('#mTxt').value && S.typing(conv));
-  $('#mTxt').onkeydown = (e) => e.key === 'Enter' && send();
 
-  // ---- sesli mesaj: basılı tut, bırakınca gönder ----
-  let rec = null;
-  let held = false;
-  const stopRec = async (sendIt) => {
-    if (!rec) return;
-    const r = rec;
-    rec = null;
-    clearInterval(r.t);
-    $('#mRec').classList.add('hidden');
-    $('#mRow').classList.remove('hidden');
-    r.cancel = !sendIt || Date.now() - r.start < 800;
-    if (r.mr.state !== 'inactive') r.mr.stop();
-  };
-  $('#mMic').onpointerdown = async (e) => {
-    e.preventDefault();
-    if (rec) return;
-    let stream;
-    try {
-      const hadMic = !window.KankaAndroid?.ensureMic || window.KankaAndroid.ensureMic();
-      held = true;
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-      // izin penceresi açıldıysa parmak çoktan kalkmıştır: kaydı başlatma
-      if (!hadMic || !held) {
-        stream.getTracks().forEach((t) => t.stop());
-        return toast('Mikrofon hazır. Kaydetmek için basılı tut.');
+  // ---- mesaj işlemleri: basılı tut menüsü, çift dokunuşla kalp ----
+  const msgMenu = (m) => {
+    const mine = m.sender_id === A.me();
+    sheet(
+      `<div class="react-pick">${Object.keys(REACT).map((k) => `<button data-r="${k}" title="${REACT_NAMES[k]}">${REACT[k]}</button>`).join('')}</div>
+      <div class="inner opts">${member ? `<button class="opt" data-o="reply">${I.reply}<span>Yanıtla</span></button>` : ''}${m.text ? `<button class="opt" data-o="copy">${I.link}<span>Kopyala</span></button>` : ''}
+      ${mine || (chan && owner) ? `<button class="opt red" data-o="del">${I.trash}<span>Herkesten sil</span></button>` : `<button class="opt red" data-o="rep">${I.flag}<span>Şikâyet et</span></button>`}</div>`,
+      (c, close) => {
+        c.onclick = async (e) => {
+          const r = e.target.closest('[data-r]');
+          if (r) {
+            close();
+            try {
+              await S.react(m, r.dataset.r);
+              lastKey = '';
+              load();
+            } catch (er) {
+              toast(er.message, true);
+            }
+            return;
+          }
+          const o = e.target.closest('[data-o]')?.dataset.o;
+          if (!o) return;
+          close();
+          if (o === 'reply') setReply(m);
+          if (o === 'copy') navigator.clipboard?.writeText(m.text).then(() => toast('Kopyalandı'));
+          if (o === 'del') confirmSheet('Mesaj herkesten silinsin mi?', async () => (await A.deleteMessage(m.id), (lastKey = ''), load()), 'Sil');
+          if (o === 'rep') reportFlow('user', m.sender_id);
+        };
       }
-    } catch {
-      return toast('Mikrofona erişilemedi', true);
-    }
-    const mime = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm'].find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || '';
-    const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-    const chunks = [];
-    rec = { mr, start: Date.now(), cancel: false };
-    const me = rec;
-    mr.ondataavailable = (ev) => ev.data.size && chunks.push(ev.data);
-    mr.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      if (me.cancel || !chunks.length) return;
-      const blob = new Blob(chunks, { type: (mr.mimeType || 'audio/webm').split(';')[0] });
-      try {
-        const url = await S.uploadVoice(blob);
-        const m = await A.sendMessage(conv, { text: '', voiceUrl: url });
-        msgs.push(m);
-        draw();
-      } catch (er) {
-        toast(er.message, true);
-      }
-    };
-    mr.start();
-    $('#mRow').classList.add('hidden');
-    $('#mRec').classList.remove('hidden');
-    rec.t = setInterval(() => {
-      const s = Math.floor((Date.now() - me.start) / 1000);
-      $('#recT').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-      if (s >= 120) stopRec(true);
-    }, 250);
+    );
   };
-  const up = (e) => {
-    held = false;
-    if (rec) stopRec(!e.target.closest?.('#recX'));
-  };
-  window.addEventListener('pointerup', up);
-  $('#recX').onpointerdown = (e) => (e.stopPropagation(), stopRec(false));
-  const cleanup = setInterval(() => stale(tok) && (window.removeEventListener('pointerup', up), stopRec(false), clearInterval(cleanup)), 500);
-
   $('#chat').addEventListener('contextmenu', (e) => e.preventDefault());
   let pressT = null;
+  let lastTap = 0;
   $('#chat').addEventListener('pointerdown', (e) => {
     const b = e.target.closest('[data-m-id]');
     if (!b) return;
     pressT = setTimeout(() => {
       const m = msgs.find((x) => x.id === b.dataset.mId);
-      if (m && m.sender_id === A.me()) confirmSheet('Mesaj herkesten silinsin mi?', async () => (await A.deleteMessage(m.id), (lastKey = ''), load()), 'Sil');
-    }, 550);
+      if (m) msgMenu(m);
+    }, 480);
   });
-  $('#chat').addEventListener('pointerup', () => clearTimeout(pressT));
-  if ($('#cCall')) $('#cCall').onclick = () => Calls.startCall(other.id);
-  $('#cMore').onclick = () =>
+  $('#chat').addEventListener('pointerup', (e) => {
+    clearTimeout(pressT);
+    const b = e.target.closest('[data-m-id]');
+    if (!b || e.target.closest('a, button, video, audio')) return;
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      const m = msgs.find((x) => x.id === b.dataset.mId);
+      if (m && member) S.react(m, 'kalp').then(() => ((lastKey = ''), load())).catch(() => {});
+      lastTap = 0;
+    } else lastTap = now;
+  });
+  $('#chat').addEventListener('pointercancel', () => clearTimeout(pressT));
+  $('#chat').addEventListener('scroll', () => clearTimeout(pressT), true);
+  $('#chat').addEventListener('click', async (e) => {
+    const j = e.target.closest('[data-jump]');
+    if (j) {
+      const el = document.getElementById('m-' + j.dataset.jump);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('flash');
+        setTimeout(() => el.classList.remove('flash'), 1200);
+      }
+      return;
+    }
+    const rx = e.target.closest('[data-rx]');
+    if (rx) {
+      const rs = reacts.filter((r) => r.message_id === rx.dataset.rx);
+      const pm = await A.profiles(rs.map((r) => r.user_id));
+      return sheet(`<h3>Tepkiler</h3>${rs.map((r) => `<div class="list-row">${avatar(pm.get(r.user_id), 40)}<div class="grow">${uname(pm.get(r.user_id))}</div><span class="react-big">${REACT[r.emoji] || ''}</span></div>`).join('')}`);
+    }
+    const o = e.target.closest('[data-once]');
+    if (o) {
+      const m = msgs.find((x) => x.id === o.dataset.once);
+      if (!m || !m.media) return;
+      const src = await A.db.resolve(m.media);
+      const v = document.createElement('div');
+      v.className = 'once-view';
+      v.innerHTML = `${m.media_kind === 'video' ? `<video src="${esc(src)}" autoplay playsinline></video>` : `<img src="${esc(src)}">`}<div class="once-hint">Kapatınca bir daha açılamaz</div><button class="ibtn once-x">${I.close}</button>`;
+      document.body.appendChild(v);
+      const close = async () => {
+        v.remove();
+        await S.markOpened(m).catch(() => {});
+        lastKey = '';
+        load();
+      };
+      $('.once-x', v).onclick = close;
+      window.__onceClose = close;
+    }
+  });
+
+  if (chan && !canWrite) {
+    if ($('#chJoin'))
+      $('#chJoin').onclick = async () => {
+        try {
+          await S.joinChannel(conv);
+          toast('Kanala katıldın');
+          route();
+        } catch (er) {
+          toast(er.message, true);
+        }
+      };
+    if ($('#chLeave')) $('#chLeave').onclick = () => confirmSheet('Kanaldan ayrılınsın mı?', async () => (await S.leaveGroup(conv), route()), 'Ayrıl');
+  }
+
+  if (canWrite) {
+    const send = async () => {
+      const text = $('#mTxt').value.trim();
+      const a = att.get();
+      if (!text && !a) return;
+      $('#mTxt').value = '';
+      const isOnce = once && !!a?.file;
+      const rep = replyTo;
+      att.clear();
+      setReply(null);
+      once = false;
+      toggleSend();
+      try {
+        const m = await A.sendMessage(conv, { text, file: a?.file, gifUrl: a?.gifUrl, replyTo: rep?.id, once: isOnce });
+        msgs.push(m);
+        lastKey = '';
+        draw();
+      } catch (er) {
+        toast(er.message, true);
+      }
+    };
+    $('#mSend').onclick = send;
+    $('#mTxt').oninput = () => (toggleSend(), $('#mTxt').value && S.typing(conv));
+    $('#mTxt').onkeydown = (e) => e.key === 'Enter' && send();
+
+    // ---- sesli mesaj: basılı tut, bırakınca gönder ----
+    let rec = null;
+    let held = false;
+    const stopRec = async (sendIt) => {
+      if (!rec) return;
+      const r = rec;
+      rec = null;
+      clearInterval(r.t);
+      $('#mRec')?.classList.add('hidden');
+      $('#mRow')?.classList.remove('hidden');
+      r.cancel = !sendIt || Date.now() - r.start < 800;
+      if (r.mr.state !== 'inactive') r.mr.stop();
+    };
+    $('#mMic').onpointerdown = async (e) => {
+      e.preventDefault();
+      if (rec) return;
+      let stream;
+      try {
+        const hadMic = !window.KankaAndroid?.ensureMic || window.KankaAndroid.ensureMic();
+        held = true;
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        if (!hadMic || !held) {
+          stream.getTracks().forEach((t) => t.stop());
+          return toast('Mikrofon hazır. Kaydetmek için basılı tut.');
+        }
+      } catch {
+        return toast('Mikrofona erişilemedi', true);
+      }
+      const mime = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm'].find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || '';
+      const mr = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      const chunks = [];
+      rec = { mr, start: Date.now(), cancel: false };
+      const meRec = rec;
+      mr.ondataavailable = (ev) => ev.data.size && chunks.push(ev.data);
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (meRec.cancel || !chunks.length) return;
+        const blob = new Blob(chunks, { type: (mr.mimeType || 'audio/webm').split(';')[0] });
+        try {
+          const url = await S.uploadVoice(blob);
+          const m = await A.sendMessage(conv, { text: '', voiceUrl: url, replyTo: replyTo?.id });
+          setReply(null);
+          msgs.push(m);
+          lastKey = '';
+          draw();
+        } catch (er) {
+          toast(er.message, true);
+        }
+      };
+      mr.start();
+      $('#mRow').classList.add('hidden');
+      $('#mRec').classList.remove('hidden');
+      rec.t = setInterval(() => {
+        const s = Math.floor((Date.now() - meRec.start) / 1000);
+        $('#recT').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+        if (s >= 120) stopRec(true);
+      }, 250);
+    };
+    const up = (e) => {
+      held = false;
+      if (rec) stopRec(!e.target.closest?.('#recX'));
+    };
+    window.addEventListener('pointerup', up);
+    $('#recX').onpointerdown = (e) => (e.stopPropagation(), stopRec(false));
+    const cleanup = setInterval(() => stale(tok) && (window.removeEventListener('pointerup', up), stopRec(false), clearInterval(cleanup)), 500);
+  }
+
+  // ---- arama düğmeleri ----
+  if ($('#cCall')) $('#cCall').onclick = () => (group ? Group.startGroupCall(conv, 'audio') : Calls.startCall(other.id, 'audio'));
+  if ($('#cVid')) $('#cVid').onclick = () => (group ? Group.startGroupCall(conv, 'video') : Calls.startCall(other.id, 'video'));
+
+  // ---- ayarlar menüsü ----
+  const themeSheet = () =>
+    sheet(`<h3>Sohbet teması</h3><div class="theme-pick">${Object.entries(THEMES)
+      .map(([k, t]) => `<button data-th="${k}" class="${(conv.theme || '') === k ? 'on' : ''}"><i style="background:linear-gradient(135deg,${t.a},${t.b})"></i><span>${t.name}</span></button>`)
+      .join('')}</div>`, (c, close) => {
+      c.onclick = async (e) => {
+        const b = e.target.closest('[data-th]');
+        if (!b) return;
+        close();
+        try {
+          await S.setConvSetting(conv, { theme: b.dataset.th });
+          route();
+        } catch (er) {
+          toast(er.message, true);
+        }
+      };
+    });
+  const ttlSheet = () =>
     sheet(
-      group
-        ? [
-            { icon: I.users, label: 'Grup bilgisi', run: () => (location.hash = '#/group/' + conv.id) },
-            { icon: I.close, label: 'Gruptan çık', red: true, run: () => confirmSheet('Gruptan çıkılsın mı?', async () => (await S.leaveGroup(conv), (location.hash = '#/dm'))) },
-          ]
-        : [
-            { icon: I.user, label: 'Profili gör', run: () => (location.hash = '#/u/' + other.username) },
-            { icon: Calls.CI.phone, label: 'Sesli ara', run: () => Calls.startCall(other.id) },
-            { icon: I.flag, label: 'Kullanıcıyı şikâyet et', red: true, run: () => reportFlow('user', other.id) },
-          ]
+      Object.entries(TTL).map(([k, v]) => ({
+        icon: String(conv.ttl_hours || '') === k ? I.check : I.circle,
+        label: k ? `Kaybolan mesajlar: ${v}` : 'Kaybolan mesajlar: Kapalı',
+        run: async () => {
+          try {
+            await S.setConvSetting(conv, { ttl_hours: k ? +k : null });
+            toast(k ? `Mesajlar ${v} sonra kaybolacak` : 'Kaybolan mesajlar kapatıldı');
+            route();
+          } catch (er) {
+            toast(er.message, true);
+          }
+        },
+      }))
     );
+  $('#cMore').onclick = () => {
+    const opts = [];
+    if (chan) {
+      if (owner) opts.push({ icon: I.pen, label: 'Kanal adı ve açıklaması', run: () => promptSheet('Kanal adı', '', async (t) => t && (await S.setConvSetting(conv, { title: t.slice(0, 40) }), route()), false, conv.title) });
+      opts.push({ icon: I.link, label: 'Kanal bağlantısını paylaş', run: () => shareLink(`${SITE}/#/dm/${conv.id}`, `Kanka kanalı: ${conv.title}`) });
+      if (member && !owner) opts.push({ icon: I.close, label: 'Kanaldan ayrıl', red: true, run: () => confirmSheet('Kanaldan ayrılınsın mı?', async () => (await S.leaveGroup(conv), route()), 'Ayrıl') });
+      if (owner) opts.push({ icon: I.trash, label: 'Kanalı sil', red: true, run: () => confirmSheet('Kanal ve tüm paylaşımları silinsin mi?', async () => (await A.db.remove('conversations', { id: conv.id }), (location.hash = '#/dm/chan')), 'Sil') });
+      return sheet(opts);
+    }
+    if (group) opts.push({ icon: I.users, label: 'Grup bilgisi', run: () => (location.hash = '#/group/' + conv.id) });
+    else opts.push({ icon: I.user, label: 'Profili gör', run: () => (location.hash = '#/u/' + other.username) });
+    opts.push({ icon: I.sun, label: 'Sohbet teması', run: themeSheet });
+    opts.push({ icon: I.circle, label: `Kaybolan mesajlar (${TTL[conv.ttl_hours || ''] || conv.ttl_hours + ' saat'})`, run: ttlSheet });
+    if (group) opts.push({ icon: I.close, label: 'Gruptan çık', red: true, run: () => confirmSheet('Gruptan çıkılsın mı?', async () => (await S.leaveGroup(conv), (location.hash = '#/dm'))) });
+    else opts.push({ icon: I.flag, label: 'Kullanıcıyı şikâyet et', red: true, run: () => reportFlow('user', other.id) });
+    sheet(opts);
+  };
+}
+
+/* =========================================================
+   Anket gönderisi
+   ========================================================= */
+function pollCardHtml(p) {
+  const poll = p.meta?.poll || { q: p.caption, options: [] };
+  return `<div class="poll-card" data-poll="${p.id}"><div class="pq">${esc(poll.q || '')}</div>${(poll.options || [])
+    .map((o, i) => `<button class="po" data-vote-i="${i}"><i></i><span>${esc(o)}</span><b></b></button>`)
+    .join('')}<small class="pt muted"></small></div>`;
+}
+async function hydratePolls(root, list) {
+  for (const card of $$('.poll-card', root)) {
+    const p = list.find((x) => x.id === card.dataset.poll);
+    if (!p) continue;
+    const r = await S.pollPostResults(p.id);
+    drawPoll(card, p, r);
+  }
+}
+function drawPoll(card, p, r) {
+  const counts = r?.counts || {};
+  const tot = Object.values(counts).reduce((a, b) => a + +b, 0);
+  const voted = r?.mine !== null && r?.mine !== undefined;
+  const show = voted || p.user_id === A.me();
+  card.dataset.voted = voted ? '1' : '';
+  $$('.po', card).forEach((b) => {
+    const i = +b.dataset.voteI;
+    const n = +(counts[i] || 0);
+    const pct = tot ? Math.round((n / tot) * 100) : 0;
+    b.classList.toggle('mine', r?.mine === i);
+    b.classList.toggle('shown', show);
+    $('i', b).style.width = show ? pct + '%' : '0';
+    $('b', b).textContent = show ? `%${pct}` : '';
+  });
+  $('.pt', card).textContent = `${tot} oy${show ? '' : ' · oy verince sonuçları görürsün'}`;
+  card.classList.toggle('voted', voted);
+}
+async function votePoll(p, i, card) {
+  try {
+    await S.votePost(p, i);
+    drawPoll(card, p, await S.pollPostResults(p.id));
+  } catch (er) {
+    toast(er.message, true);
+  }
+}
+function vCreatePoll() {
+  app.innerHTML = `${topbar('Anket paylaş', true, '<button class="btn sm" id="pShare">Paylaş</button>')}<div class="create">
+    <input class="field" id="pQ" placeholder="Soru (örn. Akşam ne yapalım?)" maxlength="140">
+    <div id="pOpts"><input class="field po-in" placeholder="1. seçenek" maxlength="60"><input class="field po-in" placeholder="2. seçenek" maxlength="60"></div>
+    <button class="btn block gray" id="pAdd">${I.plus} Seçenek ekle</button>
+    <p class="small muted">En fazla 4 seçenek. Oy verenlerin kimliği gizlidir, sadece yüzdeler görünür.</p></div>`;
+  $('#pAdd').onclick = () => {
+    const n = $$('.po-in').length;
+    if (n >= 4) return toast('En fazla 4 seçenek', true);
+    $('#pOpts').insertAdjacentHTML('beforeend', `<input class="field po-in" placeholder="${n + 1}. seçenek" maxlength="60">`);
+  };
+  $('#pShare').onclick = async () => {
+    const q = $('#pQ').value.trim();
+    const options = $$('.po-in').map((x) => x.value.trim()).filter(Boolean);
+    if (!q) return toast('Soruyu yaz', true);
+    if (options.length < 2) return toast('En az 2 seçenek yaz', true);
+    $('#pShare').disabled = true;
+    try {
+      const post = await A.createPollPost({ question: q, options });
+      S.notifyMentions(post, q);
+      toast('Anket paylaşıldı');
+      location.hash = '#/home';
+    } catch (er) {
+      toast(er.message, true);
+      $('#pShare').disabled = false;
+    }
+  };
+}
+
+/* =========================================================
+   Canlı yayın
+   ========================================================= */
+function vGoLive() {
+  app.innerHTML = `${topbar('Canlı yayın', true)}<div class="create" style="text-align:center">
+    <div class="live-hero"><span class="lv-badge">CANLI</span></div>
+    <input class="field" id="lvTitle" placeholder="Yayın başlığı (isteğe bağlı)" maxlength="80">
+    <button class="btn block" id="lvGo">${Calls.CI.video} Yayını başlat</button>
+    <p class="small muted">Takipçilerine bildirim gider. Arkadaş ortamı için en fazla 20 izleyici aynı anda izleyebilir. Yorumlar ve kalpler canlı görünür; yayın kaydedilmez.</p></div>`;
+  $('#lvGo').onclick = () => Live.startLive($('#lvTitle').value.trim());
+}
+async function vLive(id) {
+  app.innerHTML = `${topbar('Canlı yayın', true)}<div class="empty"><div class="spin" style="margin:auto"></div></div>`;
+  await Live.watchLive(id);
+}
+
+/* =========================================================
+   Anılar: "1 yıl önce bugün"
+   ========================================================= */
+async function showMemory(box) {
+  const today = new Date();
+  const key = today.toISOString().slice(0, 10);
+  try {
+    if (localStorage.getItem('kanka.memory') === key) return;
+  } catch {
+    /* yok */
+  }
+  const mine = await A.userPosts(A.me()).catch(() => []);
+  const sameDay = (d) => d.getDate() === today.getDate();
+  let pick = null;
+  let label = '';
+  for (const p of mine) {
+    const d = new Date(p.created_at);
+    if (!sameDay(d)) continue;
+    const years = today.getFullYear() - d.getFullYear();
+    const months = years * 12 + today.getMonth() - d.getMonth();
+    if (years >= 1 && d.getMonth() === today.getMonth()) {
+      pick = p;
+      label = `${years} yıl önce bugün`;
+      break;
+    }
+    if (!pick && months >= 1) {
+      pick = p;
+      label = months === 1 ? '1 ay önce bugün' : `${months} ay önce bugün`;
+    }
+  }
+  if (!pick || !box) return;
+  box.insertAdjacentHTML(
+    'afterbegin',
+    `<div class="memory"><a href="#/p/${pick.id}" class="mem-thumb">${mediaTag(pick.media, pick.kind)}</a><a href="#/p/${pick.id}" class="grow"><b>Anı</b><small>${label} paylaştığın ${pick.kind === 'video' ? 'video' : pick.kind === 'poll' ? 'anket' : 'fotoğraf'}</small></a>
+    <button class="ibtn" id="memShare" title="Hikâyende paylaş">${I.repost}</button><button class="ibtn" id="memX">${I.close}</button></div>`
+  );
+  hydrate(box);
+  $('#memX').onclick = () => {
+    try {
+      localStorage.setItem('kanka.memory', key);
+    } catch {
+      /* yok */
+    }
+    $('.memory')?.remove();
+  };
+  $('#memShare').onclick = () => shareLink(postUrl(pick.id), `Anı: ${label}`);
+}
+
+/* =========================================================
+   Yakındakiler (yaklaşık konum, isteğe bağlı)
+   ========================================================= */
+async function vNearby(_a, _b, tok) {
+  app.innerHTML = `${topbar('Yakındakiler', true)}<div id="nb"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
+  const mine = await S.myLocation();
+  if (stale(tok)) return;
+  const box = $('#nb');
+  if (!mine) {
+    box.innerHTML = `<div class="empty"><div class="ico">${I.globe}</div><h3>Yakınındaki Kanka kullanıcıları</h3>
+      <p>Konumunu paylaşırsan, konumunu paylaşan diğer kişileri uzaklıklarıyla görürsün. Tam konumun asla gösterilmez; yaklaşık 1 km'ye yuvarlanır. İstediğin an kapatabilirsin.</p>
+      <button class="btn" id="nbOn">Konumumu paylaş</button></div>`;
+    $('#nbOn').onclick = async () => {
+      $('#nbOn').disabled = true;
+      try {
+        await S.shareLocation();
+        route();
+      } catch (er) {
+        toast(er.message, true);
+        $('#nbOn').disabled = false;
+      }
+    };
+    return;
+  }
+  // konumu tazele (arka planda)
+  S.shareLocation().catch(() => {});
+  const list = await S.nearby(mine);
+  if (stale(tok)) return;
+  const km = (d) => (d < 1 ? '1 km içinde' : d < 10 ? `${d.toFixed(1)} km` : `${Math.round(d)} km`);
+  box.innerHTML =
+    `<div class="inner small muted">Konumun yaklaşık olarak paylaşılıyor. <button class="link" id="nbOff">Paylaşmayı durdur</button></div>` +
+    (list.length
+      ? list.map((x) => `<a class="list-row" href="#/u/${esc(x.user.username)}">${avatar(x.user, 48)}<div class="grow">${uname(x.user)}<small>${km(x.km)} · ${ago(x.at)}</small></div></a>`).join('')
+      : `<div class="empty"><h3>Yakında kimse yok</h3><p>Konumunu paylaşan başka kullanıcı yok ya da hepsi uzakta. Arkadaşlarına da açmalarını söyle.</p></div>`);
+  hydrate(box);
+  $('#nbOff').onclick = async () => {
+    await S.stopLocation();
+    toast('Konum paylaşımı kapatıldı');
+    route();
+  };
 }
 
 /* ---------- Grup bilgisi ---------- */
@@ -2052,6 +2682,9 @@ async function vNotifs(_a, _b, tok) {
     group_add: 'seni bir gruba ekledi:',
     story_vote: 'hikâyene cevap verdi:',
     missed_call: 'seni aradı (cevapsız arama).',
+    live: 'canlı yayında:',
+    group_call: 'grup araması başlattı.',
+    invite: 'davetinle Kanka\'ya katıldı.',
     verified: '',
     system: '',
   };
@@ -2078,11 +2711,13 @@ async function vSettings() {
     ${admin ? `<a class="list-row" href="#/admin">${I.shield}<div class="grow"><b>Yönetim paneli</b><small>Kullanıcılar, mavi tik, şikâyetler, içerik denetimi</small></div></a>` : ''}
     <a class="list-row" href="#/edit">${I.user}<div class="grow">Profili düzenle</div></a>
     <a class="list-row" href="#/privacy">${ic('lock', 24)}<div class="grow">Gizlilik<small>${meP.private ? 'Gizli hesap' : 'Herkese açık hesap'} · mesaj izni · engellenenler</small></div></a>
+    <button class="list-row" id="invite" style="width:100%;text-align:left">${I.users}<div class="grow">Arkadaşını davet et<small>Bağlantıyla gelen seni otomatik takip eder</small></div></button>
     <a class="list-row" href="#/saved">${I.bookmark}<div class="grow">Kaydedilenler</div></a>
     <a class="list-row" href="#/closefriends">${ic('star', 24)}<div class="grow">Yakın arkadaşlar<small>Hikâyeleri sadece seçtiğin kişilerle paylaş</small></div></a>
     <a class="list-row" href="#/appearance">${I.sun}<div class="grow">Görünüm<small>${{ dark: 'Koyu tema', light: 'Açık tema', system: 'Sistemle aynı' }[S.theme()]}</small></div></a>
     <a class="list-row" href="#/verify">${TICK}<div class="grow">Mavi tik başvurusu<small>${meP.verified ? 'Hesabın zaten onaylı' : 'Yüz fotoğrafı ve yaş doğrulaması ile'}</small></div></a>
     <a class="list-row" href="#/notifs">${I.bell}<div class="grow">Bildirimler</div></a>
+    ${window.KankaAndroid ? `<a class="list-row" href="#/notiftest">${I.bell}<div class="grow">Bildirim testi<small>Uygulama kapalıyken arama gelmiyorsa buraya bak</small></div></a>` : ''}
     <button class="list-row" id="pw" style="width:100%;text-align:left">${I.gear}<div class="grow">Şifre değiştir</div></button>
     <a class="list-row" href="#/server">${I.globe}<div class="grow">Sunucu<small>${local ? 'Yerel mod (sadece bu cihaz)' : 'Ortak sunucuya bağlı'}</small></div></a>
     ${window.KankaAndroid && (!window.KankaAndroid.selfUpdate || window.KankaAndroid.selfUpdate()) ? `<button class="list-row" id="upd" style="width:100%;text-align:left">${I.reply}<div class="grow">Güncellemeleri denetle<small>Yüklü sürüm: ${window.KankaAndroid.version()}</small></div></button>` : ''}
@@ -2091,6 +2726,7 @@ async function vSettings() {
     <button class="list-row" id="out" style="width:100%;text-align:left;color:#ff6b77">${I.close}<div class="grow">Çıkış yap</div></button>
     <p class="small muted" style="padding:14px">Kanka · @${esc(meP.username)}</p>`;
   $('#del').onclick = deleteAccountFlow;
+  $('#invite').onclick = inviteSheet;
   $('#pw').onclick = () =>
     promptSheet('Yeni şifre', 'En az 6 karakter', async (pw) => {
       if (pw.length < 6) return toast('En az 6 karakter', true);
@@ -2449,6 +3085,11 @@ document.addEventListener('visibilitychange', () => !document.hidden && checkWeb
 window.__androidBack = () => {
   if (window.__editorBack) return window.__editorBack();
   if (Calls.inCall()) return true;
+  if (Live.liveBack()) return true;
+  if (window.__onceClose && document.querySelector('.once-view')) {
+    window.__onceClose();
+    return true;
+  }
   if (!$('#sheet').classList.contains('hidden')) {
     closeSheet();
     return true;

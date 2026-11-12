@@ -228,6 +228,17 @@ export async function createPost({ file, caption, meta, drawingBlob }) {
   const m = await buildMeta(meta, drawingBlob);
   return insertWithMeta('posts', { user_id: me(), kind: up.kind === 'video' ? 'video' : 'photo', media: up.url, caption }, m);
 }
+/** Anket gönderisi (fotoğrafsız). */
+export async function createPollPost({ question, options }) {
+  await assertActive();
+  const q = question.slice(0, 140);
+  const opts = options.slice(0, 4).map((o) => o.slice(0, 60));
+  try {
+    return await db.insert('posts', { user_id: me(), kind: 'poll', media: '', caption: q, meta: { poll: { q, options: opts } } });
+  } catch (e) {
+    throw friendly(e, 'Anket paylaşılamadı. Sunucu güncellemesi (guncelleme-1.sql ve guncelleme-6.sql) yapılmış mı?');
+  }
+}
 export async function updateCaption(post, caption) {
   const r = await db.update('posts', post.id, { caption });
   if (!r) throw new Error('Açıklama değiştirilemedi');
@@ -646,12 +657,18 @@ export async function conversationWith(uid) {
     throw friendly(e, 'Bu kişiye mesaj gönderemezsin (mesaj izni kapalı ya da engellenmiş).');
   }
 }
-export async function messages(convId, since) {
+export async function messages(convId, since, ttlHours) {
   const q = { eq: { conversation_id: convId }, order: ['created_at', true] };
   if (since) q.gte = { created_at: since };
-  return db.list('messages', q);
+  let r = await db.list('messages', q);
+  // kaybolan mesajlar (sunucuda kural zaten gizler; yerel modda burada)
+  if (ttlHours) {
+    const lim = Date.now() - ttlHours * 3600 * 1000;
+    r = r.filter((m) => new Date(m.created_at).getTime() > lim);
+  }
+  return r.slice(-400);
 }
-export async function sendMessage(conv, { text, file, gifUrl, voiceUrl }) {
+export async function sendMessage(conv, { text, file, gifUrl, voiceUrl, replyTo, once }) {
   await assertActive();
   let media = '';
   let media_kind = '';
@@ -668,7 +685,18 @@ export async function sendMessage(conv, { text, file, gifUrl, voiceUrl }) {
   }
   let msg;
   try {
-    msg = await db.insert('messages', { conversation_id: conv.id, sender_id: me(), text, media, media_kind });
+    const row = { conversation_id: conv.id, sender_id: me(), text, media, media_kind };
+    if (replyTo) row.reply_to = replyTo;
+    if (once && media) row.once = true;
+    msg = await db.insert('messages', row).catch((e) => {
+      // sunucu güncellenmediyse yeni alanlar olmadan gönder
+      if ((row.reply_to || row.once) && /reply_to|once/.test(e.message || '')) {
+        delete row.reply_to;
+        delete row.once;
+        return db.insert('messages', row);
+      }
+      throw e;
+    });
   } catch (e) {
     throw friendly(e, 'Bu kişiye mesaj gönderemezsin (mesaj izni kapalı ya da engellenmiş).');
   }

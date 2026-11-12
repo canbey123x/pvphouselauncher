@@ -126,7 +126,7 @@ final class Push {
         b.setSmallIcon(R.drawable.ic_stat_kanka)
                 .setColor(0xFF34C759)
                 .setContentTitle(name)
-                .setContentText("Kanka sesli arama")
+                .setContentText(val(data, "group_call_id", "").isEmpty() ? ("video".equals(data.get("kind")) ? "Kanka görüntülü arama" : "Kanka sesli arama") : "Grup araması")
                 .setCategory(Notification.CATEGORY_CALL)
                 .setOngoing(true)
                 .setAutoCancel(false)
