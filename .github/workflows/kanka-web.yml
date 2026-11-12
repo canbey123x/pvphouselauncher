@@ -35,6 +35,7 @@ jobs:
           touch site/.nojekyll
           # web sürümü otomatik güncellemesi bu dosyaya bakar
           printf '{"v":"%s","t":"%s"}\n' "${GITHUB_SHA::12}" "$(date -u +%FT%TZ)" > site/version.json
+          sed -i "s/__SURUM__/${GITHUB_SHA::12}-$GITHUB_RUN_NUMBER/" site/sw.js
           ls -la site
 
       - name: gh-pages dalına yayınla
