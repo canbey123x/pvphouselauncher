@@ -143,6 +143,42 @@ function startTick() {
 }
 
 /* ---------- WebRTC ---------- */
+const STUN = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+let iceCache = null;
+/** Bağlantı sunucuları: config.js + server.json'daki "turn" adresinden alınan TURN bilgileri (mobil ağlarda şart). */
+async function iceServers() {
+  if (iceCache && iceCache.exp > Date.now()) return iceCache.list;
+  let list = [...STUN, ...(ICE_SERVERS || [])];
+  let turnUrl = '';
+  try {
+    turnUrl = JSON.parse(localStorage.getItem('kanka.turn') || '""');
+  } catch {
+    /* yok */
+  }
+  if (turnUrl) {
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 4000);
+      const r = await fetch(turnUrl, { signal: ctl.signal, cache: 'no-store' });
+      clearTimeout(t);
+      const j = await r.json();
+      const extra = Array.isArray(j) ? j : j.iceServers || [];
+      if (extra.length) list = [...list, ...extra];
+    } catch {
+      /* TURN alınamadı: STUN ile dene */
+    }
+  }
+  iceCache = { list, exp: Date.now() + 30 * 60 * 1000 };
+  return list;
+}
+/** Ses kalitesi: Opus'ta kayıp telafisi (FEC) açık, sabit ve yeterli bit hızı, mono. */
+function tuneSdp(desc) {
+  const sdp = desc.sdp.replace(/a=fmtp:(\d+) (.*minptime.*)/g, (m, pt, params) => {
+    const p = params.split(';').filter((x) => !/^(useinbandfec|usedtx|maxaveragebitrate|stereo|cbr)=/.test(x));
+    return `a=fmtp:${pt} ${[...p, 'useinbandfec=1', 'usedtx=0', 'stereo=0', 'maxaveragebitrate=40000'].join(';')}`;
+  });
+  return { type: desc.type, sdp };
+}
 async function getMic() {
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
@@ -150,11 +186,31 @@ async function getMic() {
     throw new Error('Mikrofona erişilemedi. Ayarlardan Kanka için mikrofon iznini aç.');
   }
 }
-function makePeer() {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS && ICE_SERVERS.length ? ICE_SERVERS : [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }] });
+async function makePeer() {
+  const pc = new RTCPeerConnection({ iceServers: await iceServers(), bundlePolicy: 'max-bundle' });
   cur.local.getTracks().forEach((t) => pc.addTrack(t, cur.local));
+  pc.getSenders().forEach((sd) => {
+    try {
+      const prm = sd.getParameters();
+      prm.encodings = (prm.encodings && prm.encodings.length ? prm.encodings : [{}]).map((e) => ({ ...e, priority: 'high', networkPriority: 'high', maxBitrate: 48000 }));
+      sd.setParameters(prm).catch(() => {});
+    } catch {
+      /* desteklenmiyor */
+    }
+  });
   pc.onicecandidate = (e) => e.candidate && cur?.ch.send('ice', { from: me(), c: e.candidate.toJSON() });
   pc.ontrack = (e) => {
+    // dalgalı ağlarda kesilmesin: biraz daha geniş tampon
+    try {
+      e.receiver.jitterBufferTarget = 120;
+    } catch {
+      /* eski sürüm */
+    }
+    try {
+      e.receiver.playoutDelayHint = 0.12;
+    } catch {
+      /* eski sürüm */
+    }
     let a = document.getElementById('callAudio');
     if (!a) {
       a = document.createElement('audio');
@@ -163,50 +219,94 @@ function makePeer() {
       a.setAttribute('playsinline', '');
       document.body.appendChild(a);
     }
-    a.srcObject = e.streams[0];
+    a.srcObject = e.streams[0] || new MediaStream([e.track]);
     a.play?.().catch(() => {});
   };
+  let dropT = null;
   pc.onconnectionstatechange = () => {
-    if (!cur) return;
-    if (pc.connectionState === 'connected' && cur.state !== 'live') {
-      cur.state = 'live';
-      cur.started = Date.now();
-      stopRing();
-      render();
-      startTick();
+    if (!cur || cur.pc !== pc) return;
+    const st = pc.connectionState;
+    if (st === 'connected') {
+      clearTimeout(dropT);
+      if (cur.state !== 'live') {
+        cur.state = 'live';
+        cur.started = Date.now();
+        stopRing();
+        render();
+        startTick();
+      } else setStateText(null);
     }
-    if (pc.connectionState === 'failed') {
-      cur.endText = 'Bağlantı kurulamadı';
-      hangup('ended');
+    if (st === 'disconnected' || st === 'failed') {
+      // ağ değişti / koptu: yeniden bağlanmayı dene, 15 sn içinde olmazsa kapat
+      setStateText('Yeniden bağlanıyor...');
+      restartIce();
+      clearTimeout(dropT);
+      dropT = setTimeout(() => {
+        if (cur && cur.pc === pc && pc.connectionState !== 'connected') {
+          cur.endText = 'Bağlantı koptu';
+          hangup('ended');
+        }
+      }, 15000);
     }
   };
   cur.pending = [];
   return pc;
+}
+function setStateText(t) {
+  const s = document.getElementById('cState');
+  if (s && t) s.textContent = t;
+}
+let restarting = false;
+async function restartIce() {
+  if (!cur?.pc || cur.incoming || restarting) return;
+  restarting = true;
+  try {
+    const offer = tuneSdp(await cur.pc.createOffer({ iceRestart: true }));
+    await cur.pc.setLocalDescription(offer);
+    cur.ch.send('offer', { from: me(), sdp: offer, restart: true });
+  } catch {
+    /* sonra tekrar */
+  }
+  setTimeout(() => (restarting = false), 4000);
 }
 function openChannel(callId) {
   const ch = db.channel('call-' + callId);
   ch.on('ready', async (m) => {
     // aranan kişi hazır: teklif gönder (arayan taraf)
     if (!cur || cur.incoming || m.from === me()) return;
+    if (cur.pc) {
+      // tekrar gelen "hazır": teklif kaybolmuş olabilir, aynısını yeniden gönder
+      if (cur.pc.localDescription && !cur.pc.remoteDescription) ch.send('offer', { from: me(), sdp: cur.pc.localDescription });
+      return;
+    }
     cur.state = 'connecting';
+    clearTimeout(cur.timeout);
+    stopRing();
     render();
-    cur.pc = makePeer();
-    const offer = await cur.pc.createOffer();
+    cur.pc = await makePeer();
+    const offer = tuneSdp(await cur.pc.createOffer());
     await cur.pc.setLocalDescription(offer);
     ch.send('offer', { from: me(), sdp: offer });
   });
   ch.on('offer', async (m) => {
     if (!cur || !cur.incoming || m.from === me()) return;
-    cur.pc = cur.pc || makePeer();
+    cur.gotOffer = true;
+    if (!cur.pc) cur.pc = await makePeer();
+    if (!m.restart && cur.pc.remoteDescription) {
+      // aynı teklif ikinci kez geldi: cevabı tekrar gönder
+      if (cur.pc.localDescription) ch.send('answer', { from: me(), sdp: cur.pc.localDescription });
+      return;
+    }
     await cur.pc.setRemoteDescription(m.sdp);
     for (const c of cur.pending) await cur.pc.addIceCandidate(c).catch(() => {});
     cur.pending = [];
-    const ans = await cur.pc.createAnswer();
+    const ans = tuneSdp(await cur.pc.createAnswer());
     await cur.pc.setLocalDescription(ans);
     ch.send('answer', { from: me(), sdp: ans });
   });
   ch.on('answer', async (m) => {
     if (!cur || cur.incoming || m.from === me() || !cur.pc) return;
+    if (cur.pc.signalingState !== 'have-local-offer') return; // tekrar gelen cevap
     await cur.pc.setRemoteDescription(m.sdp);
     for (const c of cur.pending) await cur.pc.addIceCandidate(c).catch(() => {});
     cur.pending = [];
@@ -295,9 +395,18 @@ async function accept() {
     toast(friendly(e, 'Arama açılamadı').message, true);
     return finish('Arama bitti');
   }
-  cur.pc = makePeer();
-  await cur.ch.join();
-  cur.ch.send('ready', { from: me() });
+  const c = cur;
+  c.pc = await makePeer();
+  await c.ch.join();
+  // "hazırım" mesajı kaybolursa diye teklif gelene kadar birkaç kez tekrarla
+  for (let i = 0; i < 6 && cur === c && !c.gotOffer; i++) {
+    c.ch.send('ready', { from: me() });
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  if (cur === c && !c.gotOffer) {
+    c.endText = 'Bağlantı kurulamadı';
+    hangup('ended');
+  }
 }
 
 /** Kapat / reddet / iptal. */

@@ -67,8 +67,10 @@ uygulama bunları sadece ilk açılışta bir kez sorar, sonra aramalar sorusuz 
 - Sunucu tarafında: 10 dakikada en fazla 6 arama, aynı kişiye saatte en fazla 3 cevapsız arama, günde 40 arama;
   24 saatten yeni hesaplar sadece kendilerini takip edenleri arayabilir; engelli ve kısıtlı hesaplar arayamaz.
 - Gelen arama ekranında **Engelle ve spam olarak bildir** düğmesi var.
-- Arkadaşların farklı mobil ağlardaysa bazı aramalar bağlanmayabilir; o durumda `js/config.js` içindeki
-  `ICE_SERVERS` listesine bir TURN sunucusu eklenebilir.
+- Mobil ağlarda (4G/5G) aramaların her zaman bağlanması için bir TURN sunucusu gerekir. Ücretsiz:
+  https://www.metered.ca/tools/openrelay/ adresinden hesap aç (ayda 20 GB ücretsiz). Panelde
+  "TURN Credentials" kısmındaki API adresini (`https://UYGULAMAADI.metered.live/api/v1/turn/credentials?apiKey=...`)
+  kopyala ve `server.json` dosyasına `"turn": "..."` satırı olarak ekle. Uygulama yeniden derlenmeden kullanılır.
 
 ## İki çalışma modu
 

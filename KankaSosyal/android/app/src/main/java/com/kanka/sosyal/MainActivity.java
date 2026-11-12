@@ -46,6 +46,8 @@ public class MainActivity extends Activity {
     /** Uygulama ekranda mı (açıkken gelen aramayı web tarafı gösterir). */
     static volatile boolean visible = false;
     private volatile boolean inCall = false;
+    private android.os.PowerManager.WakeLock proximity;
+    private android.media.AudioFocusRequest focus;
     private volatile String pendingPayload = null;
     private FrameLayout rootView;
 
@@ -312,6 +314,9 @@ public class MainActivity extends Activity {
             if (am == null) return;
             am.setMode(on || inCall ? AudioManager.MODE_IN_COMMUNICATION : AudioManager.MODE_NORMAL);
             am.setSpeakerphoneOn(on);
+            // hoparlördeyken ekran kulağa yaklaşınca kapanmasın
+            if (on) releaseProximity();
+            else if (inCall) acquireProximity();
         }
 
         /** Arama başladı / bitti: arka plana geçince ses kesilmesin. */
@@ -322,7 +327,25 @@ public class MainActivity extends Activity {
             if (am != null) {
                 am.setMode(on ? AudioManager.MODE_IN_COMMUNICATION : AudioManager.MODE_NORMAL);
                 if (!on) am.setSpeakerphoneOn(false);
+                // diğer uygulamaların sesi aramayı bölmesin
+                try {
+                    if (on) {
+                        focus = new android.media.AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                                .setAudioAttributes(new android.media.AudioAttributes.Builder()
+                                        .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                                .build();
+                        am.requestAudioFocus(focus);
+                    } else if (focus != null) {
+                        am.abandonAudioFocusRequest(focus);
+                        focus = null;
+                    }
+                } catch (Exception ignored) {
+                    // eski cihaz
+                }
             }
+            if (on) acquireProximity();
+            else releaseProximity();
             runOnUiThread(() -> {
                 if (on) getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 else getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -358,6 +381,28 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void setLightBars(boolean light) {
             runOnUiThread(() -> applyBars(light));
+        }
+    }
+
+    /** Telefon kulağa yaklaşınca ekranı kapat (arama sürerken uygulama arka plana düşmez, ses kesilmez). */
+    private void acquireProximity() {
+        try {
+            if (proximity == null) {
+                android.os.PowerManager pm = getSystemService(android.os.PowerManager.class);
+                if (pm == null || !pm.isWakeLockLevelSupported(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) return;
+                proximity = pm.newWakeLock(android.os.PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "kanka:arama");
+            }
+            if (!proximity.isHeld()) proximity.acquire(2 * 60 * 60 * 1000L);
+        } catch (Exception ignored) {
+            // sensör yok
+        }
+    }
+
+    private void releaseProximity() {
+        try {
+            if (proximity != null && proximity.isHeld()) proximity.release();
+        } catch (Exception ignored) {
+            // zaten bırakıldı
         }
     }
 
@@ -418,6 +463,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        releaseProximity();
         if (updater != null) updater.destroy();
         if (web != null) {
             web.destroy();

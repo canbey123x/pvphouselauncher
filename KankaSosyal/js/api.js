@@ -35,6 +35,9 @@ async function fetchRemote() {
     clearTimeout(t);
     if (!r.ok) return;
     const j = await r.json();
+    // sesli arama için TURN sunucusu bilgisi adresi (isteğe bağlı)
+    if (typeof j.turn === 'string' && /^https:\/\/\S+$/.test(j.turn)) localStorage.setItem('kanka.turn', JSON.stringify(j.turn));
+    else localStorage.removeItem('kanka.turn');
     if (valid(j)) localStorage.setItem(REMOTE_KEY, JSON.stringify({ url: j.url.trim().replace(/\/$/, ''), key: j.key.trim() }));
     else localStorage.removeItem(REMOTE_KEY);
   } catch {
