@@ -149,6 +149,13 @@ let iceCache = null;
 async function iceServers() {
   if (iceCache && iceCache.exp > Date.now()) return iceCache.list;
   let list = [...STUN, ...(ICE_SERVERS || [])];
+  // sunucudaki TURN bilgileri (guncelleme-5-arama-sunucusu.sql), sadece giriş yapmış kullanıcılar okuyabilir
+  try {
+    const row = (await db.list('call_config', { eq: { id: 1 } }))[0];
+    if (Array.isArray(row?.ice)) list = [...list, ...row.ice.filter((x) => x && x.urls)];
+  } catch {
+    /* tablo yok */
+  }
   let turnUrl = '';
   try {
     turnUrl = JSON.parse(localStorage.getItem('kanka.turn') || '""');
