@@ -113,14 +113,6 @@ function afterLogin() {
   Calls.listenIncoming();
   const K = window.KankaAndroid;
   if (!K) return;
-  try {
-    if (K.requestStartupPermissions && !localStorage.getItem('kanka.perm')) {
-      localStorage.setItem('kanka.perm', '1');
-      K.requestStartupPermissions();
-    }
-  } catch {
-    /* yok */
-  }
   if (A.db.mode !== 'local' && K.setSession) {
     const send = () => K.setSession(A.db.url, A.db.key, A.db.accessToken() || '', A.me());
     send();
@@ -1912,6 +1904,7 @@ async function vChat(convId, _b, tok) {
 
   // ---- sesli mesaj: basılı tut, bırakınca gönder ----
   let rec = null;
+  let held = false;
   const stopRec = async (sendIt) => {
     if (!rec) return;
     const r = rec;
@@ -1927,8 +1920,14 @@ async function vChat(convId, _b, tok) {
     if (rec) return;
     let stream;
     try {
-      if (window.KankaAndroid?.ensureMic && !window.KankaAndroid.ensureMic()) return toast('Mikrofon izni gerekiyor. İzin verdikten sonra tekrar dene.', true);
+      const hadMic = !window.KankaAndroid?.ensureMic || window.KankaAndroid.ensureMic();
+      held = true;
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      // izin penceresi açıldıysa parmak çoktan kalkmıştır: kaydı başlatma
+      if (!hadMic || !held) {
+        stream.getTracks().forEach((t) => t.stop());
+        return toast('Mikrofon hazır. Kaydetmek için basılı tut.');
+      }
     } catch {
       return toast('Mikrofona erişilemedi', true);
     }
@@ -1960,7 +1959,10 @@ async function vChat(convId, _b, tok) {
       if (s >= 120) stopRec(true);
     }, 250);
   };
-  const up = (e) => rec && stopRec(!e.target.closest?.('#recX'));
+  const up = (e) => {
+    held = false;
+    if (rec) stopRec(!e.target.closest?.('#recX'));
+  };
   window.addEventListener('pointerup', up);
   $('#recX').onpointerdown = (e) => (e.stopPropagation(), stopRec(false));
   const cleanup = setInterval(() => stale(tok) && (window.removeEventListener('pointerup', up), stopRec(false), clearInterval(cleanup)), 500);

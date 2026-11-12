@@ -144,7 +144,6 @@ function startTick() {
 
 /* ---------- WebRTC ---------- */
 async function getMic() {
-  window.KankaAndroid?.ensureMic?.();
   try {
     return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
   } catch {

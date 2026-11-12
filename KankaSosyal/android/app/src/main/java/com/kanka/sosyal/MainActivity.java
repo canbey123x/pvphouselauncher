@@ -40,7 +40,7 @@ public class MainActivity extends Activity {
     private static final int PICK = 41;
     private static final int CAM = 42;
     private static final int MIC = 43;
-    private static final int STARTUP = 44;
+    private static final int NOTIF = 44;
     private PermissionRequest pendingCam;
     private PermissionRequest pendingMic;
     /** Uygulama ekranda mı (açıkken gelen aramayı web tarafı gösterir). */
@@ -134,12 +134,21 @@ public class MainActivity extends Activity {
                     if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) wantsMic = true;
                 }
                 if (wantsMic && !wantsCam) {
-                    // sesli arama / sesli mesaj
-                    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    // sesli arama / sesli mesaj: mikrofon izni burada (ve bir kez bildirim izni) sorulur
+                    java.util.ArrayList<String> ask = new java.util.ArrayList<>();
+                    boolean micOk = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+                    if (!micOk) ask.add(Manifest.permission.RECORD_AUDIO);
+                    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                            && !Push.prefs(MainActivity.this).getBoolean("notif_asked", false)) {
+                        ask.add(Manifest.permission.POST_NOTIFICATIONS);
+                        Push.prefs(MainActivity.this).edit().putBoolean("notif_asked", true).apply();
+                    }
+                    if (micOk) {
                         request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                        if (!ask.isEmpty()) requestPermissions(ask.toArray(new String[0]), NOTIF);
                     } else {
                         pendingMic = request;
-                        requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MIC);
+                        requestPermissions(ask.toArray(new String[0]), MIC);
                     }
                     return;
                 }
@@ -251,15 +260,13 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
         if (requestCode == MIC && pendingMic != null) {
-            if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) pendingMic.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+            boolean ok = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+            if (ok) pendingMic.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE});
             else pendingMic.deny();
             pendingMic = null;
             return;
         }
-        if (requestCode == STARTUP) {
-            askFullScreen();
-            return;
-        }
+        if (requestCode == NOTIF || requestCode == MIC) return;
         if (requestCode != CAM || pendingCam == null) return;
         if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) pendingCam.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
         else pendingCam.deny();
@@ -325,9 +332,7 @@ public class MainActivity extends Activity {
         /** Mikrofon izni var mı? Yoksa bir kez sor ve false dön. */
         @JavascriptInterface
         public boolean ensureMic() {
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return true;
-            runOnUiThread(() -> requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, MIC));
-            return false;
+            return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
         }
 
         @JavascriptInterface
@@ -354,18 +359,6 @@ public class MainActivity extends Activity {
         public void setLightBars(boolean light) {
             runOnUiThread(() -> applyBars(light));
         }
-
-        /** İlk açılışta tek seferlik: bildirim + mikrofon izni (arama ve sesli mesaj için). */
-        @JavascriptInterface
-        public void requestStartupPermissions() {
-            runOnUiThread(() -> {
-                java.util.ArrayList<String> ask = new java.util.ArrayList<>();
-                if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) ask.add(Manifest.permission.POST_NOTIFICATIONS);
-                if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) ask.add(Manifest.permission.RECORD_AUDIO);
-                if (ask.isEmpty()) askFullScreen();
-                else requestPermissions(ask.toArray(new String[0]), STARTUP);
-            });
-        }
     }
 
     private void applyBars(boolean light) {
@@ -376,18 +369,6 @@ public class MainActivity extends Activity {
             WindowInsetsController ic = getWindow().getInsetsController();
             int m = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
             if (ic != null) ic.setSystemBarsAppearance(light ? m : 0, m);
-        }
-    }
-
-    /** Android 14+: kilit ekranında tam ekran arama izni kapalıysa ayar sayfasını aç (genelde açıktır). */
-    private void askFullScreen() {
-        if (Build.VERSION.SDK_INT < 34) return;
-        NotificationManager nm = getSystemService(NotificationManager.class);
-        if (nm == null || nm.canUseFullScreenIntent()) return;
-        try {
-            startActivity(new Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + getPackageName())));
-        } catch (Exception ignored) {
-            // ayar sayfası yok
         }
     }
 
