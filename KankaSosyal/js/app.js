@@ -18,7 +18,67 @@ let viewToken = 0;
 /* =========================================================
    Başlangıç
    ========================================================= */
+/* =========================================================
+   Siteden uygulamaya geç: Android'de uygulama yüklüyse doğrudan uygulamada aç
+   ========================================================= */
+const APP_ID = 'com.kanka.sosyal';
+const APK_URL = 'https://github.com/canbey123x/pvphouselauncher/releases/download/kanka-latest/Kanka.apk';
+async function openInApp() {
+  if (window.KankaAndroid || location.hostname === 'appassets.androidplatform.net' || !/Android/i.test(navigator.userAgent)) return;
+  const ss = (k, v) => {
+    try {
+      return v === undefined ? sessionStorage.getItem(k) : sessionStorage.setItem(k, v);
+    } catch {
+      return null;
+    }
+  };
+  const q = new URLSearchParams(location.search);
+  if (q.has('web')) {
+    // uygulama açılamadı (yüklü değil) ya da kullanıcı web'i seçti: bu oturumda bir daha sorma
+    ss('kanka.web', '1');
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
+  let installed = null;
+  try {
+    if (navigator.getInstalledRelatedApps) installed = (await navigator.getInstalledRelatedApps()).some((a) => a.id === APP_ID);
+  } catch {
+    /* desteklenmiyor */
+  }
+  const hash = location.hash && location.hash.length > 2 ? location.hash : '#/home';
+  const fallback = location.origin + location.pathname + '?web=1' + hash;
+  const intent = `intent://open?h=${encodeURIComponent(hash)}#Intent;scheme=kanka;package=${APP_ID};S.browser_fallback_url=${encodeURIComponent(fallback)};end`;
+  if (ss('kanka.web')) return;
+  // yüklüyse hemen uygulamaya geç
+  if (installed) {
+    ss('kanka.web', '1');
+    location.href = intent;
+  }
+  // tarayıcı otomatik geçişi engellerse tek dokunuşla açılsın
+  let dismissed = false;
+  try {
+    dismissed = !installed && localStorage.getItem('kanka.appBar') === 'no';
+  } catch {
+    /* yok */
+  }
+  if (dismissed) return;
+  const bar = document.createElement('div');
+  bar.className = 'app-bar';
+  bar.innerHTML = `<img src="icons/icon-192.png" alt=""><div class="grow"><b>Kanka uygulaması</b><small>${installed ? 'Telefonunda yüklü' : installed === false ? 'Bildirimler ve sesli arama için' : 'Yüklüyse uygulamada aç'}</small></div>
+    ${installed === false ? `<a class="btn sm" href="${APK_URL}">İndir</a>` : `<a class="btn sm" href="${esc(intent)}">Aç</a>`}<button class="ibtn" aria-label="Kapat">${I.close}</button>`;
+  document.body.appendChild(bar);
+  $('.ibtn', bar).onclick = () => {
+    bar.remove();
+    ss('kanka.web', '1');
+    try {
+      if (!installed) localStorage.setItem('kanka.appBar', 'no');
+    } catch {
+      /* yok */
+    }
+  };
+}
+
 async function boot() {
+  openInApp();
   S.applyTheme();
   window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change', () => S.theme() === 'system' && S.applyTheme());
   // kankaa.com.tr/@kullanici bağlantısı -> profil
@@ -96,6 +156,7 @@ function handleIntent(raw) {
   if (it.conversation_id) return (location.hash = '#/dm/' + it.conversation_id);
   if (it.post_id) return (location.hash = '#/p/' + it.post_id);
   if (it.username) return (location.hash = '#/u/' + it.username);
+  if (it.hash && /^#\/[\w\-\/%.@]*$/.test(it.hash)) return (location.hash = it.hash);
   if (it.type) location.hash = '#/notifs';
 }
 window.__kankaIntent = (it) => A.me() && handleIntent(it);

@@ -215,14 +215,16 @@ public class MainActivity extends Activity {
             Uri u = i.getData();
             String path = u.getPath() == null ? "" : u.getPath();
             String user = null;
-            if (path.startsWith("/@")) user = path.substring(2);
+            String hash = null;
+            if (path.startsWith("/@")) user = path.substring(2).replace("/", "");
             else if ("kanka".equals(u.getScheme()) && "u".equals(u.getHost())) user = path.replace("/", "");
-            if (user != null && user.matches("[A-Za-z0-9_.]{2,30}")) {
-                try {
-                    p = new JSONObject().put("username", user.toLowerCase()).toString();
-                } catch (Exception ignored) {
-                    // olmaz
-                }
+            else if ("kanka".equals(u.getScheme()) && "open".equals(u.getHost())) hash = u.getQueryParameter("h");
+            else if (u.getFragment() != null) hash = "#" + u.getFragment();
+            try {
+                if (user != null && user.matches("[A-Za-z0-9_.]{2,30}")) p = new JSONObject().put("username", user.toLowerCase()).toString();
+                else if (hash != null && hash.startsWith("#/") && hash.length() < 200) p = new JSONObject().put("hash", hash).toString();
+            } catch (Exception ignored) {
+                // olmaz
             }
         }
         if (p == null) return;

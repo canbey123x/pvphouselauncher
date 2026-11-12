@@ -35,13 +35,14 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- kankaa.com.tr/@kullanici bağlantıları uygulamada açılsın -->
-            <intent-filter>
+            <!-- kankaa.com.tr bağlantıları doğrudan uygulamada açılsın (site: .well-known/assetlinks.json) -->
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="kankaa.com.tr" android:pathPrefix="/@" />
-                <data android:scheme="https" android:host="www.kankaa.com.tr" android:pathPrefix="/@" />
+                <data android:scheme="https" />
+                <data android:host="kankaa.com.tr" />
+                <data android:host="www.kankaa.com.tr" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -73,6 +74,8 @@
             </intent-filter>
         </service>
 
+        <!-- site "uygulama yüklü mü?" diye sorabilsin -->
+        <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
         <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_kanka" />
         <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="kanka_genel" />
     </application>
