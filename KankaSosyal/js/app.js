@@ -107,7 +107,7 @@ async function boot() {
   window.addEventListener('hashchange', route);
   if (!location.hash || location.hash === '#/') location.hash = A.me() ? '#/home' : '#/login';
   route();
-  setInterval(refreshBadges, 15000);
+  setInterval(() => !document.hidden && refreshBadges(true), 20000);
 }
 
 /** Giriş sonrası: gelen aramaları dinle, telefona bildirim anahtarı kaydet, Android'e oturumu ver. */
@@ -367,8 +367,11 @@ function topbar(title, back = false, right = '', line = true) {
 }
 
 let badgeBusy = false;
-async function refreshBadges() {
+let badgeAt = 0;
+async function refreshBadges(force = false) {
   if (!A.me() || badgeBusy) return;
+  if (!force && Date.now() - badgeAt < 10000) return;
+  badgeAt = Date.now();
   badgeBusy = true;
   try {
     const fresh = await A.profile(A.me(), true);
@@ -1254,7 +1257,7 @@ async function vReels(startId, _b, tok) {
   const fol = new Set(await A.following());
   box.innerHTML = list
     .map(
-      (p) => `<section class="reel" data-k="${p.id}" ${vigStyle(p.meta)}>${mediaTag(p.media, 'video', '', 'data-reel ' + vidAttrs(p.meta) + (p.meta?.muted ? ' data-mute' : ''))}${overlayHtml(p.meta)}<div class="shade"></div><div class="paused hidden">${I.play}</div>
+      (p) => `<section class="reel" data-k="${p.id}" ${vigStyle(p.meta)}><video data-src="${esc(p.media)}" data-reel playsinline loop preload="none" ${vidAttrs(p.meta)} ${p.meta?.muted ? 'data-mute' : ''}></video>${overlayHtml(p.meta)}<div class="shade"></div><div class="paused hidden">${I.play}</div>
     <div class="side"><button class="act ${p.liked ? 'on-like' : ''}" data-a="like">${I.heart}<span>${num(p.likeCount)}</span></button>
       <a class="act" href="#/p/${p.id}">${I.comment}<span>${num(p.commentCount)}</span></a>
       <button class="act ${p.reposted ? 'on-rp' : ''}" data-a="repost">${I.repost}<span>${num(p.repostCount)}</span></button>
@@ -1265,16 +1268,37 @@ async function vReels(startId, _b, tok) {
     )
     .join('');
   hydrate(box);
-  const vids = $$('video', box);
+  const vids = $$('video[data-reel]', box);
   vids.forEach((v) => {
     v.muted = v.hasAttribute('data-mute');
     v.loop = true;
   });
+  // sadece ekrandaki ve sıradaki 1-2 video yüklenir; uzaktakiler bellekten atılır
+  const load = (i, how) => {
+    const v = vids[i];
+    if (!v) return;
+    if (!v.getAttribute('src')) {
+      v.preload = how;
+      v.src = v.dataset.src;
+    } else if (how === 'auto' && v.preload !== 'auto') v.preload = 'auto';
+  };
+  const unload = (i) => {
+    const v = vids[i];
+    if (!v || !v.getAttribute('src')) return;
+    v.pause();
+    v.removeAttribute('src');
+    v.load();
+  };
   const io = new IntersectionObserver(
     (ents) => {
       for (const e of ents) {
         const v = e.target;
+        const i = vids.indexOf(v);
         if (e.isIntersecting && e.intersectionRatio > 0.7) {
+          load(i, 'auto');
+          load(i + 1, 'auto');
+          load(i + 2, 'metadata');
+          vids.forEach((_, k) => (k < i - 2 || k > i + 3) && unload(k));
           v.currentTime = 0;
           v.play().catch(() => {
             v.muted = true;
@@ -1285,6 +1309,8 @@ async function vReels(startId, _b, tok) {
     },
     { root: box, threshold: [0, 0.7] }
   );
+  load(0, 'auto');
+  load(1, 'metadata');
   vids.forEach((v) => io.observe(v));
   bindPosts(box, list, () => route());
   box.addEventListener('click', async (e) => {
@@ -1319,13 +1345,13 @@ async function vProfile(username, tab = 'posts', tok) {
   if (!u) return renderMsg('Kullanıcı bulunamadı', 'Bu hesap yok ya da silinmiş.', true);
   const mine = u.id === A.me();
   const admin = A.isAdminP(meP);
-  const [st, fstate, groups, v, hls] = await Promise.all([A.stats(u.id), A.followState(u.id), A.storyGroups(), A.viewer(), S.highlights(u.id)]);
+  const [st, fstate, ring, v, hls] = await Promise.all([A.stats(u.id), A.followState(u.id), A.storyRing(u.id), A.viewer(), S.highlights(u.id)]);
   if (stale(tok)) return;
   const iBlocked = v.blocked.has(u.id);
   const locked = !mine && !admin && (iBlocked || v.blockedMe.has(u.id) || (u.private && fstate !== 'following'));
   const bs = A.banState(u);
   const fLabel = { following: 'Takip ediliyor', requested: 'İstek gönderildi', none: 'Takip et', self: '' };
-  const g = groups.find((x) => x.user.id === u.id);
+  const g = ring ? { allSeen: ring === 'seen' } : null;
   const right = mine
     ? `<a class="ibtn" href="#/create">${I.plus}</a><a class="ibtn" href="#/settings">${I.menu}</a>`
     : `<button class="ibtn" id="umore">${I.dots}</button>`;
@@ -1433,7 +1459,7 @@ async function vProfile(username, tab = 'posts', tok) {
     return;
   }
   const posts =
-    tab === 'reposts' ? await A.userReposts(u.id) : tab === 'tagged' ? await S.taggedPosts(u.id) : tab === 'saved' && mine ? await S.savedPosts() : (await A.userPosts(u.id)).filter((p) => tab !== 'reels' || p.kind === 'video');
+    tab === 'reposts' ? await A.userReposts(u.id) : tab === 'tagged' ? await S.taggedPosts(u.id) : tab === 'saved' && mine ? await S.savedPosts() : (await A.userPostsLite(u.id)).filter((p) => tab !== 'reels' || p.kind === 'video');
   if (stale(tok)) return;
   $('#pgrid').innerHTML = posts.length
     ? `${tab === 'saved' ? '<p class="small muted" style="padding:8px 14px">Kaydettiklerini sadece sen görebilirsin.</p>' : ''}<div class="grid3">${posts.map((p) => `<a class="cell ${tab === 'reels' ? 'tall' : ''}" href="${tab === 'reels' ? '#/reels/' + p.id : '#/p/' + p.id}">${mediaTag(p.media, p.kind)}${p.kind === 'video' && tab !== 'reels' ? `<span class="badge">${I.play}</span>` : p.meta?.items?.length ? `<span class="badge">${I.grid}</span>` : ''}</a>`).join('')}</div>`
@@ -1863,7 +1889,8 @@ async function vInbox(tabArg, _b, tok) {
     <div class="feed-tabs" id="itabs"><button data-t="msg">Mesajlar</button><button data-t="chan">Kanallar</button><button data-t="calls">Aramalar</button></div><div id="convs"><div class="empty"><div class="spin" style="margin:auto"></div></div></div>`;
   const [cs, gs] = await Promise.all([A.conversations(), S.myGroups()]);
   if (stale(tok)) return;
-  for (const g of gs) g.last = (await A.db.list('messages', { eq: { conversation_id: g.id }, order: ['created_at', false], limit: 1 }).catch(() => []))[0] || null;
+  const gl = await A.lastMessages(gs.map((g) => g.id));
+  for (const g of gs) g.last = gl.get(g.id) || null;
   const all = [...cs, ...gs.filter((g) => !g.is_channel)].sort((x, y) => ((x.last?.created_at || x.created_at) < (y.last?.created_at || y.created_at) ? 1 : -1));
   const myChans = gs.filter((g) => g.is_channel);
   let tab = ['msg', 'chan', 'calls'].includes(tabArg) ? tabArg : 'msg';
@@ -2157,15 +2184,40 @@ async function vChat(convId, _b, tok) {
   };
   let prevLen = 0;
   bindVoice($('#chat'));
-  const load = async () => {
+  // full: son 60 mesajı baştan al (silme / açılma sonrası); değilse sadece yeni gelenler
+  let busy = false;
+  let tick = 0;
+  const loadReacts = async () => {
+    reacts = await S.reactions(msgs.map((m) => m.id));
+    draw();
+  };
+  const loadReads = async () => {
+    rd = await S.reads(conv);
+    draw();
+  };
+  const load = async (full = true) => {
+    if (busy) return;
+    busy = true;
     try {
-      [msgs, rd] = await Promise.all([A.messages(conv.id, null, conv.ttl_hours), S.reads(conv)]);
-      reacts = await S.reactions(msgs.map((m) => m.id));
+      if (full || !msgs.length) {
+        const [m, r] = await Promise.all([A.messages(conv.id, null, conv.ttl_hours), S.reads(conv)]);
+        msgs = m;
+        rd = r;
+        reacts = await S.reactions(msgs.map((x) => x.id));
+      } else {
+        const since = msgs[msgs.length - 1].created_at;
+        const [nw, r] = await Promise.all([A.messages(conv.id, since, conv.ttl_hours), S.reads(conv)]);
+        rd = r;
+        let added = false;
+        for (const m of nw) if (!msgs.some((x) => x.id === m.id)) (msgs.push(m), (added = true));
+        if (added || ++tick % 5 === 0) reacts = await S.reactions(msgs.map((x) => x.id));
+      }
       draw();
       if (!document.hidden && member) S.markRead(conv);
     } catch {
       /* ağ hatası: sonra tekrar */
     }
+    busy = false;
   };
   await load();
   // devam eden grup araması
@@ -2179,17 +2231,18 @@ async function vChat(convId, _b, tok) {
   };
   gbar();
   const unsubs = [
-    A.db.subscribe('messages', `conversation_id=eq.${conv.id}`, load),
-    A.db.subscribe('conversation_reads', `conversation_id=eq.${conv.id}`, load),
-    A.db.subscribe('message_reactions', null, load),
+    A.db.subscribe('messages', `conversation_id=eq.${conv.id}`, (_row, ev) => load(ev !== 'INSERT')),
+    A.db.subscribe('conversation_reads', `conversation_id=eq.${conv.id}`, loadReads),
+    A.db.subscribe('message_reactions', null, (row) => row && msgs.some((m) => m.id === row.message_id) && loadReacts()),
   ];
   if (group && !chan) unsubs.push(A.db.subscribe('group_calls', `conversation_id=eq.${conv.id}`, gbar));
   let n = 0;
   pollT = setInterval(() => {
     if (stale(tok)) return unsubs.forEach((u) => u());
-    load();
+    if (document.hidden) return;
+    load(false);
     if (++n % 4 === 0) gbar();
-  }, A.db.realtime ? 4000 : 2500);
+  }, A.db.realtime ? 5000 : 2500);
 
   // ---- mesaj işlemleri: basılı tut menüsü, çift dokunuşla kalp ----
   const msgMenu = (m) => {
@@ -2545,7 +2598,7 @@ async function showMemory(box) {
   } catch {
     /* yok */
   }
-  const mine = await A.userPosts(A.me()).catch(() => []);
+  const mine = await A.userPostsLite(A.me()).catch(() => []);
   const sameDay = (d) => d.getDate() === today.getDate();
   let pick = null;
   let label = '';
@@ -2698,7 +2751,7 @@ async function vNotifs(_a, _b, tok) {
         .join('')
     : `<div class="empty"><div class="ico">${I.heart}</div><h3>Bildirim yok</h3><p>Beğeniler, yorumlar ve yeni takipçiler burada görünür.</p></div>`);
   hydrate($('#nl'));
-  A.markAllRead().then(refreshBadges);
+  A.markAllRead().then(() => refreshBadges(true));
 }
 
 /* =========================================================

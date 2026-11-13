@@ -250,25 +250,45 @@ export async function deletePost(id) {
 }
 
 /** Gönderilere beğeni/repost/yorum sayıları ve sahip profillerini ekle. */
-export async function decorate(posts) {
-  if (!posts.length) return posts;
-  const ids = posts.map((p) => p.id);
+let countsRpc = null; // sunucuda post_counts var mı (guncelleme-7-hiz.sql)
+/** Gönderilerin beğeni / repost / yorum sayıları: sunucuda tek istek, yoksa eski yol. */
+async function postCounts(ids) {
+  const uid = me();
+  const out = new Map();
+  if (db.mode !== 'local' && countsRpc !== false) {
+    try {
+      const rows = await db.rpc('post_counts', { ids: [...new Set(ids)] });
+      countsRpc = true;
+      for (const r of rows || []) out.set(r.post_id, { likes: r.likes, reposts: r.reposts, comments: r.comments, liked: r.liked, reposted: r.reposted });
+      return out;
+    } catch {
+      countsRpc = false;
+    }
+  }
   const [likes, reposts, comments] = await Promise.all([
     db.list('likes', { in: ['post_id', ids] }),
     db.list('reposts', { in: ['post_id', ids] }),
     db.list('comments', { in: ['post_id', ids] }),
   ]);
-  const pm = await profiles(posts.map((p) => p.user_id).concat(posts.map((p) => p.reposted_by).filter(Boolean)));
+  for (const id of ids) {
+    const l = likes.filter((x) => x.post_id === id);
+    const r = reposts.filter((x) => x.post_id === id);
+    out.set(id, { likes: l.length, reposts: r.length, comments: comments.filter((x) => x.post_id === id).length, liked: l.some((x) => x.user_id === uid), reposted: r.some((x) => x.user_id === uid) });
+  }
+  return out;
+}
+export async function decorate(posts) {
+  if (!posts.length) return posts;
+  const ids = posts.map((p) => p.id);
+  const [counts, pm, v] = await Promise.all([postCounts(ids), profiles(posts.map((p) => p.user_id).concat(posts.map((p) => p.reposted_by).filter(Boolean))), viewer()]);
   const uid = me();
-  const v = await viewer();
   for (const p of posts) {
-    const l = likes.filter((x) => x.post_id === p.id);
-    const r = reposts.filter((x) => x.post_id === p.id);
-    p.likeCount = l.length;
-    p.liked = l.some((x) => x.user_id === uid);
-    p.repostCount = r.length;
-    p.reposted = r.some((x) => x.user_id === uid);
-    p.commentCount = comments.filter((x) => x.post_id === p.id).length;
+    const c = counts.get(p.id) || { likes: 0, reposts: 0, comments: 0, liked: false, reposted: false };
+    p.likeCount = c.likes;
+    p.liked = c.liked;
+    p.repostCount = c.reposts;
+    p.reposted = c.reposted;
+    p.commentCount = c.comments;
     p.author = pm.get(p.user_id);
     if (p.reposted_by) p.reposter = pm.get(p.reposted_by);
     p.hideLikes = !!p.author?.hide_likes && p.user_id !== uid;
@@ -571,8 +591,25 @@ export async function setPrivacy(patch) {
 }
 
 export async function stats(uid) {
+  if (db.mode !== 'local') {
+    const r = await db.rpc('profile_stats', { uid }).catch(() => null);
+    if (r && typeof r.posts === 'number') return r;
+  }
   const [posts, fers, fing] = await Promise.all([db.list('posts', { eq: { user_id: uid } }), followers(uid), following(uid)]);
   return { posts: posts.length, followers: fers.length, following: fing.length };
+}
+/** Profil ızgarası için hafif liste (sayılar olmadan). */
+export async function userPostsLite(uid) {
+  return db.list('posts', { eq: { user_id: uid }, order: ['created_at', false], limit: 120 });
+}
+/** Bu kişinin son 24 saatte hikâyesi var mı, hepsini gördüm mü (profil halkası için). */
+export async function storyRing(uid) {
+  const since = new Date(Date.now() - STORY_MS).toISOString();
+  const st = await db.list('stories', { eq: { user_id: uid }, gte: { created_at: since } }).catch(() => []);
+  if (!st.length) return null;
+  if (uid === me()) return 'seen';
+  const vs = await db.list('story_views', { eq: { user_id: me() }, in: ['story_id', st.map((s) => s.id)] }).catch(() => []);
+  return vs.length >= st.length ? 'seen' : 'new';
 }
 
 /* ---------- Hikâyeler ---------- */
@@ -633,14 +670,31 @@ export async function conversations() {
   const uid = me();
   const [a, b] = await Promise.all([db.list('conversations', { eq: { a: uid } }), db.list('conversations', { eq: { b: uid } })]);
   const all = [...a, ...b].filter((c, i, arr) => !c.is_group && c.a !== c.b && arr.findIndex((x) => x.id === c.id) === i);
-  const pm = await profiles(all.map((c) => (c.a === uid ? c.b : c.a)));
+  const [pm, last] = await Promise.all([profiles(all.map((c) => (c.a === uid ? c.b : c.a))), lastMessages(all.map((c) => c.id))]);
   for (const c of all) {
     c.other = pm.get(c.a === uid ? c.b : c.a);
-    const last = await db.list('messages', { eq: { conversation_id: c.id }, order: ['created_at', false], limit: 1 });
-    c.last = last[0] || null;
+    c.last = last.get(c.id) || null;
   }
   all.sort((x, y) => ((x.last?.created_at || x.created_at) < (y.last?.created_at || y.created_at) ? 1 : -1));
   return all.filter((c) => c.other);
+}
+let inboxRpc = null;
+/** Sohbetlerin son mesajları: sunucuda tek istek, yoksa paralel. */
+export async function lastMessages(ids) {
+  const m = new Map();
+  if (!ids.length) return m;
+  if (db.mode !== 'local' && inboxRpc !== false) {
+    try {
+      for (const r of (await db.rpc('inbox_last', { ids })) || []) m.set(r.conversation_id, r);
+      inboxRpc = true;
+      return m;
+    } catch {
+      inboxRpc = false;
+    }
+  }
+  const rows = await Promise.all(ids.map((id) => db.list('messages', { eq: { conversation_id: id }, order: ['created_at', false], limit: 1 }).catch(() => [])));
+  ids.forEach((id, i) => rows[i][0] && m.set(id, rows[i][0]));
+  return m;
 }
 export async function conversationWith(uid) {
   const m = me();
@@ -657,10 +711,10 @@ export async function conversationWith(uid) {
     throw friendly(e, 'Bu kişiye mesaj gönderemezsin (mesaj izni kapalı ya da engellenmiş).');
   }
 }
-export async function messages(convId, since, ttlHours) {
-  const q = { eq: { conversation_id: convId }, order: ['created_at', true] };
-  if (since) q.gte = { created_at: since };
-  let r = await db.list('messages', q);
+export async function messages(convId, since, ttlHours, limit = 60) {
+  let r;
+  if (since) r = await db.list('messages', { eq: { conversation_id: convId }, gte: { created_at: since }, order: ['created_at', true], limit: 200 });
+  else r = (await db.list('messages', { eq: { conversation_id: convId }, order: ['created_at', false], limit })).reverse();
   // kaybolan mesajlar (sunucuda kural zaten gizler; yerel modda burada)
   if (ttlHours) {
     const lim = Date.now() - ttlHours * 3600 * 1000;
