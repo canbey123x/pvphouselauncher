@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls", "delegate_permission/common.get_login_creds"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.kanka.sosyal",
+      "sha256_cert_fingerprints": ["70:B0:7E:77:4F:43:32:9D:85:07:59:1D:A2:E0:21:65:31:34:C4:CC:72:C5:F9:56:F3:40:A5:39:EA:89:85:D0"]
+    }
+  }
+]
