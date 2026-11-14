@@ -58,7 +58,7 @@ export async function createSupabaseDb(url, key) {
     async upload(blob, kind) {
       const ext = (blob.type.split('/')[1] || 'bin').replace('jpeg', 'jpg').replace('quicktime', 'mov');
       const path = `${uid}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      chk(await sb.storage.from('media').upload(path, blob, { contentType: blob.type, upsert: false }));
+      chk(await sb.storage.from('media').upload(path, blob, { contentType: blob.type, upsert: false, cacheControl: '31536000' }));
       return sb.storage.from('media').getPublicUrl(path).data.publicUrl;
     },
     async resolve(u) {
