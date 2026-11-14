@@ -1279,7 +1279,9 @@ async function vReels(startId, _b, tok) {
     if (!v) return;
     if (!v.getAttribute('src')) {
       v.preload = how;
-      v.src = v.dataset.src;
+      // sunucu adresi doğrudan; yerel moddaki cihaz içi dosya önce çözülür
+      if (/^https?:/.test(v.dataset.src)) v.src = v.dataset.src;
+      else A.db.resolve(v.dataset.src).then((u) => !v.getAttribute('src') && (v.src = u));
     } else if (how === 'auto' && v.preload !== 'auto') v.preload = 'auto';
   };
   const unload = (i) => {
