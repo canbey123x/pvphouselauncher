@@ -15,6 +15,7 @@ const app = $('#app');
 const tabbar = $('#tabbar');
 let meP = null; // giriş yapan kullanıcının profili
 let pollT = null;
+let viewCleanup = null;
 let viewToken = 0;
 
 /* =========================================================
@@ -305,6 +306,13 @@ document.addEventListener('visibilitychange', () => !document.hidden && A.me() &
    ========================================================= */
 async function route() {
   clearInterval(pollT);
+  // önceki sayfanın canlı dinleyicilerini kapat
+  try {
+    viewCleanup?.();
+  } catch {
+    /* yok */
+  }
+  viewCleanup = null;
   closeSheet();
   const tok = ++viewToken;
   const h = location.hash.slice(2) || 'home';
@@ -468,22 +476,21 @@ function vSignup(ref) {
 }
 function vServer() {
   const cfg = A.serverConfig();
-  const src = { manual: 'elle girildi', remote: 'otomatik', builtin: 'uygulamaya gömülü' }[cfg?.source] || '';
+  const src = { manual: 'elle girildi', remote: 'otomatik', builtin: 'uygulamaya gömülü', site: 'bu site' }[cfg?.source] || (A.db.mode === 'php' ? 'bu site' : '');
+  const addr = A.db.mode === 'php' ? A.db.url : cfg?.api || cfg?.url || '';
   app.innerHTML = `${topbar('Sunucu', true)}<div class="create">
-    <div class="modebadge" style="text-align:left">${A.db.mode === 'local' ? `${ic('device', 14)}<b>Bağlı değil</b> (yerel mod: her şey sadece bu cihazda)` : `${ic('globe', 14)}<b>Bağlı:</b> ${esc(cfg?.url || '')}<br><span class="small">Kaynak: ${src}</span>`}</div>
-    <details><summary class="muted" style="padding:8px 0">Gelişmiş: adres ve anahtarı elle gir</summary><div class="form">
-      <input class="field" id="su" placeholder="Supabase URL (https://xxxx.supabase.co)" value="${esc(cfg?.url || '')}">
-      <input class="field" id="sk" placeholder="publishable / anon anahtar" value="${esc(cfg?.key || '')}">
+    <div class="modebadge" style="text-align:left">${A.db.mode === 'local' ? `${ic('device', 14)}<b>Bağlı değil</b> (yerel mod: her şey sadece bu cihazda)${A.db.serverError ? `<br><span class="small" style="color:#ff6b77">${esc(A.db.serverError)}</span>` : ''}` : `${ic('globe', 14)}<b>Bağlı:</b> ${esc(addr)}<br><span class="small">Kaynak: ${src}</span>`}</div>
+    <details><summary class="muted" style="padding:8px 0">Gelişmiş: sunucu adresini elle gir</summary><div class="form">
+      <input class="field" id="su" placeholder="https://alanadin.com/api/" value="${esc(cfg?.source === 'manual' ? cfg.api || '' : '')}">
       <button class="btn block gray" id="save">Bağlan</button></div></details>
     ${cfg?.source === 'manual' ? '<button class="btn block gray" id="auto">Otomatik ayara dön</button>' : ''}
-    <p class="small muted">Uygulama açılışta yöneticinin ayarladığı sunucuya kendiliğinden bağlanır. Elle girilen ayar bunun önüne geçer.</p></div>`;
+    <p class="small muted">Uygulama açılışta Kanka sunucusuna kendiliğinden bağlanır. Elle girilen adres bunun önüne geçer.</p></div>`;
   bindRetry();
   $('#save').onclick = () => {
-    const url = $('#su').value.trim().replace(/\/$/, '');
-    const key = $('#sk').value.trim();
-    if (!/^https:\/\/.+/.test(url) || key.length < 20) return toast('URL ya da anahtar hatalı', true);
-    if (/^sb_secret_/.test(key)) return toast('Bu secret anahtar! Publishable anahtarı gir.', true);
-    A.setServerConfig({ url, key });
+    let api = $('#su').value.trim();
+    if (!/^https?:\/\/.+/.test(api)) return toast('Adres hatalı (https:// ile başlamalı)', true);
+    if (!/\/api\/?$|index\.php$/.test(api)) api = api.replace(/\/$/, '') + '/api/';
+    A.setServerConfig({ api });
     location.hash = '#/login';
     location.reload();
   };
@@ -2190,14 +2197,19 @@ async function vChat(convId, _b, tok) {
   let busy = false;
   let tick = 0;
   const loadReacts = async () => {
+    if (stale(tok)) return;
     reacts = await S.reactions(msgs.map((m) => m.id));
     draw();
   };
   const loadReads = async () => {
+    if (stale(tok)) return;
     rd = await S.reads(conv);
     draw();
   };
+  let unsubs = [];
   const load = async (full = true) => {
+    // başka sayfaya geçildiyse dinlemeyi bırak, eski sohbet yeni ekrana yazmasın
+    if (stale(tok)) return unsubs.forEach((u) => u());
     if (busy) return;
     busy = true;
     try {
@@ -2214,6 +2226,7 @@ async function vChat(convId, _b, tok) {
         for (const m of nw) if (!msgs.some((x) => x.id === m.id)) (msgs.push(m), (added = true));
         if (added || ++tick % 5 === 0) reacts = await S.reactions(msgs.map((x) => x.id));
       }
+      if (stale(tok)) return;
       draw();
       if (!document.hidden && member) S.markRead(conv);
     } catch {
@@ -2224,7 +2237,7 @@ async function vChat(convId, _b, tok) {
   await load();
   // devam eden grup araması
   const gbar = async () => {
-    if (!group || chan) return;
+    if (!group || chan || stale(tok)) return;
     const row = await Group.activeCall(conv.id);
     const el = $('#gBar');
     if (!el) return;
@@ -2232,12 +2245,13 @@ async function vChat(convId, _b, tok) {
     if ($('#gJoin')) $('#gJoin').onclick = () => Group.joinGroupCall(row, conv);
   };
   gbar();
-  const unsubs = [
+  unsubs = [
     A.db.subscribe('messages', `conversation_id=eq.${conv.id}`, (_row, ev) => load(ev !== 'INSERT')),
     A.db.subscribe('conversation_reads', `conversation_id=eq.${conv.id}`, loadReads),
     A.db.subscribe('message_reactions', null, (row) => row && msgs.some((m) => m.id === row.message_id) && loadReacts()),
   ];
   if (group && !chan) unsubs.push(A.db.subscribe('group_calls', `conversation_id=eq.${conv.id}`, gbar));
+  viewCleanup = () => unsubs.forEach((u) => u());
   let n = 0;
   pollT = setInterval(() => {
     if (stale(tok)) return unsubs.forEach((u) => u());

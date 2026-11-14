@@ -383,7 +383,11 @@ function openChannel(callId) {
   ch.on('answer', async (m) => {
     if (!cur || cur.incoming || m.from === me() || !cur.pc) return;
     if (cur.pc.signalingState !== 'have-local-offer') return; // tekrar gelen cevap
-    await cur.pc.setRemoteDescription(m.sdp);
+    try {
+      await cur.pc.setRemoteDescription(m.sdp);
+    } catch {
+      return;
+    }
     for (const c of cur.pending) await cur.pc.addIceCandidate(c).catch(() => {});
     cur.pending = [];
   });

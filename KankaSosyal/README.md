@@ -34,6 +34,31 @@ Mevcut sunucuya bu özellikler için **`supabase/guncelleme-2.sql`** bir kez ça
 ### Google Play
 `google-play/` klasöründe adım adım yükleme rehberi, mağaza metinleri, veri güvenliği formu ve içerik derecelendirme cevapları var. Sözleşmeler `legal/` klasöründe (uygulamada: Ayarlar > Sözleşmeler).
 
+## Sunucu: cPanel (PHP + MySQL) — Supabase yerine
+
+Kanka artık kendi sunucunda çalışır: `api/` klasörü (PHP) ve cPanel'deki MySQL veritabanı.
+Fotoğraf ve videolar sitedeki `uploads/` klasörüne yüklenir. Supabase'e gerek yoktur.
+
+**Kurulum (bir kez):**
+1. cPanel > **MySQL Veritabanları**: bir veritabanı ve kullanıcı oluştur, kullanıcıyı veritabanına **TÜM YETKİLER** ile ekle.
+2. Sitenin dosyalarını (`api` klasörü dahil) `public_html` içine yükle.
+3. Tarayıcıda `https://alanadin.com/api/kurulum.php` aç, veritabanı bilgilerini yaz, **Kur**'a bas.
+   (İsteğe bağlı: Firebase hizmet hesabı JSON'u ve Metered TURN bilgileri de buradan girilir.)
+4. Siteyi aç ve kaydol: ilk açılan hesap **kurucu** olur.
+
+GitHub gizli ayarları (`KANKA_DB_HOST`, `KANKA_DB_NAME`, `KANKA_DB_USER`, `KANKA_DB_PASS`, isteğe bağlı
+`KANKA_SITE_URL`, `FCM_SERVICE_ACCOUNT`, `KANKA_TURN_USER`, `KANKA_TURN_PASS`) varsa, otomatik FTP yüklemesi
+`api/config.php`'yi kendisi yazar ve tablolar ilk istekte kendiliğinden kurulur.
+
+**cPanel PHP ayarı:** videolar için cPanel > **MultiPHP INI Editor**'de `upload_max_filesize` ve
+`post_max_size` en az `64M` olmalı. PHP sürümü 7.4 ya da üstü olmalı (8.x önerilir).
+
+**Uygulamanın bağlandığı adres:** `js/config.js` > `API_URL` ve `server.json` > `"api"`
+(varsayılan `https://kankaa.com.tr/api/`). Site aynı sunucudan açılırsa adres kendiliğinden bulunur.
+
+**Canlı güncelleme:** paylaşımlı hostingde WebSocket olmadığı için mesajlar, aramalar ve canlı yayın
+birkaç saniyede bir sorulur (aramalar sırasında saniyede ~1,5 kez). Arkadaş ortamı için yeterlidir.
+
 ## Sürüm 4: görüntülü arama, grup araması, canlı yayın, kanallar ve daha fazlası
 
 Görüntülü arama, grup araması (sesli/görüntülü, 6 kişi), mesaja yanıt ve tepki, tek seferlik fotoğraf,

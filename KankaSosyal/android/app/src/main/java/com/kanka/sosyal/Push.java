@@ -159,16 +159,22 @@ final class Push {
         if (url.isEmpty() || key.isEmpty() || callId == null || callId.isEmpty()) return;
         new Thread(() -> {
             try {
-                HttpURLConnection h = (HttpURLConnection) new URL(url + "/rest/v1/rpc/decline_call").openConnection();
+                boolean php = "php".equals(key);
+                String target = php ? (url.endsWith("/") ? url + "index.php" : url) : url + "/rest/v1/rpc/decline_call";
+                HttpURLConnection h = (HttpURLConnection) new URL(target).openConnection();
                 h.setRequestMethod("POST");
                 h.setConnectTimeout(10000);
                 h.setReadTimeout(10000);
                 h.setDoOutput(true);
-                h.setRequestProperty("apikey", key);
-                h.setRequestProperty("Authorization", "Bearer " + key);
+                if (!php) {
+                    h.setRequestProperty("apikey", key);
+                    h.setRequestProperty("Authorization", "Bearer " + key);
+                }
                 h.setRequestProperty("Content-Type", "application/json");
                 try (OutputStream o = h.getOutputStream()) {
-                    o.write(("{\"cid\":\"" + callId.replaceAll("[^0-9a-fA-F-]", "") + "\"}").getBytes(StandardCharsets.UTF_8));
+                    String cid = callId.replaceAll("[^0-9a-fA-F-]", "");
+                    String body = php ? "{\"op\":\"rpc\",\"name\":\"decline_call\",\"args\":{\"cid\":\"" + cid + "\"}}" : "{\"cid\":\"" + cid + "\"}";
+                    o.write(body.getBytes(StandardCharsets.UTF_8));
                 }
                 h.getResponseCode();
                 h.disconnect();

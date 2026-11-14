@@ -3,7 +3,7 @@
 // takip, hikâye, DM, bildirim, şikâyet, mavi tik ve yönetim işlemleri.
 // Alttaki veri katmanı (yerel ya da Supabase) bunu bilmez.
 // =========================================================
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, API_URL } from './config.js';
 import { createLocalDb } from './db-local.js';
 import { interestPenalty } from './social.js';
 
@@ -17,7 +17,8 @@ const REMOTE_KEY = 'kanka.remote';
 /** Herkesin otomatik bağlandığı ortak ayar dosyası (GitHub'da). Değişince yeni APK gerekmez. */
 export const REMOTE_URL = 'https://raw.githubusercontent.com/canbey123x/pvphouselauncher/ccr-111fa307-9zbgth/KankaSosyal/server.json';
 
-const valid = (s) => s && /^https:\/\/\S+$/.test(s.url || '') && (s.key || '').length >= 20 && !/^sb_secret_/.test(s.key);
+const validApi = (s) => s && /^https?:\/\/\S+$/.test(s.api || '');
+const valid = (s) => validApi(s) || (s && /^https:\/\/\S+$/.test(s.url || '') && (s.key || '').length >= 20 && !/^sb_secret_/.test(s.key));
 function readLS(k) {
   try {
     return JSON.parse(localStorage.getItem(k) || 'null');
@@ -38,7 +39,8 @@ async function fetchRemote() {
     // sesli arama için TURN sunucusu bilgisi adresi (isteğe bağlı)
     if (typeof j.turn === 'string' && /^https:\/\/\S+$/.test(j.turn)) localStorage.setItem('kanka.turn', JSON.stringify(j.turn));
     else localStorage.removeItem('kanka.turn');
-    if (valid(j)) localStorage.setItem(REMOTE_KEY, JSON.stringify({ url: j.url.trim().replace(/\/$/, ''), key: j.key.trim() }));
+    if (validApi(j)) localStorage.setItem(REMOTE_KEY, JSON.stringify({ api: j.api.trim() }));
+    else if (valid(j)) localStorage.setItem(REMOTE_KEY, JSON.stringify({ url: j.url.trim().replace(/\/$/, ''), key: j.key.trim() }));
     else localStorage.removeItem(REMOTE_KEY);
   } catch {
     /* internet yok: son bilinen ayar kullanılır */
@@ -51,19 +53,48 @@ export function serverConfig() {
   if (valid(manual)) return { ...manual, source: 'manual' };
   const remote = readLS(REMOTE_KEY);
   if (valid(remote)) return { ...remote, source: 'remote' };
+  if (API_URL) return { api: API_URL, source: 'builtin' };
   if (SUPABASE_URL && SUPABASE_ANON_KEY) return { url: SUPABASE_URL, key: SUPABASE_ANON_KEY, source: 'builtin' };
   return null;
 }
 export function setServerConfig(cfg) {
-  if (cfg) localStorage.setItem(SERVER_KEY, JSON.stringify({ url: cfg.url, key: cfg.key }));
+  if (cfg) localStorage.setItem(SERVER_KEY, JSON.stringify(cfg.api ? { api: cfg.api } : { url: cfg.url, key: cfg.key }));
   else localStorage.removeItem(SERVER_KEY);
 }
 
+/** Site kendi sunucumuzda (cPanel) açıldıysa aynı adresteki api/ klasörünü kullan. */
+async function sameOriginApi() {
+  if (!/^https?:$/.test(location.protocol) || location.hostname === 'appassets.androidplatform.net') return null;
+  try {
+    const url = new URL('api/', location.href).href;
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 3000);
+    const r = await fetch(url + 'index.php', { signal: ctl.signal, cache: 'no-store' });
+    clearTimeout(t);
+    const j = await r.json();
+    return j?.data?.app === 'kanka' && j.data.setup ? url : null;
+  } catch {
+    return null;
+  }
+}
 export async function initDb() {
+  const site = readLS(SERVER_KEY) ? null : await sameOriginApi();
   // ilk açılışta ayar yoksa ortak dosyayı bekle; varsa arka planda tazele
-  if (!serverConfig()) await fetchRemote();
+  if (!site && !serverConfig()) await fetchRemote();
   else fetchRemote();
-  const cfg = serverConfig();
+  const cfg = site ? { api: site, source: 'site' } : serverConfig();
+  if (cfg?.api) {
+    try {
+      const { createPhpDb } = await import('./db-php.js');
+      db = await createPhpDb(cfg.api);
+      return db;
+    } catch (e) {
+      console.warn('Sunucuya bağlanılamadı, yerel moda geçiliyor', e);
+      db = await createLocalDb();
+      db.serverError = e.message || String(e);
+      return db;
+    }
+  }
   if (cfg) {
     try {
       const { createSupabaseDb } = await import('./db-supabase.js');

@@ -196,7 +196,11 @@ function openChannel() {
     if (!forMe(m) || !L.host || !m.to) return;
     const v = L.viewers.get(m.from);
     if (!v || v.pc.signalingState !== 'have-local-offer') return;
-    await v.pc.setRemoteDescription(m.sdp);
+    try {
+      await v.pc.setRemoteDescription(m.sdp);
+    } catch {
+      return;
+    }
     for (const x of v.pending) await v.pc.addIceCandidate(x).catch(() => {});
     v.pending = [];
   });

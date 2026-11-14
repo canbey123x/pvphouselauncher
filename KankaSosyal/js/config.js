@@ -1,14 +1,14 @@
 // =========================================================
 // config.js — Sunucu ayarı.
-// Arkadaşlarınla ORTAK kullanmak için ücretsiz bir Supabase projesi aç
-// (README'deki adımlar), aşağıya URL ve "anon public" anahtarı yaz.
+// API_URL: kendi sunucumuz (cPanel'deki api/ klasörü). Site aynı sunucudan açılırsa
+// otomatik bulunur; Android uygulaması bu adresi (ya da server.json'daki "api") kullanır.
 // Boş bırakılırsa uygulama "Yerel mod"da çalışır: her şey sadece bu cihazda saklanır.
-// Uygulamanın içinden de (Ayarlar > Sunucu) girilebilir.
 // =========================================================
-export const SUPABASE_URL = 'https://dwjznnbukzliaiywzugk.supabase.co';
-export const SUPABASE_ANON_KEY = 'sb_publishable_s2rnDOtXpDz3eb2aMws7Fw_X0xaYUHw';
+export const API_URL = 'https://kankaa.com.tr/api/';
 
-// Sesli arama için bağlantı sunucuları. Varsayılan: Google STUN (ücretsiz).
-// Bazı mobil ağlarda aramanın bağlanması için bir TURN sunucusu gerekebilir, örnek:
-// export const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'turn:turn.ornek.com:3478', username: 'kullanici', credential: 'sifre' }];
+// Eski Supabase bağlantısı (artık kullanılmıyor)
+export const SUPABASE_URL = '';
+export const SUPABASE_ANON_KEY = '';
+
+// Sesli arama için ek bağlantı sunucuları (TURN bilgileri sunucudaki config.php'de durur).
 export const ICE_SERVERS = [];

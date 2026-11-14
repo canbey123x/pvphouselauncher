@@ -1,0 +1,11 @@
+# Kanka API: sadece index.php ve kurulum.php dışarıdan açılabilir
+Options -Indexes
+<FilesMatch "^(config\.php|core\.php|rules\.php|data\.php|rpc\.php|push\.php|schema\.sql)$">
+  Require all denied
+</FilesMatch>
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  # bazı sunucularda "Authorization" başlığı PHP'ye ulaşmaz
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>

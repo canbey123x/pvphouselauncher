@@ -1,0 +1,5 @@
+api/config.php
+api/.cache/
+uploads/
+private_uploads/
+test.jpg

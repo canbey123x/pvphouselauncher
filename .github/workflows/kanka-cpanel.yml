@@ -6,6 +6,10 @@ name: Kanka cPanel
 #   FTP_USERNAME  cPanel > FTP Accounts'ta açtığın hesap (ör. kanka@alanadin.com)
 #   FTP_PASSWORD  o hesabın şifresi
 #   FTP_DIR       (isteğe bağlı) sitenin klasörü, ör. /public_html/  — boşsa FTP hesabının kök klasörü
+# Sunucu (PHP + MySQL) için, varsa api/config.php bunlardan yazılır (yoksa api/kurulum.php ile kurulur):
+#   KANKA_DB_HOST, KANKA_DB_NAME, KANKA_DB_USER, KANKA_DB_PASS
+#   KANKA_SITE_URL (isteğe bağlı, ör. https://kankaa.com.tr), FCM_SERVICE_ACCOUNT (isteğe bağlı)
+#   KANKA_TURN_USER, KANKA_TURN_PASS (isteğe bağlı, Metered)
 # Bu ayarlar yoksa iş atlanır, hata vermez.
 
 on:
@@ -58,7 +62,8 @@ jobs:
         run: |
           mkdir -p site/vendor
           cd KankaSosyal
-          cp -r index.html 404.html style.css manifest.webmanifest sw.js server.json js icons legal .well-known ../site/
+          cp -r index.html 404.html style.css manifest.webmanifest sw.js server.json js icons legal .well-known api ../site/
+          rm -f ../site/api/config.php && rm -rf ../site/api/.cache
           cp cpanel.htaccess ../site/.htaccess
           cd ..
           curl -fsSL --retry 4 https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js -o site/vendor/supabase.js
@@ -66,6 +71,39 @@ jobs:
           printf '{"v":"%s","t":"%s"}\n' "${GITHUB_SHA::12}" "$(date -u +%FT%TZ)" > site/version.json
           sed -i "s/__SURUM__/${GITHUB_SHA::12}-$GITHUB_RUN_NUMBER/" site/sw.js
           ls -la site
+
+      - name: Sunucu ayar dosyası (gizli ayarlardan)
+        if: env.HAS_FTP == 'true'
+        env:
+          DB_HOST: ${{ secrets.KANKA_DB_HOST }}
+          DB_NAME: ${{ secrets.KANKA_DB_NAME }}
+          DB_USER: ${{ secrets.KANKA_DB_USER }}
+          DB_PASS: ${{ secrets.KANKA_DB_PASS }}
+          SITE_URL: ${{ secrets.KANKA_SITE_URL }}
+          FCM_SA: ${{ secrets.FCM_SERVICE_ACCOUNT }}
+          TURN_USER: ${{ secrets.KANKA_TURN_USER }}
+          TURN_PASS: ${{ secrets.KANKA_TURN_PASS }}
+        run: |
+          if [ -z "$DB_NAME" ] || [ -z "$DB_USER" ]; then
+            echo "::notice::KANKA_DB_* ayarlı değil; sunucu ayarı sitede api/kurulum.php ile yapılır."
+            exit 0
+          fi
+          php -r '
+            $turn = getenv("TURN_USER") ? [["urls" => "stun:stun.relay.metered.ca:80"], ["urls" => ["turn:standard.relay.metered.ca:80", "turn:standard.relay.metered.ca:80?transport=tcp", "turn:standard.relay.metered.ca:443", "turns:standard.relay.metered.ca:443?transport=tcp"], "username" => getenv("TURN_USER"), "credential" => getenv("TURN_PASS")]] : [];
+            $c = [
+              "db_host" => getenv("DB_HOST") ?: "localhost",
+              "db_name" => getenv("DB_NAME"),
+              "db_user" => getenv("DB_USER"),
+              "db_pass" => getenv("DB_PASS"),
+              "site_url" => rtrim(getenv("SITE_URL") ?: "https://kankaa.com.tr", "/"),
+              "secret" => hash("sha256", "kanka|" . getenv("DB_PASS") . "|" . getenv("DB_NAME")),
+              "fcm_service_account" => getenv("FCM_SA") ?: "",
+              "turn_servers" => $turn,
+              "debug" => false,
+            ];
+            file_put_contents("site/api/config.php", "<?php\n// GitHub gizli ayarlarından yazıldı. Kimseyle paylaşma.\nreturn " . var_export($c, true) . ";\n");
+          '
+          php -l site/api/config.php > /dev/null && echo "api/config.php hazır."
 
       - name: cPanel'e yükle (FTP)
         if: env.HAS_FTP == 'true'

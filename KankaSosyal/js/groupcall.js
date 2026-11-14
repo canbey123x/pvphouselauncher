@@ -82,7 +82,11 @@ function openRoom() {
     if (!mine(m) || !m.to) return;
     const p = c.peers.get(m.from);
     if (!p || p.pc.signalingState !== 'have-local-offer') return;
-    await p.pc.setRemoteDescription(m.sdp);
+    try {
+      await p.pc.setRemoteDescription(m.sdp);
+    } catch {
+      return; // aynı cevap iki kez geldi
+    }
     for (const x of p.pending) await p.pc.addIceCandidate(x).catch(() => {});
     p.pending = [];
   });
